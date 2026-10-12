@@ -12,6 +12,13 @@
 - Every task must leave the project in a state no worse than before, preserving existing functionality, buildability, code quality, readability, and architectural consistency.
 - Avoid unrelated refactoring. Make only the changes necessary to complete the current task, unless additional changes are explicitly requested or required for correctness.
 
+## Git workflow
+
+- Before starting each new development stage, create a Git branch named `subsystem_nn`, where `nn` is the two-digit subsystem/stage number from `road map.md` (for example, `subsystem_00`, `subsystem_01`). Perform the stage's development and commits on that branch.
+- Push development changes from the PC only to the corresponding `subsystem_nn` branch. Never push directly to `main` from the PC, including force pushes.
+- Integrate changes into `main` only through Contribute in the GitHub web interface, by opening and merging a pull request from the development branch.
+- These workflow requirements apply to both the developer and AI agents, even when GitHub does not enforce repository rulesets.
+
 ## Code style
 
 - Apply one consistent style to all application-owned C++ code, including both platform implementations. Preserve the exact spelling and required signatures of external APIs, system types, macros, constants, and callbacks (Win32, X11, GLX, OpenGL, standard library).
