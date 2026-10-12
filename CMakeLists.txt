@@ -32,7 +32,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(WIN32)
     # WIN32 — встроенная переменная CMake, истинная при сборке для Windows.
     # CMake определяет её во время конфигурации проекта.
-    set(PLATFORM_SOURCE platform_windows.cpp)
+    set(PLATFORM_SOURCE platform/platform_windows.cpp)
 
     # Это имена системных библиотек Windows, которые потребуются линкеру.
     #
@@ -63,7 +63,7 @@ elseif(UNIX AND NOT APPLE)
     find_package(OpenGL REQUIRED)
 
     # В Linux используем реализацию Platform для X11.
-    set(PLATFORM_SOURCE platform_x11.cpp)
+    set(PLATFORM_SOURCE platform/platform_x11.cpp)
 
     # X11::X11 и OpenGL::GL — импортированные цели CMake,
     # созданные найденными пакетами.
@@ -86,8 +86,8 @@ if(WIN32)
     # Исполняемый файл circle собирается из точки входа, игровой логики
     # и выбранной реализации Platform.
     add_executable(circle WIN32
-        main.cpp
-        game.cpp
+        demos/circle/main.cpp
+        demos/circle/game.cpp
         ${PLATFORM_SOURCE}
     )
 
@@ -102,8 +102,8 @@ else()
     # Используется та же точка входа и игровая логика, но X11-платформенный
     # исходник.
     add_executable(circle
-        main.cpp
-        game.cpp
+        demos/circle/main.cpp
+        demos/circle/game.cpp
         ${PLATFORM_SOURCE}
     )
 endif()
@@ -118,6 +118,10 @@ endif()
 # и не должны автоматически передаваться целям сборки, которые впоследствии
 # будут зависеть от circle.
 target_link_libraries(circle PRIVATE ${PLATFORM_LIBRARIES})
+
+# Общие заголовки движка доступны демо и платформенным реализациям.
+# PRIVATE ограничивает путь включения исходниками цели circle.
+target_include_directories(circle PRIVATE engine)
 
 if(MSVC)
     # MSVC — встроенная CMake-переменная, истинная, если используется

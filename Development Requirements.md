@@ -14,6 +14,8 @@
 
 ## Git workflow
 
+- Write commit messages in the past tense, describing completed changes. Example: "Упорядочена структура по roadmap и обновлены пути сборки".
+
 - Before starting each new development stage, create a Git branch named `subsystem_nn`, where `nn` is the two-digit subsystem/stage number from `road map.md` (for example, `subsystem_00`, `subsystem_01`). Perform the stage's development and commits on that branch.
 - Push development changes from the PC only to the corresponding `subsystem_nn` branch. Never push directly to `main` from the PC, including force pushes.
 - Integrate changes into `main` only through Contribute in the GitHub web interface, by opening and merging a pull request from the development branch.
