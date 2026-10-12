@@ -1,1 +1,61 @@
 # ogl_demo
+
+Небольшое интерактивное 2D-демо на C++17 и OpenGL 1.1 для Windows и Linux.
+Управляйте кораблём, стреляйте по дронам и перемещайтесь через порталы на космической сцене.
+
+## Что внутри
+
+- Игровая сцена с кораблём, станцией, дронами и порталами.
+- Отрисовка геометрическими примитивами OpenGL.
+- Работа с окном и клавиатурой через Win32/WGL в Windows и X11/GLX в Linux.
+- Сборка через CMake.
+
+## Сборка и запуск
+
+Нужны CMake 3.16 или новее, компилятор C++17 и драйвер с поддержкой OpenGL 1.1.
+Выполняйте команды из каталога проекта.
+
+### Windows
+
+Установите MinGW-w64. Команды `cmake`, `g++` и `mingw32-make` должны быть доступны в `PATH`.
+В PowerShell:
+
+```powershell
+.\build.bat
+.\build\circle.exe
+```
+
+### Linux
+
+Нужны GCC или Clang, Make, библиотеки разработки X11 и OpenGL/GLX.
+В Debian/Ubuntu зависимости можно установить так:
+
+```sh
+sudo apt install build-essential cmake libx11-dev libgl1-mesa-dev
+```
+
+Соберите и запустите приложение:
+
+```sh
+cmake -S . -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+./build/circle
+```
+
+Для запуска нужна графическая сессия X11 или XWayland. Нативный Wayland не поддерживается.
+
+## Управление
+
+| Действие | Клавиши |
+| --- | --- |
+| Перемещение | WASD или стрелки |
+| Стрельба | Пробел |
+| Выход | Escape или кнопка закрытия окна |
+
+## Исходники
+
+- `main.cpp` — точка входа.
+- `game.cpp`, `game.h` — игровая логика и отрисовка сцены.
+- `platform.h` — общий интерфейс окна и ввода.
+- `platform_windows.cpp`, `platform_x11.cpp` — реализации для Windows и Linux.
+- `CMakeLists.txt` — настройка сборки.
