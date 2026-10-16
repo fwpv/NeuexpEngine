@@ -8,7 +8,7 @@ if errorlevel 1 exit /b %errorlevel%
 
 rem Конфигурируем проект из текущей папки (-S .) в папку build (-B build).
 rem Явно выбираем указанный пользователем генератор MinGW Makefiles.
-cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_DEMOS=ON -DBUILD_TESTING=OFF
 rem В batch-синтаксисе IF ERRORLEVEL 1 истинно при коде завершения 1 или выше.
 rem EXIT /B возвращает ошибку вызывающей оболочке, сохраняя код CMake.
 if errorlevel 1 exit /b %errorlevel%

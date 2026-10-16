@@ -6,5 +6,5 @@ set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
 # Unix Makefiles использует одну конфигурацию, поэтому выбираем Release при настройке.
-cmake -S . -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_DEMOS=ON -DBUILD_TESTING=OFF
 cmake --build build

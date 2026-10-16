@@ -1,0 +1,93 @@
+#include <stb_image.h>
+
+#include <algorithm>
+#include <array>
+#include <cstdio>
+#include <filesystem>
+#include <string>
+#include <system_error>
+
+namespace
+{
+constexpr int ImageWidth = 2;
+constexpr int ImageHeight = 2;
+constexpr int ImageChannels = 4;
+constexpr std::array<unsigned char, ImageWidth * ImageHeight * ImageChannels> ExpectedPixels = {
+    255, 0, 0, 0,       0, 255, 0, 128,
+    0, 0, 255, 255,     255, 255, 255, 64
+};
+
+bool checkPixels(const char* path)
+{
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    // Последний аргумент запрашивает RGBA; channels сообщает число каналов исходного файла.
+    // stbi_load возвращает nullptr при ошибке, иначе выделяет память для пикселей.
+    unsigned char* pixels = stbi_load(path, &width, &height, &channels, ImageChannels);
+    if (!pixels) {
+        std::fprintf(stderr, "Cannot load PNG: %s\n", path);
+        return false;
+    }
+
+    bool passed = width == ImageWidth && height == ImageHeight && channels == ImageChannels;
+    if (!passed) {
+        std::fprintf(stderr, "Expected 2x2 RGBA PNG, got %dx%d with %d channels\n",
+            width, height, channels);
+    } else {
+        passed = std::equal(ExpectedPixels.begin(), ExpectedPixels.end(), pixels);
+        if (!passed) {
+            std::fprintf(stderr, "Decoded PNG colors or alpha values differ from expected pixels\n");
+        }
+    }
+
+    // Память библиотеки освобождается через stbi_image_free, в том числе при провале проверки.
+    stbi_image_free(pixels);
+    return passed;
+}
+
+bool checkLoadFailure(const char* path, bool shouldExist)
+{
+    // Проверяем наличие ресурса отдельно, чтобы пропавший повреждённый PNG не дал ложный успех.
+    std::error_code error;
+    const bool exists = std::filesystem::exists(path, error);
+    if (error || exists != shouldExist) {
+        std::fprintf(stderr, "Unexpected test file availability: %s\n", path);
+        return false;
+    }
+
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    unsigned char* pixels = stbi_load(path, &width, &height, &channels, ImageChannels);
+    if (pixels) {
+        std::fprintf(stderr, "Loading should have failed: %s\n", path);
+        stbi_image_free(pixels);
+        return false;
+    }
+    return true;
+}
+}
+
+int main(int argumentCount, char* arguments[])
+{
+    if (argumentCount != 3) {
+        std::fprintf(stderr, "Usage: stb_image_test <pixels|missing|corrupt> <file>\n");
+        return 1;
+    }
+
+    const std::string scenario = arguments[1];
+    bool passed = false;
+    if (scenario == "pixels") {
+        passed = checkPixels(arguments[2]);
+    } else if (scenario == "missing") {
+        passed = checkLoadFailure(arguments[2], false);
+    } else if (scenario == "corrupt") {
+        passed = checkLoadFailure(arguments[2], true);
+    } else {
+        std::fprintf(stderr, "Unknown scenario: %s\n", arguments[1]);
+    }
+
+    // Явный код возврата сохраняет проверки в Release, где assert может быть отключён.
+    return passed ? 0 : 1;
+}

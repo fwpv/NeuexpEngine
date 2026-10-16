@@ -67,5 +67,5 @@ sudo apt install build-essential cmake libx11-dev libgl1-mesa-dev
 - `tests/` — автоматические тесты и их ресурсы.
 - `assets/` — ресурсы демонстрационных приложений.
 - `third_party/` — локальные исходники stb_image и miniaudio.
-- `scripts/` — скрипты сборки и очистки для Windows и Linux.
+- `scripts/` — скрипты сборки, очистки и запуска тестов для Windows и Linux.
 - `CMakeLists.txt` — настройка сборки.
