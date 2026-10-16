@@ -21,7 +21,7 @@
 В PowerShell:
 
 ```powershell
-.\build.bat
+.\scripts\build.bat
 .\build\circle.exe
 ```
 
@@ -37,12 +37,15 @@ sudo apt install build-essential cmake libx11-dev libgl1-mesa-dev
 Соберите и запустите приложение:
 
 ```sh
-cmake -S . -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+./scripts/build.sh
 ./build/circle
 ```
 
 Для запуска нужна графическая сессия X11 или XWayland. Нативный Wayland не поддерживается.
+
+Для очистки результатов сборки выполните `./scripts/clean.sh` в Linux
+или `.\scripts\clean.bat` в Windows. Скрипты сборки и очистки можно запускать
+из любой папки: пути вычисляются относительно расположения скриптов.
 
 ## Управление
 
@@ -60,4 +63,5 @@ cmake --build build
 - `tests/` — автоматические тесты и их ресурсы.
 - `assets/` — ресурсы демонстрационных приложений.
 - `third_party/` — каталог для сторонних библиотек.
+- `scripts/` — скрипты сборки и очистки для Windows и Linux.
 - `CMakeLists.txt` — настройка сборки.
