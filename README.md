@@ -41,6 +41,10 @@ sudo apt install build-essential cmake libx11-dev libgl1-mesa-dev
 ./build/circle
 ```
 
+Исходники stb_image и miniaudio уже включены в репозиторий; сборка не скачивает
+зависимости из сети. В Linux для miniaudio также используются системные библиотеки
+потоков, `dl` и `m`; для воспроизведения потребуется доступный аудиобэкенд.
+
 Для запуска нужна графическая сессия X11 или XWayland. Нативный Wayland не поддерживается.
 
 Для очистки результатов сборки выполните `./scripts/clean.sh` в Linux
@@ -62,6 +66,6 @@ sudo apt install build-essential cmake libx11-dev libgl1-mesa-dev
 - `demos/circle/` — точка входа, игровая логика и отрисовка демо.
 - `tests/` — автоматические тесты и их ресурсы.
 - `assets/` — ресурсы демонстрационных приложений.
-- `third_party/` — каталог для сторонних библиотек.
+- `third_party/` — локальные исходники stb_image и miniaudio.
 - `scripts/` — скрипты сборки и очистки для Windows и Linux.
 - `CMakeLists.txt` — настройка сборки.

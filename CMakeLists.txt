@@ -108,6 +108,22 @@ else()
     )
 endif()
 
+# Сторонние реализации собираются отдельно от кода приложения.
+# Используются только локальные исходники; сетевых загрузок при сборке нет.
+add_library(stb_image STATIC third_party/stb/stb_image_impl.cpp)
+add_library(miniaudio STATIC third_party/miniaudio/miniaudio_impl.cpp)
+
+# Пути доступны только самим библиотекам, а не публичным интерфейсам движка.
+target_include_directories(stb_image SYSTEM PRIVATE third_party/stb)
+target_include_directories(miniaudio SYSTEM PRIVATE third_party/miniaudio)
+
+if(UNIX AND NOT APPLE)
+    # miniaudio использует потоки, динамическую загрузку аудиобэкендов и математику.
+    set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+    find_package(Threads REQUIRED)
+    target_link_libraries(miniaudio PRIVATE Threads::Threads ${CMAKE_DL_LIBS} m)
+endif()
+
 # Связываем цель сборки circle с необходимыми платформенными библиотеками.
 #
 # add_executable() сообщает CMake, что мы собираем и из каких исходников.
@@ -117,7 +133,7 @@ endif()
 # PRIVATE означает, что эти библиотеки являются зависимостями самого circle
 # и не должны автоматически передаваться целям сборки, которые впоследствии
 # будут зависеть от circle.
-target_link_libraries(circle PRIVATE ${PLATFORM_LIBRARIES})
+target_link_libraries(circle PRIVATE ${PLATFORM_LIBRARIES} stb_image miniaudio)
 
 # Общие заголовки движка доступны демо и платформенным реализациям.
 # PRIVATE ограничивает путь включения исходниками цели circle.
