@@ -23,10 +23,13 @@
 
 ## Code style
 
+- Return operation errors through output reference parameters, not through return values. Return values may indicate success/failure or carry the operation's normal result. Use a single error object or a collection of errors according to the operation's needs.
+- Prefer modern C++17 language features and standard-library facilities where practical. Use standard string types for text and standard streams for console output. Avoid arbitrary fixed-size character buffers when the required size can be determined dynamically. Preserve native API signatures and use their required allocation/deallocation functions at the platform boundary. Do not require a newer C++ standard or refactor unrelated code solely for style.
+- Keep resource management simple and proportional to the task. Use RAII and smart pointers where they provide a concrete benefit; do not introduce wrappers or custom deleters solely to use modern syntax. Explicit allocation/deallocation pairs are acceptable in short, straightforward native API code with a clear resource lifetime.
 - Apply one consistent style to all application-owned C++ code, including both platform implementations. Preserve the exact spelling and required signatures of external APIs, system types, macros, constants, and callbacks (Win32, X11, GLX, OpenGL, standard library).
 - Use four spaces for indentation; do not use tabs. Put opening braces of namespaces, functions, classes, and structs on a new line. Keep opening braces of if, else, for, while, and switch blocks on the same line as the statement. Always use braces for control-flow bodies.
-- Use `camelCase` for application functions, variables, fields, and parameters (`processEvents`, `openGLContext`); use `PascalCase` for application types, enums, enum values, and named constants (`State`, `Key::Fire`, `ReferenceScreenWidth`). Keep external identifiers unchanged.
-- Use meaningful English identifiers. Keep OS-specific names and types inside their platform implementation; expose OS-independent operations through `platform.h` and the `Platform` namespace.
+- Use `camelCase` for application functions, variables, fields, and parameters; use `PascalCase` for application types, enums, enum values, and named constants. Keep external identifiers unchanged.
+- Use meaningful English identifiers. Keep OS-specific names and types inside their platform implementation; expose OS-independent operations through a common platform interface.
 - Use spaces around binary operators and after commas; no space between a function name and `(`. Keep related declarations and statements together and separate logical sections with blank lines.
 - Use `const` for values that do not change, `const T&` for read-only larger objects, `nullptr` for null pointers, and explicit casts (`static_cast`) when conversion is needed.
 - Use `#pragma once` in project headers. Include project headers with quotes and system/library headers with angle brackets. Prefer explicit includes for direct dependencies.

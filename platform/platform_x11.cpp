@@ -1,141 +1,234 @@
 #include "platform.h"
 
-// Xlib отвечает за соединение с X-сервером, окна и события; keysym переводит
-// коды клавиш в символы; gl.h содержит команды OpenGL, а glx.h связывает OpenGL с X11.
+// Xlib управляет окном и событиями, GLX связывает контекст OpenGL с X11.
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <GL/gl.h>
 #include <GL/glx.h>
+#include <cerrno>
+#include <cstdlib>
+#include <iostream>
 
 namespace Platform
 {
 namespace
 {
-// Display* — соединение с X-сервером; Window, Colormap и Atom — X11-идентификаторы;
-// GLXContext — контекст OpenGL для X11. Все они остаются внутри платформенного модуля.
 Display* display = nullptr;
 Window window = 0;
 Colormap colorMap = 0;
 GLXContext openGLContext = nullptr;
-Atom closeMessage = 0;
+Atom closeMessage = None;
+Atom protocolsMessage = None;
+XErrorHandler previousErrorHandler = nullptr;
+XIOErrorHandler previousIOErrorHandler = nullptr;
+bool handlersInstalled = false;
 
-bool initializeLinux(int width, int height)
+// Обработчик не выделяет память и не вызывает Xlib: сохраняет первую ещё не разобранную ошибку.
+// Все вызовы платформы и разбор ошибок выполняются в одном, главном потоке.
+XErrorEvent pendingError = {};
+
+int recordError(Display*, XErrorEvent* event)
 {
-    // XOpenDisplay открывает соединение с X-сервером; nullptr просит использовать DISPLAY по умолчанию.
+    if (pendingError.error_code == 0) {
+        pendingError = *event;
+    }
+    return 0;
+}
+
+int connectionLost(Display*)
+{
+    // После ошибки ввода-вывода Xlib запрещает продолжать работу с соединением.
+    // _Exit не запускает очистку или деструкторы, которые могли бы снова вызвать Xlib.
+    const int systemError = errno;
+    std::cerr << "OpenGLDemo: X11 connection lost (system error " << systemError << "). Cannot continue.\n";
+    std::cerr.flush();
+    std::_Exit(EXIT_FAILURE);
+}
+
+bool takeError(const char* operation, Error& error)
+{
+    if (pendingError.error_code == 0) {
+        return true;
+    }
+    const XErrorEvent event = pendingError;
+    pendingError = {};
+    std::string description;
+    if (display) {
+        // XGetErrorText не умеет сообщать требуемый размер. Увеличиваем строку,
+        // пока текст помещается с запасом для завершающего нуля.
+        description.resize(128);
+        while (true) {
+            XGetErrorText(display, event.error_code, description.data(), static_cast<int>(description.size()));
+            const std::size_t length = description.find('\0');
+            if (length < description.size() - 1) {
+                description.resize(length);
+                break;
+            }
+            description.resize(description.size() * 2);
+        }
+    }
+    // Название текущей операции — точка обнаружения. request/minor/serial указывают
+    // исходный запрос, который мог быть отправлен раньше и обработан асинхронно.
+    error = { operation, description + " (X11 request "
+        + std::to_string(event.request_code) + "." + std::to_string(event.minor_code)
+        + ", serial " + std::to_string(event.serial) + ")", event.error_code };
+    return false;
+}
+
+bool synchronize(const char* operation, Error& error)
+{
+    // Синхронизация нужна при создании и удалении ресурсов, но не на каждом кадре.
+    XSync(display, False);
+    return takeError(operation, error);
+}
+
+bool initializeLinux(int width, int height, Error& error)
+{
+    // nullptr выбирает DISPLAY из окружения. Без соединения окно сообщения недоступно.
     display = XOpenDisplay(nullptr);
     if (!display) {
+        error = { "XOpenDisplay", "Could not connect to the X server. Check DISPLAY and access to an X11 or XWayland session.", std::nullopt };
         return false;
     }
+    // Обработчики глобальны для процесса. Сохраняем прежние и восстанавливаем после XCloseDisplay.
+    previousErrorHandler = XSetErrorHandler(recordError);
+    previousIOErrorHandler = XSetIOErrorHandler(connectionLost);
+    handlersInstalled = true;
+    pendingError = {};
 
-    // XVisualInfo описывает формат пикселей и глубину окна; glXChooseVisual выбирает
-    // подходящий вариант, поддерживаемый X-сервером и GLX.
-    // GLX_RGBA просит RGBA-цвет, GLX_DOUBLEBUFFER — два буфера,
-    // GLX_DEPTH_SIZE просит размер буфера глубины 24; None завершает список атрибутов.
-    int attributes[] = {
-        GLX_RGBA,          // Требовать визуал с цветовыми компонентами RGBA.
-        GLX_DOUBLEBUFFER,  // Требовать передний и задний буферы для плавного показа кадров.
-        GLX_DEPTH_SIZE, 24, // Минимальный размер буфера глубины — 24 бита.
-        None               // Маркер конца списка атрибутов GLX.
-    };
-
-    // DefaultScreen возвращает экран X11 по умолчанию.
+    // None завершает список; запрашиваем RGBA, двойной буфер и глубину не меньше 24 бит.
+    int attributes[] = { GLX_RGBA, GLX_DOUBLEBUFFER, GLX_DEPTH_SIZE, 24, None };
     XVisualInfo* visual = glXChooseVisual(display, DefaultScreen(display), attributes);
-    if (!visual) {
+    const bool visualSucceeded = synchronize("glXChooseVisual", error);
+    if (!visual || !visualSucceeded) {
+        if (visual) {
+            XFree(visual);
+        }
+        if (visualSucceeded) {
+            error = { "glXChooseVisual", "No compatible OpenGL visual was found.", std::nullopt };
+        }
         return false;
     }
 
-    // RootWindow возвращает корневое окно.
-    // XCreateColormap создаёт цветовую карту для visual; AllocNone не выделяет ячейки заранее.
+    // Visual определяет формат окна; AllocNone не выделяет цветовые ячейки заранее.
     colorMap = XCreateColormap(display, RootWindow(display, visual->screen), visual->visual, AllocNone);
+    const bool colorMapSucceeded = synchronize("XCreateColormap", error);
+    if (!colorMap || !colorMapSucceeded) {
+        colorMap = 0;
+        XFree(visual);
+        if (colorMapSucceeded) {
+            error = { "XCreateColormap", "Could not create the window color map.", std::nullopt };
+        }
+        return false;
+    }
 
-    // XSetWindowAttributes хранит параметры нового окна.
-    // KeyPressMask подписывает на нажатия клавиш, StructureNotifyMask — на изменение/уничтожение окна.
     XSetWindowAttributes settings = {};
-    settings.colormap = colorMap; // Цветовая карта, совместимая с выбранным visual.
+    settings.colormap = colorMap;
     settings.event_mask = KeyPressMask | StructureNotifyMask;
-    // colormap и event_mask — поля XSetWindowAttributes, подключённые маской ниже.
-
-    // XCreateWindow создаёт окно InputOutput (обычное рисуемое окно) с глубиной visual->depth.
-    // Нулевой border_width означает отсутствие дополнительной границы X11;
-    // visual->visual задаёт выбранный формат изображения окна.
-    // x/y = 100 задают начальное положение; width/height переданы из настроек мира.
-    // CWColormap | CWEventMask указывает, что X11 должен взять эти два значения из settings.
+    // Маска указывает, какие поля settings используются при создании окна InputOutput.
     window = XCreateWindow(display, RootWindow(display, visual->screen), 100, 100, width, height,
         0, visual->depth, InputOutput, visual->visual, CWColormap | CWEventMask, &settings);
-    if (!window) {
-        XFree(visual); // XFree освобождает память XVisualInfo.
+    const bool windowSucceeded = synchronize("XCreateWindow", error);
+    if (!window || !windowSucceeded) {
+        window = 0;
+        XFree(visual);
+        if (windowSucceeded) {
+            error = { "XCreateWindow", "Could not create the application window.", std::nullopt };
+        }
         return false;
     }
 
-    // XStoreName устанавливает заголовок. XInternAtom получает Atom — уникальный X11-идентификатор
-    // имени WM_DELETE_WINDOW; False запрещает создавать Atom, если оконный менеджер его не знает.
-    XStoreName(display, window, "ORBITAL // SECTOR 09"); // Имя свойства заголовка окна.
-    closeMessage = XInternAtom(display, "WM_DELETE_WINDOW", False); // False: не создавать неизвестный Atom.
+    // False разрешает создавать Atom, если такого имени ещё нет на сервере.
+    XStoreName(display, window, "ORBITAL // SECTOR 09");
+    protocolsMessage = XInternAtom(display, "WM_PROTOCOLS", False);
+    closeMessage = XInternAtom(display, "WM_DELETE_WINDOW", False);
+    const Status protocolsSet = XSetWMProtocols(display, window, &closeMessage, 1);
+    const bool protocolsSucceeded = synchronize("XSetWMProtocols", error);
+    if (!protocolsSet || closeMessage == None || protocolsMessage == None || !protocolsSucceeded) {
+        XFree(visual);
+        if (protocolsSucceeded) {
+            error = { "XSetWMProtocols", "Could not configure the window close protocol.", std::nullopt };
+        }
+        return false;
+    }
 
-    // XSetWMProtocols регистрирует WM_DELETE_WINDOW как поддерживаемый протокол закрытия окна.
-    XSetWMProtocols(display, window, &closeMessage, 1); // Последний аргумент — число Atom в списке.
-
-    // XMapWindow делает окно отображаемым; оконный менеджер затем выбирает его положение.
     XMapWindow(display, window);
+    if (!synchronize("XMapWindow", error)) {
+        XFree(visual);
+        return false;
+    }
 
-    // glXCreateContext создаёт GLXContext с тем же XVisualInfo, что и окно.
-    // Аргумент True просит прямой рендеринг через графический драйвер, если он доступен.
+    // True запрашивает прямой рендеринг; nullptr означает отсутствие разделяемого контекста.
     openGLContext = glXCreateContext(display, visual, nullptr, True);
-
-    // После создания контекста информация о визуале больше не нужна; XFree освобождает её память.
     XFree(visual);
-
-    // glXMakeCurrent связывает Display, Window и GLXContext с текущим потоком;
-    // после этого команды gl* направляются в данное окно.
-    // При ошибке создания или привязки возвращаем false; вызывающая сторона вызовет shutdown.
-    if (!openGLContext || !glXMakeCurrent(display, window, openGLContext)) {
+    const bool contextSucceeded = synchronize("glXCreateContext", error);
+    if (!openGLContext || !contextSucceeded) {
+        openGLContext = nullptr;
+        if (contextSucceeded) {
+            error = { "glXCreateContext", "Could not create the OpenGL context.", std::nullopt };
+        }
+        return false;
+    }
+    const Bool activated = glXMakeCurrent(display, window, openGLContext);
+    const bool activationSucceeded = synchronize("glXMakeCurrent", error);
+    if (!activated || !activationSucceeded) {
+        if (activationSucceeded) {
+            error = { "glXMakeCurrent", "Could not activate the OpenGL context.", std::nullopt };
+        }
         return false;
     }
     return true;
 }
 }
 
-// Общий интерфейс перенаправляет инициализацию в реализацию X11/GLX.
-bool initialize(int width, int height)
+void reportError(const Error& error, bool)
 {
-    return initializeLinux(width, height);
-}
-
-void setWindowTitle(const char* title)
-{
-    // XStoreName меняет свойство заголовка; XFlush немедленно отправляет буфер запросов X-серверу.
-    if (display && window) {
-        XStoreName(display, window, title);
-        XFlush(display);
+    std::cerr << "OpenGLDemo: " << error.operation << ": " << error.message;
+    if (error.nativeCode) {
+        std::cerr << " (code " << *error.nativeCode << ')';
     }
+    std::cerr << '\n';
 }
 
-bool processEvents()
+bool initialize(int width, int height, Error& error)
 {
-    // XPending возвращает число ожидающих событий и не блокирует цикл, если очередь пуста.
+    return initializeLinux(width, height, error);
+}
+
+bool setWindowTitle(const char* title, Error&)
+{
+    XStoreName(display, window, title);
+    XFlush(display);
+    // X11 не подтверждает смену заголовка синхронно. Не забираем общую отложенную
+    // ошибку здесь: она могла относиться к кадру и должна попасть в processEvents/present.
+    return true;
+}
+
+EventResult processEvents(Error& error)
+{
+    if (!takeError("processEvents", error)) {
+        return EventResult::Failed;
+    }
+    EventResult result = EventResult::Continue;
+    // XPending читает доступные события и ошибки, не ожидая новых событий.
     while (XPending(display)) {
-        // XEvent — объединённая структура разных типов событий; XNextEvent забирает следующее событие.
         XEvent event;
         XNextEvent(display, &event);
-        // DestroyNotify — событие X11 об уничтожении окна.
-        if (event.type == DestroyNotify) {
-            return false;
+        if (event.type == DestroyNotify && event.xdestroywindow.window == window) {
+            window = 0; // Не уничтожаем уже удалённое сервером окно второй раз.
+            result = EventResult::Quit;
         }
-
-        // ClientMessage — сообщение оконного менеджера; xclient.data.l[0] содержит Atom протокола.
-        // Сравниваем его с зарегистрированным выше WM_DELETE_WINDOW.
-        if (event.type == ClientMessage && static_cast<Atom>(event.xclient.data.l[0]) == closeMessage) {
-            return false;
+        if (event.type == ClientMessage && event.xclient.window == window
+            && event.xclient.message_type == protocolsMessage && event.xclient.format == 32
+            && static_cast<Atom>(event.xclient.data.l[0]) == closeMessage) {
+            result = EventResult::Quit;
         }
-
-        // KeyPress — событие нажатия; XLookupKeysym переводит его KeyCode в KeySym.
-        // Его индекс 0 выбирает первый, обычно не сдвинутый, символ клавиши.
-        // XK_Escape — KeySym клавиши Escape.
         if (event.type == KeyPress && XLookupKeysym(&event.xkey, 0) == XK_Escape) {
-            return false;
+            result = EventResult::Quit;
         }
     }
-    return true;
+    // Ошибка имеет приоритет над запросом закрытия, если они пришли в одной очереди.
+    return takeError("processEvents", error) ? result : EventResult::Failed;
 }
 
 bool isKeyDown(Key key)
@@ -178,35 +271,67 @@ bool isKeyDown(Key key)
     return primaryPressed || alternatePressed;
 }
 
-void present()
+
+bool present(Error& error)
 {
-    // glXSwapBuffers меняет задний и передний буферы drawable-окна, показывая готовый кадр.
+    if (!takeError("before glXSwapBuffers", error)) {
+        return false;
+    }
+    // У GLX нет результата SwapBuffers; ошибки приходят обработчику X11 асинхронно.
     glXSwapBuffers(display, window);
+    return takeError("glXSwapBuffers", error);
 }
 
-void shutdown()
+void shutdown(std::vector<Error>& errors)
 {
-    // glXMakeCurrent с None и nullptr отвязывает контекст от drawable и потока;
-    // glXDestroyContext удаляет GLXContext.
-    if (openGLContext) {
-        glXMakeCurrent(display, None, nullptr);
-        glXDestroyContext(display, openGLContext);
-        openGLContext = nullptr;
-    }
-
-    // XDestroyWindow удаляет Window; XFreeColormap освобождает Colormap;
-    // XCloseDisplay закрывает соединение и освобождает оставшиеся ресурсы Xlib.
+    errors.clear();
     if (display) {
+        Error error;
+        // Сначала сохраняем отложенную ошибку работы, чтобы не приписать её очистке.
+        if (!synchronize("pending X11 requests before shutdown", error)) {
+            errors.push_back(error);
+        }
+        if (openGLContext) {
+            const Bool detached = glXMakeCurrent(display, None, nullptr);
+            const bool detachSucceeded = synchronize("glXMakeCurrent (detach)", error);
+            if (!detachSucceeded) {
+                errors.push_back(error);
+            } else if (!detached) {
+                errors.push_back({ "glXMakeCurrent (detach)", "Could not detach the OpenGL context.", std::nullopt });
+            }
+            glXDestroyContext(display, openGLContext);
+            if (!synchronize("glXDestroyContext", error)) {
+                errors.push_back(error);
+            }
+            openGLContext = nullptr;
+        }
         if (window) {
             XDestroyWindow(display, window);
+            if (!synchronize("XDestroyWindow", error)) {
+                errors.push_back(error);
+            }
+            window = 0;
         }
         if (colorMap) {
             XFreeColormap(display, colorMap);
+            if (!synchronize("XFreeColormap", error)) {
+                errors.push_back(error);
+            }
+            colorMap = 0;
         }
         XCloseDisplay(display);
         display = nullptr;
-        window = 0;
-        colorMap = 0;
+        // XCloseDisplay тоже может доставить ошибку; после него нельзя вызывать XGetErrorText.
+        if (!takeError("XCloseDisplay", error)) {
+            errors.push_back(error);
+        }
     }
+    if (handlersInstalled) {
+        XSetErrorHandler(previousErrorHandler);
+        XSetIOErrorHandler(previousIOErrorHandler);
+        handlersInstalled = false;
+    }
+    closeMessage = None;
+    protocolsMessage = None;
 }
 }
