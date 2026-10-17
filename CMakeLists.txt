@@ -49,7 +49,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 # add_subdirectory читает настройки целей из соответствующего CMakeLists.txt.
-# Поиск X11/OpenGL выполняется только внутри demos, когда BUILD_DEMOS включён.
+# Демо и платформенные тесты выбирают системные библиотеки в своих каталогах.
 if(BUILD_DEMOS)
     add_subdirectory(demos)
 endif()
