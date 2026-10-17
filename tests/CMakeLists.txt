@@ -21,35 +21,19 @@ add_test(NAME miniaudio_missing COMMAND miniaudio_test missing
 add_test(NAME miniaudio_corrupt COMMAND miniaudio_test corrupt
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/truncated.wav")
 
-# Платформенные проверки используют настоящую реализацию, без подмены системных вызовов.
-# Системные библиотеки нужны для линковки, но графическая сессия при запуске не требуется.
-if(WIN32)
-    set(PLATFORM_TEST_SOURCE "${PROJECT_SOURCE_DIR}/platform/platform_windows.cpp")
-    set(PLATFORM_TEST_LIBRARIES opengl32 gdi32 user32 winmm)
-elseif(UNIX AND NOT APPLE)
-    find_package(X11 REQUIRED)
-    find_package(OpenGL REQUIRED)
-    set(PLATFORM_TEST_SOURCE "${PROJECT_SOURCE_DIR}/platform/platform_x11.cpp")
-    set(PLATFORM_TEST_LIBRARIES X11::X11 OpenGL::GL)
-else()
-    message(FATAL_ERROR "Platform tests currently support Windows and Linux/X11.")
-endif()
-
-add_executable(platform_cleanup_test platform_cleanup_test.cpp ${PLATFORM_TEST_SOURCE})
-target_include_directories(platform_cleanup_test PRIVATE "${PROJECT_SOURCE_DIR}/engine")
-target_link_libraries(platform_cleanup_test PRIVATE ${PLATFORM_TEST_LIBRARIES})
+# Проверки подключают настоящую платформенную библиотеку без подмены системных вызовов.
+# Графическая сессия для этих сценариев не требуется.
+add_executable(platform_cleanup_test platform_cleanup_test.cpp)
+target_link_libraries(platform_cleanup_test PRIVATE platform)
 add_test(NAME platform_cleanup COMMAND platform_cleanup_test)
 
 set(TEST_TARGETS stb_image_test miniaudio_test platform_cleanup_test)
 if(UNIX AND NOT APPLE)
     # Собираем точку входа демо для интеграционной проверки даже при BUILD_DEMOS=OFF.
     add_executable(platform_startup_test
-        "${PROJECT_SOURCE_DIR}/demos/circle/main.cpp"
         "${PROJECT_SOURCE_DIR}/demos/circle/game.cpp"
-        ${PLATFORM_TEST_SOURCE}
     )
-    target_include_directories(platform_startup_test PRIVATE "${PROJECT_SOURCE_DIR}/engine")
-    target_link_libraries(platform_startup_test PRIVATE ${PLATFORM_TEST_LIBRARIES})
+    target_link_libraries(platform_startup_test PRIVATE platform)
     list(APPEND TEST_TARGETS platform_startup_test)
     add_test(NAME platform_no_display COMMAND "${CMAKE_COMMAND}"
         "-DAPPLICATION=$<TARGET_FILE:platform_startup_test>"
@@ -59,9 +43,5 @@ endif()
 
 # Одинаковый уровень предупреждений для тестовых программ.
 foreach(testTarget IN LISTS TEST_TARGETS)
-    if(MSVC)
-        target_compile_options(${testTarget} PRIVATE /W4)
-    else()
-        target_compile_options(${testTarget} PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion)
-    endif()
+    target_link_libraries(${testTarget} PRIVATE project_warnings)
 endforeach()
