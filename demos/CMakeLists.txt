@@ -110,10 +110,12 @@ else()
     # -Wextra    — дополнительные предупреждения;
     # -Wpedantic — предупреждения о некоторых конструкциях,
     #              выходящих за рамки выбранного стандарта.
+    # -Wconversion — неявные числовые преобразования, способные изменить значение;
+    # -Wsign-conversion — неявные преобразования между знаковыми и беззнаковыми типами.
     #
     # -Wpedantic не заменяет CMAKE_CXX_EXTENSIONS OFF:
     # первое управляет диагностикой, второе — выбором диалекта компилятора.
-    target_compile_options(circle PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(circle PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion)
 endif()
 
 # Сохраняем путь build/circle (build/circle.exe в Windows) для существующих команд запуска.

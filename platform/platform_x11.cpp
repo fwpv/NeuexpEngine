@@ -84,6 +84,11 @@ bool synchronize(const char* operation, Error& error)
 
 bool initializeLinux(int width, int height, Error& error)
 {
+    if (width <= 0 || height <= 0) {
+        error = { "initialize", "Window dimensions must be positive.", std::nullopt };
+        return false;
+    }
+
     // nullptr выбирает DISPLAY из окружения. Без соединения окно сообщения недоступно.
     display = XOpenDisplay(nullptr);
     if (!display) {
@@ -126,7 +131,9 @@ bool initializeLinux(int width, int height, Error& error)
     settings.colormap = colorMap;
     settings.event_mask = KeyPressMask | StructureNotifyMask;
     // Маска указывает, какие поля settings используются при создании окна InputOutput.
-    window = XCreateWindow(display, RootWindow(display, visual->screen), 100, 100, width, height,
+    // XCreateWindow принимает беззнаковые размеры; положительность проверена до открытия дисплея.
+    window = XCreateWindow(display, RootWindow(display, visual->screen), 100, 100,
+        static_cast<unsigned int>(width), static_cast<unsigned int>(height),
         0, visual->depth, InputOutput, visual->visual, CWColormap | CWEventMask, &settings);
     const bool windowSucceeded = synchronize("XCreateWindow", error);
     if (!window || !windowSucceeded) {

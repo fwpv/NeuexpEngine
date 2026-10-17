@@ -3,7 +3,7 @@
 #include <GL/gl.h>
 #include <chrono>
 #include <cmath>
-#include <cstdio>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -530,7 +530,7 @@ struct State
 
         // Фаза разносит дроны по орбите, чтобы они не летели одной группой.
         for (int drone = 0; drone < world.startingDroneCount; ++drone) {
-            drones.push_back(Drone(drone * world.dronePhaseSpacing));
+            drones.push_back(Drone(static_cast<float>(drone) * world.dronePhaseSpacing));
         }
     }
 };
@@ -539,8 +539,8 @@ Point dronePosition(const Drone& drone, float time)
 {
     // Синус и косинус задают эллиптическую траекторию; phase сдвигает дроны друг относительно друга.
     const float angle = time * drone.orbitSpeed + drone.phase;
-    Point position = { drone.orbitCenter.x + std::cos(angle) * drone.orbitRadiusX,
-                       drone.orbitCenter.y + std::sin(angle) * drone.orbitRadiusY };
+    const Point position = { drone.orbitCenter.x + std::cos(angle) * drone.orbitRadiusX,
+                            drone.orbitCenter.y + std::sin(angle) * drone.orbitRadiusY };
     return position;
 }
 
@@ -552,7 +552,7 @@ void disc(float x, float y, float radiusX, float radiusY, int sides = DefaultDis
     glBegin(GL_TRIANGLE_FAN);
     glVertex2f(x, y);
     for (int side = 0; side <= sides; ++side) {
-        const float angle = RadiansPerFullTurn * side / sides;
+        const float angle = RadiansPerFullTurn * static_cast<float>(side) / static_cast<float>(sides);
         glVertex2f(x + std::cos(angle) * radiusX, y + std::sin(angle) * radiusY);
     }
     glEnd();
@@ -563,7 +563,7 @@ void ring(float x, float y, float radiusX, float radiusY, int sides = DefaultRin
     // GL_LINE_LOOP соединяет вершины по кругу и автоматически замыкает последнюю с первой.
     glBegin(GL_LINE_LOOP);
     for (int side = 0; side < sides; ++side) {
-        const float angle = RadiansPerFullTurn * side / sides;
+        const float angle = RadiansPerFullTurn * static_cast<float>(side) / static_cast<float>(sides);
         glVertex2f(x + std::cos(angle) * radiusX, y + std::sin(angle) * radiusY);
     }
     glEnd();
@@ -619,7 +619,7 @@ void drawStars(float time, const StarField& stars, const World& world)
         const unsigned int seed = static_cast<unsigned int>(star) * SeedMultiplier + SeedOffset;
         const float x = static_cast<float>((seed * XMultiplier + XOffset) % screenWidth);
         const float y = static_cast<float>((seed * YMultiplier + YOffset) % screenHeight);
-        const float glow = stars.glowBase + stars.glowRange * std::sin(time + star);
+        const float glow = stars.glowBase + stars.glowRange * std::sin(time + static_cast<float>(star));
         setColor(Palette::Star, glow);
         glVertex2f(x, y);
     }
@@ -630,9 +630,9 @@ void drawNebula(float time, const Nebula& nebula)
 {
     // Несколько прозрачных овалов накладываются друг на друга и изображают туманность.
     for (int cloud = 0; cloud < nebula.cloudCount; ++cloud) {
-        const float x = nebula.startX + cloud * nebula.spacing;
+        const float x = nebula.startX + static_cast<float>(cloud) * nebula.spacing;
         // Синус смещает облака по вертикали с разной фазой, сохраняя шаг по X.
-        const float y = nebula.startY + nebula.sway * std::sin(time * nebula.swaySpeed + cloud);
+        const float y = nebula.startY + nebula.sway * std::sin(time * nebula.swaySpeed + static_cast<float>(cloud));
         setColor(Palette::Nebula);
         disc(x, y, nebula.radiusX, nebula.radiusY);
     }
@@ -652,9 +652,9 @@ void drawPlanet(float time, const Planet& planet)
     // Устанавливаем толщину линий атмосферы до построения полос.
     glLineWidth(planet.bandLineWidth);
     for (int band = firstBand; band <= lastBand; ++band) {
-        const float y = planet.position.y + band * planet.bandSpacing;
+        const float y = planet.position.y + static_cast<float>(band) * planet.bandSpacing;
         setColor(Palette::PlanetBand,
-                 Palette::PlanetBand.alpha + planet.bandPulseAlpha * std::sin(time + band));
+                 Palette::PlanetBand.alpha + planet.bandPulseAlpha * std::sin(time + static_cast<float>(band)));
         // GL_LINES трактует каждую пару вершин как отдельный отрезок.
         glBegin(GL_LINES);
         glVertex2f(planet.position.x - planet.bandHalfWidth, y);
@@ -694,8 +694,10 @@ void drawStation(float time, const Station& station)
     for (int module = 0; module < station.moduleCount; ++module) {
         const int column = module % station.moduleColumns;
         const int row = module / station.moduleColumns;
-        const float moduleX = x + (column - (station.moduleColumns - 1) * 0.5f) * station.moduleSpacingX;
-        const float moduleY = y + (row - (station.moduleCount / station.moduleColumns - 1) * 0.5f) *
+        const float moduleX = x +
+            (static_cast<float>(column) - static_cast<float>(station.moduleColumns - 1) * 0.5f) * station.moduleSpacingX;
+        const float moduleY = y +
+            (static_cast<float>(row) - static_cast<float>(station.moduleCount / station.moduleColumns - 1) * 0.5f) *
             station.moduleSpacingY;
         setColor(Palette::StationModule);
         disc(moduleX, moduleY, station.moduleRadiusX, station.moduleRadiusY, station.moduleSides);
@@ -853,13 +855,13 @@ void drawStatusBars()
             ? Palette::ShieldCell.alpha
             : InactiveHudAlpha;
         setColor(Palette::ShieldCell, shieldAlpha);
-        rectangle(HudLayout::BarStartX + cell * HudLayout::BarCellSpacing,
+        rectangle(HudLayout::BarStartX + static_cast<float>(cell) * HudLayout::BarCellSpacing,
                   HudLayout::BarShieldY, HudLayout::BarCellSize, HudLayout::BarCellSize);
         const float energyAlpha = cell < HudLayout::EnergyCellCount
             ? Palette::EnergyCell.alpha
             : InactiveHudAlpha;
         setColor(Palette::EnergyCell, energyAlpha);
-        rectangle(HudLayout::BarStartX + cell * HudLayout::BarCellSpacing,
+        rectangle(HudLayout::BarStartX + static_cast<float>(cell) * HudLayout::BarCellSpacing,
                   HudLayout::BarEnergyY, HudLayout::BarCellSize, HudLayout::BarCellSize);
     }
 }
@@ -872,7 +874,7 @@ void drawScore(const State& state)
             ? Palette::Score.alpha
             : InactiveHudAlpha;
         setColor(Palette::Score, alpha);
-        disc(HudLayout::ScoreStartX + point * HudLayout::ScoreSpacing,
+        disc(HudLayout::ScoreStartX + static_cast<float>(point) * HudLayout::ScoreSpacing,
              HudLayout::ScoreY, HudLayout::ScoreLightRadius, HudLayout::ScoreLightRadius,
              HudLayout::FineCircleSides);
     }
@@ -937,7 +939,7 @@ void drawScene(const State& state, float time, bool portalsOpen, bool locked)
     drawPlanet(time, state.planet);
     drawStation(time, state.station);
     for (int portal = 0; portal < PortalCount; ++portal) {
-        drawPortal(state.portals[portal], time + portal, portalsOpen);
+        drawPortal(state.portals[portal], time + static_cast<float>(portal), portalsOpen);
     }
 
     for (std::size_t index = 0; index < state.drones.size(); ++index) {
@@ -1062,7 +1064,7 @@ void updateBolts(std::vector<Bolt>& bolts, std::vector<Drone>& drones,
             if (hitDrone) {
                 ++world.score;
             }
-            bolts.erase(bolts.begin() + boltIndex);
+            bolts.erase(bolts.begin() + static_cast<std::vector<Bolt>::difference_type>(boltIndex));
         } else {
             ++boltIndex;
         }
@@ -1077,7 +1079,7 @@ bool distanceIsLessThan(Point first, Point second, float distance)
     return offsetX * offsetX + offsetY * offsetY < distance * distance;
 }
 
-void usePortals(Shuttle& shuttle, Portal portals[PortalCount], World& world, float time, bool portalsOpen)
+void usePortals(Shuttle& shuttle, const Portal portals[PortalCount], World& world, float time, bool portalsOpen)
 {
     // Телепортация блокируется, пока порталы закрыты или действует общий cooldown.
     if (!portalsOpen || time < world.nextPortalTime) {
@@ -1085,7 +1087,7 @@ void usePortals(Shuttle& shuttle, Portal portals[PortalCount], World& world, flo
     }
 
     for (int index = 0; index < PortalCount; ++index) {
-        Portal& portal = portals[index];
+        const Portal& portal = portals[index];
         if (distanceIsLessThan(shuttle.position, portal.position, portal.triggerRadius)) {
             shuttle.position = portal.destination;
             world.nextPortalTime = time + portal.cooldown;
@@ -1135,9 +1137,10 @@ int Game::run()
     const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point previousFrame = start;
     std::chrono::steady_clock::time_point fpsUpdateTime = start;
+    constexpr double TargetFramesPerSecond = 120.0;
     const std::chrono::steady_clock::duration targetFrameDuration =
         std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-            std::chrono::duration<double>(1.0 / 120.0));
+            std::chrono::duration<double>(1.0 / TargetFramesPerSecond));
     int framesSinceTitleUpdate = 0;
 
     int exitCode = 0;
@@ -1196,10 +1199,9 @@ int Game::run()
             std::chrono::duration<float>(now - fpsUpdateTime).count();
         if (fpsUpdateInterval >= 1.0f) {
             const int framesPerSecond = static_cast<int>(
-                framesSinceTitleUpdate / fpsUpdateInterval + 0.5f);
-            char title[64];
-            std::snprintf(title, sizeof(title), "ORBITAL // SECTOR 09 | FPS: %d", framesPerSecond);
-            if (!Platform::setWindowTitle(title, error)) {
+                static_cast<float>(framesSinceTitleUpdate) / fpsUpdateInterval + 0.5f);
+            const std::string title = "ORBITAL // SECTOR 09 | FPS: " + std::to_string(framesPerSecond);
+            if (!Platform::setWindowTitle(title.c_str(), error)) {
                 // Отказ обновления заголовка не мешает продолжать игру.
                 Platform::reportError(error, false);
             }
