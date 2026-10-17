@@ -1098,9 +1098,15 @@ void usePortals(Shuttle& shuttle, Portal portals[PortalCount], World& world, flo
 int Game::run()
 {
     Game::State state;
+    Platform::Error error;
     if (!Platform::initialize(static_cast<int>(state.world.width),
-                              static_cast<int>(state.world.height))) {
-        Platform::shutdown();
+                              static_cast<int>(state.world.height), error)) {
+        Platform::reportError(error);
+        std::vector<Platform::Error> cleanupErrors;
+        Platform::shutdown(cleanupErrors);
+        for (const Platform::Error& cleanupError : cleanupErrors) {
+            Platform::reportError(cleanupError, false);
+        }
         return 1;
     }
 
@@ -1134,7 +1140,17 @@ int Game::run()
             std::chrono::duration<double>(1.0 / 120.0));
     int framesSinceTitleUpdate = 0;
 
-    while (Platform::processEvents()) {
+    int exitCode = 0;
+    while (true) {
+        const Platform::EventResult eventResult = Platform::processEvents(error);
+        if (eventResult == Platform::EventResult::Failed) {
+            Platform::reportError(error);
+            exitCode = 1;
+            break;
+        }
+        if (eventResult == Platform::EventResult::Quit) {
+            break;
+        }
         // deltaTime измеряет время между кадрами; его ограничение предотвращает
         // слишком большой скачок симуляции после задержки или переключения окна.
         const std::chrono::steady_clock::time_point frameStart = std::chrono::steady_clock::now();
@@ -1167,7 +1183,11 @@ int Game::run()
         // преобразования от предыдущих объектов.
         glLoadIdentity();
         Game::drawScene(state, time, portalsOpen, locked);
-        Platform::present();
+        if (!Platform::present(error)) {
+            Platform::reportError(error);
+            exitCode = 1;
+            break;
+        }
 
         // FPS — число кадров за прошедший интервал; заголовок обновляется раз в секунду.
         ++framesSinceTitleUpdate;
@@ -1179,7 +1199,10 @@ int Game::run()
                 framesSinceTitleUpdate / fpsUpdateInterval + 0.5f);
             char title[64];
             std::snprintf(title, sizeof(title), "ORBITAL // SECTOR 09 | FPS: %d", framesPerSecond);
-            Platform::setWindowTitle(title);
+            if (!Platform::setWindowTitle(title, error)) {
+                // Отказ обновления заголовка не мешает продолжать игру.
+                Platform::reportError(error, false);
+            }
             fpsUpdateTime = now;
             framesSinceTitleUpdate = 0;
         }
@@ -1193,6 +1216,10 @@ int Game::run()
         }
     }
 
-    Platform::shutdown();
-    return 0;
+    std::vector<Platform::Error> cleanupErrors;
+    Platform::shutdown(cleanupErrors);
+    for (const Platform::Error& cleanupError : cleanupErrors) {
+        Platform::reportError(cleanupError, false);
+    }
+    return cleanupErrors.empty() ? exitCode : 1;
 }
