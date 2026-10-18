@@ -7,6 +7,8 @@
 - Develop the engine through small, incremental changes.
 - Write clear, readable code; avoid unnecessarily complex solutions.
 - Verify new functionality after adding it.
+- Tests must verify already implemented functionality through the existing engine API. Writing tests must not require changing the engine API or adding test-only hooks, flags, or adapters to production engine code. Any necessary fault injection or substitution must remain entirely within the test sources and test build configuration.
+- Tests must be independent of demo applications, game scenes, and game logic. Use dedicated test programs and test assets rather than compiling or launching demo scenes as part of a test.
 - Preserve existing working examples and verify them after making changes.
 - Use Git to commit changes and revert to previous working states.
 - Every task must leave the project in a state no worse than before, preserving existing functionality, buildability, code quality, readability, and architectural consistency.
