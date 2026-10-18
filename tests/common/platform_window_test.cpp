@@ -7,8 +7,12 @@
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <unistd.h>
+#include <dlfcn.h>
+#include "../linux/keyboard_query_counter.h"
 #endif
 
+#include <GL/gl.h>
+#include <array>
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
@@ -73,12 +77,6 @@ struct NativeWindow
         const int size = GetWindowTextW(handle, actual.data(), static_cast<int>(actual.size()));
         actual.resize(static_cast<std::size_t>(size));
         require(actual == toWide(title), "The native Unicode title differs from the requested title.");
-    }
-
-    void pressEscape()
-    {
-        require(PostMessage(handle, WM_KEYDOWN, VK_ESCAPE, 0) != FALSE, "Could not send Escape.");
-        require(PostMessage(handle, WM_KEYUP, VK_ESCAPE, 0) != FALSE, "Could not release Escape.");
     }
 
     explicit NativeWindow(const std::string& title)
@@ -154,6 +152,7 @@ struct NativeWindow
     Display* display = nullptr;
     Window handle = None;
     Window focusSink = None;
+    void* inputLibrary = nullptr;
 
     std::string readTitle(Window target)
     {
@@ -179,19 +178,6 @@ struct NativeWindow
     void checkTitle(const std::string& title)
     {
         require(readTitle(handle) == title, "The native UTF-8 title differs from the requested title.");
-    }
-
-    void pressEscape()
-    {
-        XEvent event = {};
-        event.xkey.type = KeyPress;
-        event.xkey.display = display;
-        event.xkey.window = handle;
-        event.xkey.root = DefaultRootWindow(display);
-        event.xkey.keycode = XKeysymToKeycode(display, XK_Escape);
-        event.xkey.same_screen = True;
-        require(XSendEvent(display, handle, False, KeyPressMask, &event) != 0, "Could not send Escape.");
-        XSync(display, False);
     }
 
     Window findWindow(Window parent, const std::string& title)
@@ -234,6 +220,10 @@ struct NativeWindow
                 XDestroyWindow(display, focusSink);
             }
             XCloseDisplay(display);
+        }
+        // XTest регистрирует обработчик XCloseDisplay, поэтому выгружается после соединения.
+        if (inputLibrary) {
+            dlclose(inputLibrary);
         }
     }
 
@@ -340,6 +330,176 @@ void shutdown()
     require(!Platform::isCloseRequested(), "Shutdown must reset the close request.");
 }
 
+// Проверяем реальный задний буфер без зависимости от сцены и игрового рендера.
+void checkRendering()
+{
+    const auto state = readState();
+    glViewport(0, 0, state.width, state.height);
+    glDrawBuffer(GL_BACK);
+    glReadBuffer(GL_BACK);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    // Два цвета исключают успех за счёт содержимого предыдущего кадра.
+    for (const auto& color : { std::array<GLubyte, 3>{ 255, 0, 0 },
+                              std::array<GLubyte, 3>{ 0, 255, 0 } }) {
+        glClearColor(color[0] / 255.0f, color[1] / 255.0f, color[2] / 255.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        std::array<GLubyte, 3> pixel = {};
+        // glReadPixels ждёт завершения команд рисования до чтения результата.
+        glReadPixels(state.width / 2, state.height / 2, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, pixel.data());
+        require(glGetError() == GL_NO_ERROR && pixel == color,
+            "The OpenGL back buffer does not contain the rendered color.");
+        Platform::Error error;
+        require(Platform::present(error), "Present failed after rendering.");
+    }
+}
+
+// Ввод освобождается и при провале проверки, чтобы Escape не остался нажатым.
+class EscapeInput
+{
+public:
+#ifndef _WIN32
+    using FakeKeyEvent = int (*)(Display*, unsigned int, Bool, unsigned long);
+    Display* display = nullptr;
+    FakeKeyEvent fakeKeyEvent = nullptr;
+    KeyCode keyCode = 0;
+#endif
+    bool held = false;
+
+    explicit EscapeInput(NativeWindow& native)
+    {
+#ifndef _WIN32
+        display = native.display;
+        // XTest нужен только тесту. Рабочая библиотека платформы от него не зависит.
+        native.inputLibrary = dlopen("libXtst.so.6", RTLD_NOW | RTLD_LOCAL);
+        if (native.inputLibrary) {
+            fakeKeyEvent = reinterpret_cast<FakeKeyEvent>(dlsym(native.inputLibrary, "XTestFakeKeyEvent"));
+        }
+        keyCode = XKeysymToKeycode(display, XK_Escape);
+#else
+        (void)native;
+#endif
+    }
+
+    bool available() const
+    {
+#ifndef _WIN32
+        int opcode = 0;
+        int event = 0;
+        int error = 0;
+        return fakeKeyEvent && keyCode != 0
+            && XQueryExtension(display, "XTEST", &opcode, &event, &error);
+#else
+        return true;
+#endif
+    }
+
+    bool setHeld(bool down)
+    {
+#ifdef _WIN32
+        // SendInput создаёт системный ввод; после обработки сообщений он виден GetKeyboardState.
+        INPUT input = {};
+        input.type = INPUT_KEYBOARD;
+        input.ki.wVk = VK_ESCAPE;
+        input.ki.dwFlags = down ? 0U : KEYEVENTF_KEYUP;
+        const bool success = SendInput(1, &input, static_cast<int>(sizeof(input))) == 1;
+#else
+        // XTest меняет серверное состояние, доступное через XQueryKeymap.
+        const bool success = fakeKeyEvent(display, keyCode, down ? True : False, CurrentTime) != 0;
+        XSync(display, False);
+#endif
+        if (success) {
+            held = down;
+        }
+        return success;
+    }
+
+    ~EscapeInput()
+    {
+        if (held && !setHeld(false)) {
+            std::cerr << "Could not release injected Escape.\n";
+        }
+    }
+};
+
+int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
+{
+    Platform::WindowOptions options;
+    options.width = 400;
+    options.height = 300;
+    options.title = title;
+    std::vector<Platform::Error> errors;
+    require(Platform::initialize(options, errors), "Could not initialize the test window.");
+    NativeWindow native(title);
+    waitFor([](const auto& state) { return state.width == 400 && state.height == 300; },
+        "Initial size is incorrect.");
+    checkRendering();
+    if (keyboard) {
+        EscapeInput input(native);
+        if (!input.available()) {
+            std::cout << "Keyboard test requires the XTest library and server extension.\n";
+            shutdown();
+            return 77;
+        }
+        native.focus(true);
+        waitFor([](const auto& state) { return state.focused; }, "Focus acquisition failed.");
+        require(input.setHeld(true), "Could not press Escape.");
+        waitFor([](const auto&) { return Platform::isKeyDown(Platform::Key::Escape); },
+            "Injected Escape was not detected by the engine.");
+        require(!Platform::isCloseRequested(), "Held Escape must not request shutdown.");
+#ifndef _WIN32
+        const unsigned int beforeEvents = keyboardQueryCount();
+        readState();
+        require(keyboardQueryCount() == beforeEvents + 1,
+            "Event processing must query the keyboard exactly once while focused.");
+        const unsigned int beforeReads = keyboardQueryCount();
+        for (const auto key : { Platform::Key::Escape, Platform::Key::Space,
+                               Platform::Key::W, Platform::Key::ArrowUp }) {
+            (void)Platform::isKeyDown(key);
+            (void)Platform::isKeyDown(key);
+        }
+        require(keyboardQueryCount() == beforeReads,
+            "Reading keys must reuse the snapshot without querying X11.");
+#endif
+        native.focus(false);
+        waitFor([](const auto& state) { return !state.focused; }, "Focus loss failed.");
+        require(!Platform::isKeyDown(Platform::Key::Escape), "Unfocused window must ignore held keys.");
+        native.focus(true);
+        waitFor([](const auto& state) {
+            return state.focused && Platform::isKeyDown(Platform::Key::Escape);
+        }, "Held key was not refreshed after focus acquisition.");
+        require(input.setHeld(false), "Could not release Escape.");
+        require(Platform::isKeyDown(Platform::Key::Escape),
+            "Reading a key must retain the snapshot until event processing.");
+        waitFor([](const auto&) { return !Platform::isKeyDown(Platform::Key::Escape); },
+            "Released Escape remained pressed.");
+        require(!Platform::isCloseRequested(), "Escape must not request shutdown.");
+    } else {
+        if (!native.minimize()) {
+            std::cout << "Minimize test requires a window manager.\n";
+            shutdown();
+            return 77;
+        }
+#ifndef _WIN32
+        Platform::Error error;
+        Platform::WindowState pending;
+        require(Platform::getWindowState(pending, error) && !pending.minimized,
+            "Reading the snapshot must not consume minimization events.");
+#endif
+        waitFor([](const auto& state) { return state.minimized && !state.focused; },
+            "Minimization was not detected.");
+        native.restore();
+#ifndef _WIN32
+        require(Platform::getWindowState(pending, error) && pending.minimized,
+            "Reading the snapshot must not consume restoration events.");
+#endif
+        waitFor([](const auto& state) { return !state.minimized && state.width == 400 && state.height == 300; },
+            "Restoration was not detected.");
+        checkRendering();
+    }
+    shutdown();
+    return 0;
+}
+
 void runWindow(Platform::WindowOptions options, const std::string& title, bool externalDestroy)
 {
     Platform::Error error;
@@ -368,13 +528,11 @@ void runWindow(Platform::WindowOptions options, const std::string& title, bool e
         return state.width == options.width && state.height == options.height && !state.minimized
             && !Platform::isCloseRequested();
     }, "Initial client dimensions do not match the requested size.");
+    checkRendering();
     native.checkMinimum(options);
     require(!Platform::initialize(options, startupErrors) && startupErrors.size() == 1
         && startupErrors.front().operation == "initialize",
         "Repeated initialization must fail without replacing the window.");
-    native.pressEscape();
-    readState();
-    require(!Platform::isCloseRequested(), "Escape must not request platform shutdown.");
     require(!Platform::isKeyDown(static_cast<Platform::Key>(-1)), "Unknown keys must not map to Space.");
     native.resize();
 #ifndef _WIN32
@@ -394,26 +552,7 @@ void runWindow(Platform::WindowOptions options, const std::string& title, bool e
         "Reading the snapshot must not consume queued focus events.");
 #endif
     waitFor([](const auto& state) { return !state.focused; }, "Focus loss was not detected.");
-    if (native.minimize()) {
-#ifndef _WIN32
-        Platform::WindowState pendingMinimize;
-        require(Platform::getWindowState(pendingMinimize, error) && !pendingMinimize.minimized,
-            "Reading the snapshot must not query the new minimized state.");
-#endif
-        waitFor([](const auto& state) { return state.minimized && !state.focused; },
-            "Minimization was not detected.");
-        native.restore();
-#ifndef _WIN32
-        Platform::WindowState pendingRestore;
-        require(Platform::getWindowState(pendingRestore, error) && pendingRestore.minimized,
-            "Reading the snapshot must not query the new restored state.");
-#endif
-        waitFor([](const auto& state) { return !state.minimized && state.width == 400 && state.height == 300; },
-            "Restoration was not detected.");
-    } else {
-        std::cout << "Minimize/restore scenario skipped: no window manager manages the test window.\n";
-    }
-    require(Platform::present(error), "Present failed after window changes.");
+    checkRendering();
     if (externalDestroy) {
         native.destroy();
 #ifndef _WIN32
@@ -443,7 +582,7 @@ void runWindow(Platform::WindowOptions options, const std::string& title, bool e
 }
 }
 
-int main()
+int main(int argumentCount, char* arguments[])
 {
 #ifndef _WIN32
     const char* displayName = std::getenv("DISPLAY");
@@ -457,6 +596,12 @@ int main()
 #endif
     try {
         const std::string title = u8"Проверка окна 🌌 " + std::to_string(processId);
+        if (argumentCount == 2) {
+            const std::string scenario = arguments[1];
+            require(scenario == "minimize" || scenario == "keyboard", "Unknown test scenario.");
+            return runMinimizeOrKeyboard(title, scenario == "keyboard");
+        }
+        require(argumentCount == 1, "Unexpected test arguments.");
         // Нулевые, независимые и равные начальным минимумы, повторные циклы жизни.
         runWindow({ 320, 240, 0, 0 }, title, false);
         runWindow({ 320, 240, 120, 0 }, title, false);

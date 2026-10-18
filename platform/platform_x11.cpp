@@ -28,6 +28,8 @@ bool handlersInstalled = false;
 bool initialized = false;
 bool closeRequested = false;
 WindowState windowState;
+// XQueryKeymap возвращает фиксированные 256 бит состояния клавиатуры.
+char keyMap[32] = {};
 Atom stateMessage = None;
 
 // Обработчик не выделяет память и не вызывает Xlib: сохраняет первую ещё не разобранную ошибку.
@@ -355,6 +357,10 @@ bool processEvents(Error& error)
     while (XPending(display)) {
         XEvent event;
         XNextEvent(display, &event);
+        if (event.type == MappingNotify) {
+            // После смены раскладки Xlib должен обновить соответствие KeySym и KeyCode.
+            XRefreshKeyboardMapping(&event.xmapping);
+        }
         // События чужих окон не должны менять состояние единственного окна движка.
         if (!window || event.xany.window != window) {
             continue;
@@ -396,6 +402,10 @@ bool processEvents(Error& error)
     // Не запрашиваем свойство уже уничтоженного окна; несколько уведомлений объединяем в одно чтение.
     if (window && minimizedStateChanged && !updateMinimizedState(error)) {
         return false;
+    }
+    // Один снимок на обработку событий вместо запроса сервера для каждой клавиши.
+    if (window && windowState.focused && !windowState.minimized) {
+        XQueryKeymap(display, keyMap);
     }
     // Ошибка имеет приоритет над запросом закрытия, если они пришли в одной очереди.
     return takeError("processEvents", error);
@@ -450,9 +460,6 @@ bool isKeyDown(Key key)
     if (code == 0) {
         return false;
     }
-    // XQueryKeymap возвращает 256 бит состояния клавиш X-сервера.
-    char keyMap[32] = {};
-    XQueryKeymap(display, keyMap);
     return (keyMap[code / 8] & (1 << (code % 8))) != 0;
 }
 

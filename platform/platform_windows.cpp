@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <mmsystem.h>
 #include <GL/gl.h>
+#include <array>
 #include <iostream>
 
 namespace Platform
@@ -28,6 +29,8 @@ bool windowClassRegistered = false;
 bool closeRequested = false;
 bool initialized = false;
 WindowState windowState;
+// Win32 использует таблицу из 256 виртуальных кодов клавиш; старший бит означает удержание.
+std::array<BYTE, 256> keyState = {};
 WindowOptions windowOptions;
 LONG minimumTrackWidth = 0;
 LONG minimumTrackHeight = 0;
@@ -277,7 +280,7 @@ bool initializeWindows(const WindowOptions& options, Error& error)
     windowState = { static_cast<int>(clientBounds.right - clientBounds.left),
         static_cast<int>(clientBounds.bottom - clientBounds.top), GetFocus() == window, IsIconic(window) != FALSE };
     initialized = true;
-    return true;
+    return processEvents(error);
 }
 }
 
@@ -378,6 +381,14 @@ bool processEvents(Error& error)
         DispatchMessage(&message);
     }
 
+    // Обновляем снимок клавиатуры после обработки накопленных событий.
+    // GetKeyboardState читает состояние очереди текущего потока; PeekMessage выше обновляет его.
+    if (window && windowState.focused && !windowState.minimized) {
+        if (!GetKeyboardState(keyState.data())) {
+            error = windowsError("GetKeyboardState", "Could not read the keyboard state.", GetLastError());
+            return false;
+        }
+    }
     return true;
 }
 
@@ -426,8 +437,7 @@ bool isKeyDown(Key key)
         default:
             return false;
     }
-    // Старший бит GetAsyncKeyState означает удержание конкретной клавиши.
-    return (GetAsyncKeyState(nativeKey) & 0x8000) != 0;
+    return (keyState[static_cast<std::size_t>(nativeKey)] & 0x80U) != 0;
 }
 
 
@@ -487,6 +497,7 @@ void shutdown(std::vector<Error>& errors)
     closeRequested = false;
     initialized = false;
     windowState = {};
+    keyState = {};
     windowOptions = {};
     minimumTrackWidth = 0;
     minimumTrackHeight = 0;

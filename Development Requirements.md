@@ -13,6 +13,7 @@
 - Use Git to commit changes and revert to previous working states.
 - Every task must leave the project in a state no worse than before, preserving existing functionality, buildability, code quality, readability, and architectural consistency.
 - Avoid unrelated refactoring. Make only the changes necessary to complete the current task, unless additional changes are explicitly requested or required for correctness.
+- Implement code and defensive checks to address concrete problems in real usage scenarios. Do not add special handling for hypothetical edge cases without an identified practical need. Each additional guard must have a clear purpose tied to an actual usage scenario, a documented API requirement, or a reproduced failure; a merely conceivable input or state is not sufficient justification.
 
 ## Git workflow
 
@@ -36,6 +37,7 @@
 - Use `const` for values that do not change, `const T&` for read-only larger objects, `nullptr` for null pointers, and explicit casts (`static_cast`) when conversion is needed.
 - Use `#pragma once` in project headers. Include project headers with quotes and system/library headers with angle brackets. Prefer explicit includes for direct dependencies.
 - Write comments in Russian. Treat the project as educational: explain unfamiliar APIs, including the purpose of functions, parameters, return values, and important usage details. Comments should help the reader learn the API directly from the source code. Avoid redundant comments about obvious application logic.
+- Comments must describe the code's actual behavior, constraints, and reasons necessary to understand it. Do not include development narration, internal deliberations, or comparisons that merely recount implementation decisions.
 - Avoid unexplained magic numbers: give meaningful names to repeated or domain-significant values. Group related visual constants and configuration values by purpose.
 - Format constructor initializer lists with the colon on a new line, followed by the first initializer. Place each subsequent initializer on a separate line, with the comma at the beginning. Align all initializers vertically.
 - Do not indent declarations inside namespaces.

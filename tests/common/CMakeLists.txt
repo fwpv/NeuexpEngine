@@ -33,8 +33,15 @@ add_test(NAME platform_validation COMMAND platform_validation_test)
 
 add_executable(platform_window_test platform_window_test.cpp)
 target_link_libraries(platform_window_test PRIVATE platform)
+if(UNIX AND NOT APPLE)
+    target_link_libraries(platform_window_test PRIVATE ${CMAKE_DL_LIBS})
+    target_sources(platform_window_test PRIVATE ../linux/keyboard_query_counter.cpp)
+    target_link_options(platform_window_test PRIVATE "-Wl,--wrap=XQueryKeymap")
+endif()
 add_test(NAME platform_window COMMAND platform_window_test)
-set_tests_properties(platform_window PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60 LABELS "display" RUN_SERIAL TRUE)
+add_test(NAME platform_window_minimize COMMAND platform_window_test minimize)
+add_test(NAME platform_keyboard COMMAND platform_window_test keyboard)
+set_tests_properties(platform_window platform_window_minimize platform_keyboard PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60 LABELS "display" RUN_SERIAL TRUE)
 
 set(TEST_TARGETS stb_image_test miniaudio_test platform_cleanup_test platform_validation_test platform_window_test)
 
