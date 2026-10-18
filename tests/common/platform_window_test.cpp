@@ -1,5 +1,6 @@
 #include "platform.h"
 #include "platform_test_diagnostics.h"
+#include "presentation_counter.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -467,7 +468,11 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
     NativeWindow native(title);
     waitFor([](const auto& state) { return state.width == 400 && state.height == 300; },
         "Initial size is incorrect.");
+    const unsigned int beforeInitialRendering = presentationCount();
     checkRendering(native, "initial window before minimize/keyboard scenario");
+    constexpr unsigned int RenderingColorCount = 2;
+    require(presentationCount() == beforeInitialRendering + RenderingColorCount,
+        "Visible rendering must exchange buffers for each tested color.");
     if (keyboard) {
         EscapeInput input(native);
         native.focus(true);
@@ -515,6 +520,15 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
 #endif
         waitFor([](const auto& state) { return state.minimized && !state.focused; },
             "Minimization was not detected.");
+        const unsigned int beforeMinimizedPresentation = presentationCount();
+        Platform::Error presentationError;
+        for (int frame = 0; frame < 3; ++frame) {
+            require(PlatformTest::checkOperation(Platform::present(presentationError), presentationError),
+                "Present must succeed without exchanging buffers while minimized.");
+            require(readState().minimized, "Processing events must preserve minimization.");
+        }
+        require(presentationCount() == beforeMinimizedPresentation,
+            "A minimized window must not exchange graphics buffers.");
         native.restore();
 #ifndef _WIN32
         require(PlatformTest::checkOperation(Platform::getWindowState(pending, error), error) && pending.minimized,
@@ -522,7 +536,15 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
 #endif
         waitFor([](const auto& state) { return !state.minimized && state.width == 400 && state.height == 300; },
             "Restoration was not detected.");
+        const unsigned int beforeRestoredRendering = presentationCount();
         checkRendering(native, "after restore");
+        require(presentationCount() == beforeRestoredRendering + RenderingColorCount,
+            "Buffer exchange must resume after restoration.");
+        require(native.minimize(), "Could not minimize the window again.");
+        waitFor([](const auto& state) { return state.minimized; }, "Second minimization failed.");
+        native.close();
+        waitFor([](const auto&) { return Platform::isCloseRequested(); },
+            "The minimized window did not process the close request.");
     }
     shutdown();
     return 0;

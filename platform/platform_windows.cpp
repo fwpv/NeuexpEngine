@@ -456,6 +456,9 @@ bool present(Error& error)
     if (!requireWindow("present", error)) {
         return false;
     }
+    if (windowState.minimized) {
+        return true;
+    }
     // SwapBuffers сообщает об отказе синхронно; уведомление выполняет вызывающий код.
     if (!SwapBuffers(deviceContext)) {
         error = windowsError("SwapBuffers", "Could not present the frame.", GetLastError());

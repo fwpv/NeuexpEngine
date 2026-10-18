@@ -1239,6 +1239,12 @@ int Game::run()
         if (Platform::isCloseRequested() || Platform::isKeyDown(Platform::Key::Escape)) {
             break;
         }
+        Platform::WindowState windowState;
+        if (!Platform::getWindowState(windowState, error)) {
+            Platform::reportError(error);
+            exitCode = 1;
+            break;
+        }
         // deltaTime измеряет время между кадрами; его ограничение предотвращает
         // слишком большой скачок симуляции после задержки или переключения окна.
         const std::chrono::steady_clock::time_point frameStart = std::chrono::steady_clock::now();
@@ -1261,37 +1267,45 @@ int Game::run()
         const bool portalsOpen = portalCycle > WorldSettings.portalOpenTime &&
                                  portalCycle < WorldSettings.portalCloseTime;
         Game::usePortals(state.shuttle, state.portals, state.world, time, portalsOpen);
-        const bool locked = Game::distanceIsLessThan(
-            state.shuttle.position, StationSettings.position, StationSettings.lockRadius);
 
-        // glClearColor сохраняет цвет, которым glClear заполнит цветовой буфер.
-        glClearColor(Palette::Clear.red, Palette::Clear.green,
-                     Palette::Clear.blue, Palette::Clear.alpha);
-        glClear(GL_COLOR_BUFFER_BIT);
-        // Обнуляем матрицу модели перед рисованием сцены, чтобы не наследовать
-        // преобразования от предыдущих объектов.
-        glLoadIdentity();
-        Game::drawScene(state, time, portalsOpen, locked);
-        if (!Platform::present(error)) {
-            Platform::reportError(error);
-            exitCode = 1;
-            break;
-        }
+        // Свёрнутое окно не рисуется; события и игровое состояние продолжают обновляться.
+        if (!windowState.minimized) {
+            const bool locked = Game::distanceIsLessThan(
+                state.shuttle.position, StationSettings.position, StationSettings.lockRadius);
 
-        // FPS — число кадров за прошедший интервал; заголовок обновляется раз в секунду.
-        ++framesSinceTitleUpdate;
-        const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-        const float fpsUpdateInterval =
-            std::chrono::duration<float>(now - fpsUpdateTime).count();
-        if (fpsUpdateInterval >= 1.0f) {
-            const int framesPerSecond = static_cast<int>(
-                framesSinceTitleUpdate / fpsUpdateInterval + 0.5);
-            const std::string title = "ORBITAL // SECTOR 09 | FPS: " + std::to_string(framesPerSecond);
-            if (!Platform::setWindowTitle(title, error)) {
-                // Отказ обновления заголовка не мешает продолжать игру.
-                Platform::reportError(error, false);
+            // glClearColor сохраняет цвет, которым glClear заполнит цветовой буфер.
+            glClearColor(Palette::Clear.red, Palette::Clear.green,
+                         Palette::Clear.blue, Palette::Clear.alpha);
+            glClear(GL_COLOR_BUFFER_BIT);
+            // Обнуляем матрицу модели перед рисованием сцены, чтобы не наследовать
+            // преобразования от предыдущих объектов.
+            glLoadIdentity();
+            Game::drawScene(state, time, portalsOpen, locked);
+            if (!Platform::present(error)) {
+                Platform::reportError(error);
+                exitCode = 1;
+                break;
             }
-            fpsUpdateTime = now;
+
+            // FPS — число кадров за прошедший интервал; заголовок обновляется раз в секунду.
+            ++framesSinceTitleUpdate;
+            const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+            const float fpsUpdateInterval =
+                std::chrono::duration<float>(now - fpsUpdateTime).count();
+            if (fpsUpdateInterval >= 1.0f) {
+                const int framesPerSecond = static_cast<int>(
+                    framesSinceTitleUpdate / fpsUpdateInterval + 0.5);
+                const std::string title = "ORBITAL // SECTOR 09 | FPS: " + std::to_string(framesPerSecond);
+                if (!Platform::setWindowTitle(title, error)) {
+                    // Отказ обновления заголовка не мешает продолжать игру.
+                    Platform::reportError(error, false);
+                }
+                fpsUpdateTime = now;
+                framesSinceTitleUpdate = 0.0;
+            }
+        } else {
+            // После восстановления FPS считается только по заново нарисованным кадрам.
+            fpsUpdateTime = frameStart;
             framesSinceTitleUpdate = 0.0;
         }
 

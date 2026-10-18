@@ -481,6 +481,9 @@ bool present(Error& error)
     if (!takeError("before glXSwapBuffers", error)) {
         return false;
     }
+    if (windowState.minimized) {
+        return true;
+    }
     // У GLX нет результата SwapBuffers; ошибки приходят обработчику X11 асинхронно.
     glXSwapBuffers(display, window);
     return takeError("glXSwapBuffers", error);
