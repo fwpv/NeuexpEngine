@@ -27,7 +27,16 @@ add_executable(platform_cleanup_test platform_cleanup_test.cpp)
 target_link_libraries(platform_cleanup_test PRIVATE platform)
 add_test(NAME platform_cleanup COMMAND platform_cleanup_test)
 
-set(TEST_TARGETS stb_image_test miniaudio_test platform_cleanup_test)
+add_executable(platform_validation_test platform_validation_test.cpp)
+target_link_libraries(platform_validation_test PRIVATE platform)
+add_test(NAME platform_validation COMMAND platform_validation_test)
+
+add_executable(platform_window_test platform_window_test.cpp)
+target_link_libraries(platform_window_test PRIVATE platform)
+add_test(NAME platform_window COMMAND platform_window_test)
+set_tests_properties(platform_window PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60 LABELS "display" RUN_SERIAL TRUE)
+
+set(TEST_TARGETS stb_image_test miniaudio_test platform_cleanup_test platform_validation_test platform_window_test)
 if(UNIX AND NOT APPLE)
     # Собираем точку входа демо для интеграционной проверки даже при BUILD_DEMOS=OFF.
     add_executable(platform_startup_test

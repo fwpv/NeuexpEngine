@@ -1,8 +1,10 @@
 #include "platform.h"
+#include "window_validation.h"
 
 // Xlib управляет окном и событиями, GLX связывает контекст OpenGL с X11.
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
+#include <X11/Xutil.h>
 #include <GL/gl.h>
 #include <GL/glx.h>
 #include <cerrno>
@@ -22,6 +24,10 @@ Atom protocolsMessage = None;
 XErrorHandler previousErrorHandler = nullptr;
 XIOErrorHandler previousIOErrorHandler = nullptr;
 bool handlersInstalled = false;
+bool initialized = false;
+bool closeRequested = false;
+WindowState windowState;
+Atom stateMessage = None;
 
 // Обработчик не выделяет память и не вызывает Xlib: сохраняет первую ещё не разобранную ошибку.
 // Все вызовы платформы и разбор ошибок выполняются в одном, главном потоке.
@@ -82,12 +88,70 @@ bool synchronize(const char* operation, Error& error)
     return takeError(operation, error);
 }
 
-bool initializeLinux(int width, int height, Error& error)
+bool requireWindow(const char* operation, Error& error)
 {
-    if (width <= 0 || height <= 0) {
-        error = { "initialize", "Window dimensions must be positive.", std::nullopt };
+    if (!initialized || !window) {
+        error = { operation, "The window is not initialized or has been destroyed.", std::nullopt };
         return false;
     }
+    return true;
+}
+
+// В X11 событие PropertyNotify содержит имя свойства, но не его значение.
+// Поэтому читаем WM_STATE только при запуске и после уведомления о его изменении.
+bool updateMinimizedState(Error& error)
+{
+    Atom actualType = None;
+    int actualFormat = 0;
+    unsigned long count = 0;
+    unsigned long remaining = 0;
+    unsigned char* property = nullptr;
+    const int result = XGetWindowProperty(display, window, stateMessage, 0, 2,
+        False, stateMessage, &actualType, &actualFormat, &count, &remaining, &property);
+    bool minimized = false;
+    if (property && actualType == stateMessage && actualFormat == 32 && count >= 1) {
+        minimized = reinterpret_cast<const long*>(property)[0] == IconicState;
+    }
+    if (property) {
+        XFree(property);
+    }
+    if (!takeError("XGetWindowProperty (WM_STATE)", error)) {
+        return false;
+    }
+    if (result != Success) {
+        error = { "XGetWindowProperty (WM_STATE)", "Could not read the window state.", result };
+        return false;
+    }
+    windowState.minimized = minimized;
+    if (minimized) {
+        windowState.focused = false;
+    }
+    return true;
+}
+
+bool readInitialWindowState(Error& error)
+{
+    XWindowAttributes attributes = {};
+    const Status attributesRead = XGetWindowAttributes(display, window, &attributes);
+    Window focusedWindow = None;
+    int revertMode = 0;
+    XGetInputFocus(display, &focusedWindow, &revertMode);
+    if (!takeError("readInitialWindowState", error)) {
+        return false;
+    }
+    if (!attributesRead) {
+        error = { "XGetWindowAttributes", "Could not read the initial client dimensions.", std::nullopt };
+        return false;
+    }
+    windowState = { attributes.width, attributes.height,
+        focusedWindow == window && attributes.map_state == IsViewable, false };
+    return updateMinimizedState(error);
+}
+
+bool initializeLinux(const WindowOptions& options, Error& error)
+{
+    const int width = options.width;
+    const int height = options.height;
 
     // nullptr выбирает DISPLAY из окружения. Без соединения окно сообщения недоступно.
     display = XOpenDisplay(nullptr);
@@ -129,7 +193,7 @@ bool initializeLinux(int width, int height, Error& error)
 
     XSetWindowAttributes settings = {};
     settings.colormap = colorMap;
-    settings.event_mask = KeyPressMask | StructureNotifyMask;
+    settings.event_mask = KeyPressMask | StructureNotifyMask | FocusChangeMask | PropertyChangeMask;
     // Маска указывает, какие поля settings используются при создании окна InputOutput.
     // XCreateWindow принимает беззнаковые размеры; положительность проверена до открытия дисплея.
     window = XCreateWindow(display, RootWindow(display, visual->screen), 100, 100,
@@ -142,6 +206,25 @@ bool initializeLinux(int width, int height, Error& error)
         if (windowSucceeded) {
             error = { "XCreateWindow", "Could not create the application window.", std::nullopt };
         }
+        return false;
+    }
+
+    // WM_NORMAL_HINTS сообщает оконному менеджеру минимальный размер клиентской области.
+    // Нули допустимы: движок не подменяет их произвольным положительным минимумом.
+    XSizeHints hints = {};
+    hints.flags = PMinSize;
+    hints.min_width = options.resizable ? options.minimumWidth : options.width;
+    hints.min_height = options.resizable ? options.minimumHeight : options.height;
+    if (!options.resizable) {
+        // Равные минимум и максимум запрещают изменение размера средствами оконного менеджера.
+        hints.flags |= PMaxSize;
+        hints.max_width = options.width;
+        hints.max_height = options.height;
+    }
+    XSetWMNormalHints(display, window, &hints);
+    stateMessage = XInternAtom(display, "WM_STATE", False);
+    if (!synchronize("XSetWMNormalHints", error)) {
+        XFree(visual);
         return false;
     }
 
@@ -184,7 +267,11 @@ bool initializeLinux(int width, int height, Error& error)
         }
         return false;
     }
-    return true;
+    if (!readInitialWindowState(error)) {
+        return false;
+    }
+    initialized = true;
+    return processEvents(error) != EventResult::Failed;
 }
 }
 
@@ -197,13 +284,34 @@ void reportError(const Error& error, bool)
     std::cerr << '\n';
 }
 
-bool initialize(int width, int height, Error& error)
+bool initialize(const WindowOptions& options, Error& error)
 {
-    return initializeLinux(width, height, error);
+    if (display || initialized) {
+        error = { "initialize", "Call shutdown before initializing again.", std::nullopt };
+        return false;
+    }
+    return validateWindowOptions(options, error) && initializeLinux(options, error);
 }
 
-bool setWindowTitle(const char* title, Error&)
+bool getWindowState(WindowState& state, Error& error)
 {
+    if (!initialized) {
+        error = { "getWindowState", "The platform is not initialized.", std::nullopt };
+        return false;
+    }
+    state = windowState;
+    return true;
+}
+
+bool setWindowTitle(const char* title, Error& error)
+{
+    if (!requireWindow("setWindowTitle", error)) {
+        return false;
+    }
+    if (!title) {
+        error = { "setWindowTitle", "The window title must not be null.", std::nullopt };
+        return false;
+    }
     XStoreName(display, window, title);
     XFlush(display);
     // X11 не подтверждает смену заголовка синхронно. Не забираем общую отложенную
@@ -213,15 +321,50 @@ bool setWindowTitle(const char* title, Error&)
 
 EventResult processEvents(Error& error)
 {
+    if (initialized && closeRequested && !window) {
+        return EventResult::Quit;
+    }
+    if (!requireWindow("processEvents", error)) {
+        return EventResult::Failed;
+    }
     if (!takeError("processEvents", error)) {
         return EventResult::Failed;
     }
-    EventResult result = EventResult::Continue;
+    EventResult result = closeRequested ? EventResult::Quit : EventResult::Continue;
+    bool minimizedStateChanged = false;
     // XPending читает доступные события и ошибки, не ожидая новых событий.
     while (XPending(display)) {
         XEvent event;
         XNextEvent(display, &event);
+        // События чужих окон не должны менять состояние единственного окна движка.
+        if (!window || event.xany.window != window) {
+            continue;
+        }
+        if (event.type == ConfigureNotify) {
+            windowState.width = event.xconfigure.width;
+            windowState.height = event.xconfigure.height;
+        }
+        if (event.type == FocusIn || event.type == FocusOut) {
+            // Захват мыши/клавиатуры не означает смены фокуса самого окна.
+            if (event.xfocus.mode != NotifyGrab && event.xfocus.mode != NotifyUngrab
+                && event.xfocus.detail != NotifyInferior) {
+                windowState.focused = event.type == FocusIn && !windowState.minimized;
+            }
+        }
+        if (event.type == UnmapNotify) {
+            windowState.focused = false;
+        }
+        if (event.type == MapNotify) {
+            windowState.minimized = false;
+        }
+        if (event.type == PropertyNotify && event.xproperty.atom == stateMessage) {
+            minimizedStateChanged = true;
+        }
         if (event.type == DestroyNotify && event.xdestroywindow.window == window) {
+            windowState.width = 0;
+            windowState.height = 0;
+            windowState.focused = false;
+            windowState.minimized = false;
             window = 0; // Не уничтожаем уже удалённое сервером окно второй раз.
             result = EventResult::Quit;
         }
@@ -234,12 +377,25 @@ EventResult processEvents(Error& error)
             result = EventResult::Quit;
         }
     }
+    closeRequested = result == EventResult::Quit;
+    // Не запрашиваем свойство уже уничтоженного окна; несколько уведомлений объединяем в одно чтение.
+    if (window && minimizedStateChanged && !updateMinimizedState(error)) {
+        return EventResult::Failed;
+    }
     // Ошибка имеет приоритет над запросом закрытия, если они пришли в одной очереди.
     return takeError("processEvents", error) ? result : EventResult::Failed;
 }
 
+bool isCloseRequested()
+{
+    return initialized && closeRequested;
+}
+
 bool isKeyDown(Key key)
 {
+    if (!initialized || !window) {
+        return false;
+    }
     // KeySym — символическое имя клавиши; XK_* константы задают стрелки, пробел и буквы.
     KeySym primary = XK_space;
     KeySym alternate = 0;
@@ -281,6 +437,9 @@ bool isKeyDown(Key key)
 
 bool present(Error& error)
 {
+    if (!requireWindow("present", error)) {
+        return false;
+    }
     if (!takeError("before glXSwapBuffers", error)) {
         return false;
     }
@@ -340,5 +499,9 @@ void shutdown(std::vector<Error>& errors)
     }
     closeMessage = None;
     protocolsMessage = None;
+    stateMessage = None;
+    initialized = false;
+    closeRequested = false;
+    windowState = {};
 }
 }

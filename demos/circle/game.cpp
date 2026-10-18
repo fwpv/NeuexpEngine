@@ -1189,8 +1189,10 @@ int Game::run()
 {
     Game::State state;
     Platform::Error error;
-    if (!Platform::initialize(static_cast<int>(WorldSettings.width),
-                              static_cast<int>(WorldSettings.height), error)) {
+    const Platform::WindowOptions windowOptions = {
+        static_cast<int>(WorldSettings.width), static_cast<int>(WorldSettings.height), 0, 0, false
+    };
+    if (!Platform::initialize(windowOptions, error)) {
         Platform::reportError(error);
         std::vector<Platform::Error> cleanupErrors;
         Platform::shutdown(cleanupErrors);
@@ -1200,10 +1202,18 @@ int Game::run()
         return 1;
     }
 
-    // glViewport задаёт прямоугольную область окна, в которую выводится кадр.
-    glViewport(0, 0,
-               static_cast<GLsizei>(WorldSettings.width),
-               static_cast<GLsizei>(WorldSettings.height));
+    Platform::WindowState windowState;
+    if (!Platform::getWindowState(windowState, error)) {
+        Platform::reportError(error);
+        std::vector<Platform::Error> cleanupErrors;
+        Platform::shutdown(cleanupErrors);
+        for (const Platform::Error& cleanupError : cleanupErrors) {
+            Platform::reportError(cleanupError, false);
+        }
+        return 1;
+    }
+    // Размер области вывода берётся у окна, а размеры игрового мира остаются фиксированными.
+    glViewport(0, 0, windowState.width, windowState.height);
     // Проекция задаёт координаты игрового поля. Начало находится сверху слева:
     // верхняя граница Y равна 0, нижняя — высоте мира.
     glMatrixMode(GL_PROJECTION);
