@@ -1032,11 +1032,11 @@ struct InputState
 InputState readInput()
 {
     return {
-        Platform::isKeyDown(Platform::Key::Up),
-        Platform::isKeyDown(Platform::Key::Down),
-        Platform::isKeyDown(Platform::Key::Left),
-        Platform::isKeyDown(Platform::Key::Right),
-        Platform::isKeyDown(Platform::Key::Fire)
+        Platform::isKeyDown(Platform::Key::ArrowUp) || Platform::isKeyDown(Platform::Key::W),
+        Platform::isKeyDown(Platform::Key::ArrowDown) || Platform::isKeyDown(Platform::Key::S),
+        Platform::isKeyDown(Platform::Key::ArrowLeft) || Platform::isKeyDown(Platform::Key::A),
+        Platform::isKeyDown(Platform::Key::ArrowRight) || Platform::isKeyDown(Platform::Key::D),
+        Platform::isKeyDown(Platform::Key::Space)
     };
 }
 
@@ -1189,15 +1189,15 @@ int Game::run()
 {
     Game::State state;
     Platform::Error error;
-    const Platform::WindowOptions windowOptions = {
-        static_cast<int>(WorldSettings.width), static_cast<int>(WorldSettings.height), 0, 0, false
-    };
-    if (!Platform::initialize(windowOptions, error)) {
-        Platform::reportError(error);
-        std::vector<Platform::Error> cleanupErrors;
-        Platform::shutdown(cleanupErrors);
-        for (const Platform::Error& cleanupError : cleanupErrors) {
-            Platform::reportError(cleanupError, false);
+    Platform::WindowOptions windowOptions;
+    windowOptions.width = static_cast<int>(WorldSettings.width);
+    windowOptions.height = static_cast<int>(WorldSettings.height);
+    windowOptions.resizable = false;
+    windowOptions.title = "ORBITAL // SECTOR 09";
+    std::vector<Platform::Error> startupErrors;
+    if (!Platform::initialize(windowOptions, startupErrors)) {
+        for (const Platform::Error& startupError : startupErrors) {
+            Platform::reportError(startupError);
         }
         return 1;
     }
@@ -1243,13 +1243,12 @@ int Game::run()
 
     int exitCode = 0;
     while (true) {
-        const Platform::EventResult eventResult = Platform::processEvents(error);
-        if (eventResult == Platform::EventResult::Failed) {
+        if (!Platform::processEvents(error)) {
             Platform::reportError(error);
             exitCode = 1;
             break;
         }
-        if (eventResult == Platform::EventResult::Quit) {
+        if (Platform::isCloseRequested() || Platform::isKeyDown(Platform::Key::Escape)) {
             break;
         }
         // deltaTime измеряет время между кадрами; его ограничение предотвращает
@@ -1300,7 +1299,7 @@ int Game::run()
             const int framesPerSecond = static_cast<int>(
                 framesSinceTitleUpdate / fpsUpdateInterval + 0.5);
             const std::string title = "ORBITAL // SECTOR 09 | FPS: " + std::to_string(framesPerSecond);
-            if (!Platform::setWindowTitle(title.c_str(), error)) {
+            if (!Platform::setWindowTitle(title, error)) {
                 // Отказ обновления заголовка не мешает продолжать игру.
                 Platform::reportError(error, false);
             }

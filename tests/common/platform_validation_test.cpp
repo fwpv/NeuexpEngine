@@ -16,8 +16,8 @@ int main()
         }
         return !Platform::setWindowTitle("test", error)
             && !Platform::present(error)
-            && Platform::processEvents(error) == Platform::EventResult::Failed
-            && !Platform::isKeyDown(Platform::Key::Fire);
+            && !Platform::processEvents(error)
+            && !Platform::isKeyDown(Platform::Key::Space);
     };
     if (!checkUnavailable()) {
         std::cerr << "Calls before initialization must fail safely without changing output.\n";
@@ -37,16 +37,29 @@ int main()
         { 65536, 240, 0, 0 }, { 320, 65536, 0, 0 },
         { huge, huge, 0, 0 }, { 320, 240, huge, huge }
     };
+    std::vector<Platform::Error> startupErrors;
     for (const auto& options : invalidOptions) {
         // Ошибочные размеры отклоняются до обращения к ОС, даже без графической сессии.
-        if (Platform::initialize(options, error) || error.operation != "initialize" || error.message.empty()) {
+        if (Platform::initialize(options, startupErrors) || startupErrors.empty()
+            || startupErrors.front().operation != "initialize" || startupErrors.front().message.empty()) {
             std::cerr << "Invalid dimensions must fail with an initialization error.\n";
             return 1;
         }
-        std::vector<Platform::Error> cleanupErrors;
-        Platform::shutdown(cleanupErrors);
-        if (!cleanupErrors.empty() || !checkUnavailable()) {
+        if (!checkUnavailable()) {
             std::cerr << "Invalid initialization must not leave resources or a usable window.\n";
+            return 1;
+        }
+    }
+    const std::vector<std::string> invalidTitles = {
+        std::string("a\0b", 3), "\x80", "\xC0\xAF", "\xE2\x82",
+        "\xED\xA0\x80", "\xF4\x90\x80\x80", "\xF5\x80\x80\x80"
+    };
+    for (const auto& title : invalidTitles) {
+        Platform::WindowOptions options;
+        options.title = title;
+        if (Platform::initialize(options, startupErrors) || startupErrors.size() != 1
+            || startupErrors.front().operation != "initialize" || !checkUnavailable()) {
+            std::cerr << "Invalid UTF-8 must be rejected before native initialization.\n";
             return 1;
         }
     }

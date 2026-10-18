@@ -1,56 +1,9 @@
-add_executable(stb_image_test stb_image_test.cpp)
-target_link_libraries(stb_image_test PRIVATE stb_image)
-target_include_directories(stb_image_test SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/third_party/stb")
+# Ресурсы общие для тестов обеих ОС и не зависят от расположения исходника теста.
+set(TEST_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 
-# Абсолютные пути позволяют запускать CTest из каталога сборки на обеих ОС.
-add_test(NAME stb_image_pixels COMMAND stb_image_test pixels
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/rgba_2x2.png")
-add_test(NAME stb_image_missing COMMAND stb_image_test missing
-    "${CMAKE_CURRENT_BINARY_DIR}/stb_image_missing.png")
-add_test(NAME stb_image_corrupt COMMAND stb_image_test corrupt
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/truncated.png")
-
-add_executable(miniaudio_test miniaudio_test.cpp)
-target_link_libraries(miniaudio_test PRIVATE miniaudio)
-target_include_directories(miniaudio_test SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/third_party/miniaudio")
-
-add_test(NAME miniaudio_samples COMMAND miniaudio_test samples
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/pcm_s16_stereo.wav")
-add_test(NAME miniaudio_missing COMMAND miniaudio_test missing
-    "${CMAKE_CURRENT_BINARY_DIR}/miniaudio_missing.wav")
-add_test(NAME miniaudio_corrupt COMMAND miniaudio_test corrupt
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/truncated.wav")
-
-# Проверки подключают настоящую платформенную библиотеку без подмены системных вызовов.
-# Графическая сессия для этих сценариев не требуется.
-add_executable(platform_cleanup_test platform_cleanup_test.cpp)
-target_link_libraries(platform_cleanup_test PRIVATE platform)
-add_test(NAME platform_cleanup COMMAND platform_cleanup_test)
-
-add_executable(platform_validation_test platform_validation_test.cpp)
-target_link_libraries(platform_validation_test PRIVATE platform)
-add_test(NAME platform_validation COMMAND platform_validation_test)
-
-add_executable(platform_window_test platform_window_test.cpp)
-target_link_libraries(platform_window_test PRIVATE platform)
-add_test(NAME platform_window COMMAND platform_window_test)
-set_tests_properties(platform_window PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60 LABELS "display" RUN_SERIAL TRUE)
-
-set(TEST_TARGETS stb_image_test miniaudio_test platform_cleanup_test platform_validation_test platform_window_test)
-if(UNIX AND NOT APPLE)
-    # Собираем точку входа демо для интеграционной проверки даже при BUILD_DEMOS=OFF.
-    add_executable(platform_startup_test
-        "${PROJECT_SOURCE_DIR}/demos/circle/game.cpp"
-    )
-    target_link_libraries(platform_startup_test PRIVATE platform)
-    list(APPEND TEST_TARGETS platform_startup_test)
-    add_test(NAME platform_no_display COMMAND "${CMAKE_COMMAND}"
-        "-DAPPLICATION=$<TARGET_FILE:platform_startup_test>"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_no_display.cmake")
-    set_tests_properties(platform_no_display PROPERTIES TIMEOUT 15)
+add_subdirectory(common)
+if(WIN32)
+    add_subdirectory(windows)
+elseif(UNIX AND NOT APPLE)
+    add_subdirectory(linux)
 endif()
-
-# Одинаковый уровень предупреждений для тестовых программ.
-foreach(testTarget IN LISTS TEST_TARGETS)
-    target_link_libraries(${testTarget} PRIVATE project_warnings)
-endforeach()

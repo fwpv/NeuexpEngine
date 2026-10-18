@@ -5,7 +5,7 @@
 #else
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-#include <GL/glx.h>
+#include <X11/keysym.h>
 #include <unistd.h>
 #endif
 
@@ -30,12 +30,10 @@ Platform::WindowState readState()
 {
     Platform::Error error;
     const auto result = Platform::processEvents(error);
-    require(result != Platform::EventResult::Failed, error.operation + ": " + error.message);
+    require(result, error.operation + ": " + error.message);
     Platform::WindowState state;
     const bool success = Platform::getWindowState(state, error);
     require(success, error.operation + ": " + error.message);
-    require((result == Platform::EventResult::Quit) == Platform::isCloseRequested(),
-        "Event result and the stored close request disagree.");
     return state;
 }
 
@@ -58,9 +56,35 @@ struct NativeWindow
 #ifdef _WIN32
     HWND handle = nullptr;
 
+    std::wstring toWide(const std::string& text)
+    {
+        const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.c_str(), -1, nullptr, 0);
+        require(size > 0, "Could not convert expected title.");
+        std::wstring result(static_cast<std::size_t>(size), L'\0');
+        require(MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.c_str(), -1,
+            result.data(), size) != 0, "Could not convert expected title.");
+        result.resize(static_cast<std::size_t>(size - 1));
+        return result;
+    }
+
+    void checkTitle(const std::string& title)
+    {
+        std::wstring actual(static_cast<std::size_t>(GetWindowTextLengthW(handle) + 1), L'\0');
+        const int size = GetWindowTextW(handle, actual.data(), static_cast<int>(actual.size()));
+        actual.resize(static_cast<std::size_t>(size));
+        require(actual == toWide(title), "The native Unicode title differs from the requested title.");
+    }
+
+    void pressEscape()
+    {
+        require(PostMessage(handle, WM_KEYDOWN, VK_ESCAPE, 0) != FALSE, "Could not send Escape.");
+        require(PostMessage(handle, WM_KEYUP, VK_ESCAPE, 0) != FALSE, "Could not release Escape.");
+    }
+
     explicit NativeWindow(const std::string& title)
     {
-        handle = FindWindowA("OpenGLDemoWindow", title.c_str());
+        const std::wstring wideTitle = toWide(title);
+        handle = FindWindowW(L"EngineWindow", wideTitle.c_str());
         require(handle != nullptr, "Could not find the test window.");
     }
 
@@ -131,14 +155,48 @@ struct NativeWindow
     Window handle = None;
     Window focusSink = None;
 
+    std::string readTitle(Window target)
+    {
+        const Atom name = XInternAtom(display, "_NET_WM_NAME", False);
+        const Atom utf8 = XInternAtom(display, "UTF8_STRING", False);
+        Atom type = None;
+        int format = 0;
+        unsigned long count = 0;
+        unsigned long remaining = 0;
+        unsigned char* bytes = nullptr;
+        XGetWindowProperty(display, target, name, 0, 4096, False, utf8,
+            &type, &format, &count, &remaining, &bytes);
+        std::string result;
+        if (bytes && type == utf8 && format == 8) {
+            result.assign(reinterpret_cast<const char*>(bytes), count);
+        }
+        if (bytes) {
+            XFree(bytes);
+        }
+        return result;
+    }
+
+    void checkTitle(const std::string& title)
+    {
+        require(readTitle(handle) == title, "The native UTF-8 title differs from the requested title.");
+    }
+
+    void pressEscape()
+    {
+        XEvent event = {};
+        event.xkey.type = KeyPress;
+        event.xkey.display = display;
+        event.xkey.window = handle;
+        event.xkey.root = DefaultRootWindow(display);
+        event.xkey.keycode = XKeysymToKeycode(display, XK_Escape);
+        event.xkey.same_screen = True;
+        require(XSendEvent(display, handle, False, KeyPressMask, &event) != 0, "Could not send Escape.");
+        XSync(display, False);
+    }
+
     Window findWindow(Window parent, const std::string& title)
     {
-        char* name = nullptr;
-        XFetchName(display, parent, &name);
-        const bool found = name && title == name;
-        if (name) {
-            XFree(name);
-        }
+        const bool found = readTitle(parent) == title;
         if (found) {
             return parent;
         }
@@ -282,14 +340,25 @@ void shutdown()
     require(!Platform::isCloseRequested(), "Shutdown must reset the close request.");
 }
 
-void runWindow(const Platform::WindowOptions& options, const std::string& title, bool externalDestroy)
+void runWindow(Platform::WindowOptions options, const std::string& title, bool externalDestroy)
 {
     Platform::Error error;
-    const bool success = Platform::initialize(options, error);
-    require(success, error.operation + ": " + error.message);
-    require(Platform::setWindowTitle(title.c_str(), error), "Could not set window title.");
-    require(!Platform::setWindowTitle(nullptr, error), "A null title must fail safely.");
+    options.title = title;
+    std::vector<Platform::Error> startupErrors;
+    const bool success = Platform::initialize(options, startupErrors);
+    require(success, startupErrors.empty() ? "Initialization failed." : startupErrors.front().message);
+    require(startupErrors.empty(), "Successful initialization must clear previous errors.");
     NativeWindow native(title);
+    native.checkTitle(title);
+    const std::string changedTitle = u8"Движок — окно 🌌";
+    require(Platform::setWindowTitle(changedTitle, error), "Could not set a Unicode title.");
+    native.checkTitle(changedTitle);
+    require(!Platform::setWindowTitle(std::string("a\0b", 3), error)
+        && !Platform::setWindowTitle("\xED\xA0\x80", error), "Invalid titles must be rejected.");
+    native.checkTitle(changedTitle);
+    require(Platform::setWindowTitle("", error), "Empty titles must be allowed.");
+    native.checkTitle("");
+    require(Platform::setWindowTitle(title, error), "Could not restore title.");
     Platform::WindowState initialState;
     require(Platform::getWindowState(initialState, error)
         && initialState.width == options.width && initialState.height == options.height
@@ -300,8 +369,13 @@ void runWindow(const Platform::WindowOptions& options, const std::string& title,
             && !Platform::isCloseRequested();
     }, "Initial client dimensions do not match the requested size.");
     native.checkMinimum(options);
-    require(!Platform::initialize(options, error) && error.operation == "initialize",
+    require(!Platform::initialize(options, startupErrors) && startupErrors.size() == 1
+        && startupErrors.front().operation == "initialize",
         "Repeated initialization must fail without replacing the window.");
+    native.pressEscape();
+    readState();
+    require(!Platform::isCloseRequested(), "Escape must not request platform shutdown.");
+    require(!Platform::isKeyDown(static_cast<Platform::Key>(-1)), "Unknown keys must not map to Space.");
     native.resize();
 #ifndef _WIN32
     Platform::WindowState pendingResize;
@@ -349,15 +423,12 @@ void runWindow(const Platform::WindowOptions& options, const std::string& title,
             && unchanged.width == 400 && unchanged.height == 300 && !Platform::isCloseRequested(),
             "Reading the snapshot must not query or detect native destruction.");
 
-        // Запрос к удалённому окну создаёт настоящую ошибку X11. Доставляем её обработчику
-        // через текущее GLX-соединение теста и проверяем раздельное чтение снимка и ошибок.
-        require(Platform::setWindowTitle("destroyed window", error), "The X11 title request should be asynchronous.");
-        XSync(glXGetCurrentDisplay(), False);
-        require(Platform::getWindowState(unchanged, error) && unchanged.width == 400,
-            "A pending native error must not affect reading the snapshot.");
-        require(Platform::processEvents(error) == Platform::EventResult::Failed
+        // Изменение заголовка подтверждается синхронно, а снимок остаётся доступным.
+        require(!Platform::setWindowTitle("destroyed window", error)
             && error.nativeCode == BadWindow && !error.message.empty(),
-            "Native errors must be reported by event processing.");
+            "A native title error must be reported by setWindowTitle.");
+        require(Platform::getWindowState(unchanged, error) && unchanged.width == 400,
+            "A native title error must not affect reading the snapshot.");
 #endif
     } else {
         native.close();
@@ -385,17 +456,17 @@ int main()
     const auto processId = GetCurrentProcessId();
 #endif
     try {
-        const std::string title = "Platform window test " + std::to_string(processId);
+        const std::string title = u8"Проверка окна 🌌 " + std::to_string(processId);
         // Нулевые, независимые и равные начальным минимумы, повторные циклы жизни.
         runWindow({ 320, 240, 0, 0 }, title, false);
         runWindow({ 320, 240, 120, 0 }, title, false);
         runWindow({ 320, 240, 0, 90 }, title, false);
         runWindow({ 320, 240, 320, 240 }, title, true);
-        const Platform::WindowOptions fixedOptions = { 320, 240, 0, 0, false };
-        Platform::Error error;
-        const bool initialized = Platform::initialize(fixedOptions, error);
-        require(initialized, error.operation + ": " + error.message);
-        require(Platform::setWindowTitle(title.c_str(), error), "Could not set fixed window title.");
+        Platform::WindowOptions fixedOptions = { 320, 240, 0, 0, false };
+        fixedOptions.title = title;
+        std::vector<Platform::Error> startupErrors;
+        const bool initialized = Platform::initialize(fixedOptions, startupErrors);
+        require(initialized, startupErrors.empty() ? "Initialization failed." : startupErrors.front().message);
         NativeWindow fixedWindow(title);
         fixedWindow.checkMinimum(fixedOptions);
         waitFor([](const auto& state) { return state.width == 320 && state.height == 240; },

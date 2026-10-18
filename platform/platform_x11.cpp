@@ -5,6 +5,7 @@
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <X11/Xutil.h>
+#include <X11/Xatom.h>
 #include <GL/gl.h>
 #include <GL/glx.h>
 #include <cerrno>
@@ -148,6 +149,19 @@ bool readInitialWindowState(Error& error)
     return updateMinimizedState(error);
 }
 
+bool applyWindowTitle(const std::string& title, Error& error)
+{
+    // Современные менеджеры читают _NET_WM_NAME; WM_NAME оставляем как текстовое свойство UTF-8.
+    const Atom utf8 = XInternAtom(display, "UTF8_STRING", False);
+    const Atom name = XInternAtom(display, "_NET_WM_NAME", False);
+    XChangeProperty(display, window, name, utf8, 8, PropModeReplace,
+        reinterpret_cast<const unsigned char*>(title.data()), static_cast<int>(title.size()));
+    XChangeProperty(display, window, XA_WM_NAME, utf8, 8, PropModeReplace,
+        reinterpret_cast<const unsigned char*>(title.data()), static_cast<int>(title.size()));
+    // Смена заголовка редка; подтверждаем результат, чтобы bool имел одинаковый смысл на обеих ОС.
+    return synchronize("setWindowTitle", error);
+}
+
 bool initializeLinux(const WindowOptions& options, Error& error)
 {
     const int width = options.width;
@@ -229,7 +243,10 @@ bool initializeLinux(const WindowOptions& options, Error& error)
     }
 
     // False разрешает создавать Atom, если такого имени ещё нет на сервере.
-    XStoreName(display, window, "ORBITAL // SECTOR 09");
+    if (!applyWindowTitle(options.title, error)) {
+        XFree(visual);
+        return false;
+    }
     protocolsMessage = XInternAtom(display, "WM_PROTOCOLS", False);
     closeMessage = XInternAtom(display, "WM_DELETE_WINDOW", False);
     const Status protocolsSet = XSetWMProtocols(display, window, &closeMessage, 1);
@@ -271,7 +288,7 @@ bool initializeLinux(const WindowOptions& options, Error& error)
         return false;
     }
     initialized = true;
-    return processEvents(error) != EventResult::Failed;
+    return processEvents(error);
 }
 }
 
@@ -284,13 +301,25 @@ void reportError(const Error& error, bool)
     std::cerr << '\n';
 }
 
-bool initialize(const WindowOptions& options, Error& error)
+bool initialize(const WindowOptions& options, std::vector<Error>& errors)
 {
+    errors.clear();
     if (display || initialized) {
-        error = { "initialize", "Call shutdown before initializing again.", std::nullopt };
+        errors.push_back({ "initialize", "Call shutdown before initializing again.", std::nullopt });
         return false;
     }
-    return validateWindowOptions(options, error) && initializeLinux(options, error);
+    Error error;
+    if (!validateWindowOptions(options, error)) {
+        errors.push_back(error);
+        return false;
+    }
+    if (initializeLinux(options, error)) {
+        return true;
+    }
+    // Сохраняем исходную причину перед очисткой: shutdown заменяет переданный список.
+    shutdown(errors);
+    errors.insert(errors.begin(), error);
+    return false;
 }
 
 bool getWindowState(WindowState& state, Error& error)
@@ -303,34 +332,24 @@ bool getWindowState(WindowState& state, Error& error)
     return true;
 }
 
-bool setWindowTitle(const char* title, Error& error)
+bool setWindowTitle(const std::string& title, Error& error)
 {
-    if (!requireWindow("setWindowTitle", error)) {
-        return false;
-    }
-    if (!title) {
-        error = { "setWindowTitle", "The window title must not be null.", std::nullopt };
-        return false;
-    }
-    XStoreName(display, window, title);
-    XFlush(display);
-    // X11 не подтверждает смену заголовка синхронно. Не забираем общую отложенную
-    // ошибку здесь: она могла относиться к кадру и должна попасть в processEvents/present.
-    return true;
+    return requireWindow("setWindowTitle", error)
+        && validateWindowTitle(title, "setWindowTitle", error)
+        && applyWindowTitle(title, error);
 }
 
-EventResult processEvents(Error& error)
+bool processEvents(Error& error)
 {
     if (initialized && closeRequested && !window) {
-        return EventResult::Quit;
+        return true;
     }
     if (!requireWindow("processEvents", error)) {
-        return EventResult::Failed;
+        return false;
     }
     if (!takeError("processEvents", error)) {
-        return EventResult::Failed;
+        return false;
     }
-    EventResult result = closeRequested ? EventResult::Quit : EventResult::Continue;
     bool minimizedStateChanged = false;
     // XPending читает доступные события и ошибки, не ожидая новых событий.
     while (XPending(display)) {
@@ -366,24 +385,20 @@ EventResult processEvents(Error& error)
             windowState.focused = false;
             windowState.minimized = false;
             window = 0; // Не уничтожаем уже удалённое сервером окно второй раз.
-            result = EventResult::Quit;
+            closeRequested = true;
         }
         if (event.type == ClientMessage && event.xclient.window == window
             && event.xclient.message_type == protocolsMessage && event.xclient.format == 32
             && static_cast<Atom>(event.xclient.data.l[0]) == closeMessage) {
-            result = EventResult::Quit;
-        }
-        if (event.type == KeyPress && XLookupKeysym(&event.xkey, 0) == XK_Escape) {
-            result = EventResult::Quit;
+            closeRequested = true;
         }
     }
-    closeRequested = result == EventResult::Quit;
     // Не запрашиваем свойство уже уничтоженного окна; несколько уведомлений объединяем в одно чтение.
     if (window && minimizedStateChanged && !updateMinimizedState(error)) {
-        return EventResult::Failed;
+        return false;
     }
     // Ошибка имеет приоритет над запросом закрытия, если они пришли в одной очереди.
-    return takeError("processEvents", error) ? result : EventResult::Failed;
+    return takeError("processEvents", error);
 }
 
 bool isCloseRequested()
@@ -393,45 +408,52 @@ bool isCloseRequested()
 
 bool isKeyDown(Key key)
 {
-    if (!initialized || !window) {
+    if (!initialized || !window || !windowState.focused || windowState.minimized) {
         return false;
     }
-    // KeySym — символическое имя клавиши; XK_* константы задают стрелки, пробел и буквы.
-    KeySym primary = XK_space;
-    KeySym alternate = 0;
+    KeySym nativeKey = 0;
     switch (key) {
-        case Key::Up:
-            primary = XK_Up;
-            alternate = XK_w;
+        case Key::ArrowUp:
+            nativeKey = XK_Up;
             break;
-        case Key::Down:
-            primary = XK_Down;
-            alternate = XK_s;
+        case Key::ArrowDown:
+            nativeKey = XK_Down;
             break;
-        case Key::Left:
-            primary = XK_Left;
-            alternate = XK_a;
+        case Key::ArrowLeft:
+            nativeKey = XK_Left;
             break;
-        case Key::Right:
-            primary = XK_Right;
-            alternate = XK_d;
+        case Key::ArrowRight:
+            nativeKey = XK_Right;
             break;
-        case Key::Fire:
+        case Key::W:
+            nativeKey = XK_w;
             break;
+        case Key::A:
+            nativeKey = XK_a;
+            break;
+        case Key::S:
+            nativeKey = XK_s;
+            break;
+        case Key::D:
+            nativeKey = XK_d;
+            break;
+        case Key::Space:
+            nativeKey = XK_space;
+            break;
+        case Key::Escape:
+            nativeKey = XK_Escape;
+            break;
+        default:
+            return false;
     }
-
-    // XQueryKeymap заполняет 32-байтовую карту состояния клавиш X-сервера.
-    char keyMap[32] = {}; // XQueryKeymap возвращает 256 бит состояния в 32 байтах.
+    const KeyCode code = XKeysymToKeycode(display, nativeKey);
+    if (code == 0) {
+        return false;
+    }
+    // XQueryKeymap возвращает 256 бит состояния клавиш X-сервера.
+    char keyMap[32] = {};
     XQueryKeymap(display, keyMap);
-    // KeyCode — аппаратный код X11; XKeysymToKeycode находит его по символическому KeySym.
-    const KeyCode primaryCode = XKeysymToKeycode(display, primary);
-    const KeyCode alternateCode = alternate ? XKeysymToKeycode(display, alternate) : 0;
-
-    // Проверяем бит KeyCode: номер байта — code / 8, позиция бита — code % 8.
-    const bool primaryPressed = (keyMap[primaryCode / 8] & (1 << (primaryCode % 8))) != 0;
-    const bool alternatePressed = alternateCode &&
-        (keyMap[alternateCode / 8] & (1 << (alternateCode % 8))) != 0;
-    return primaryPressed || alternatePressed;
+    return (keyMap[code / 8] & (1 << (code % 8))) != 0;
 }
 
 
