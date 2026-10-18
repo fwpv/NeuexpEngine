@@ -48,8 +48,25 @@ if(UNIX AND NOT APPLE)
     target_link_libraries(miniaudio PRIVATE Threads::Threads ${CMAKE_DL_LIBS} m)
 endif()
 
+# INTERFACE-цель передаёт предупреждения только тем целям, которые её подключают.
+# Сторонние библиотеки собираются со своими настройками.
+add_library(project_warnings INTERFACE)
+if(MSVC)
+    target_compile_options(project_warnings INTERFACE /W4)
+else()
+    # -Wconversion проверяет неявные числовые преобразования;
+    # -Wsign-conversion — преобразования между знаковыми и беззнаковыми типами.
+    target_compile_options(project_warnings INTERFACE
+        -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion)
+endif()
+
+# Платформенная библиотека нужна демо и платформенным тестам.
+# При отключении обеих групп поиск оконных зависимостей не выполняется.
+if(BUILD_DEMOS OR BUILD_TESTING)
+    add_subdirectory(platform)
+endif()
+
 # add_subdirectory читает настройки целей из соответствующего CMakeLists.txt.
-# Демо и платформенные тесты выбирают системные библиотеки в своих каталогах.
 if(BUILD_DEMOS)
     add_subdirectory(demos)
 endif()

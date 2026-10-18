@@ -1,39 +1,43 @@
-# Development Requirements
+# Требования к разработке
 
-- Implementation language: C++17.
-- Graphics API: OpenGL 1.1.
-- Target platforms: Windows and Linux.
-- Build system: CMake.
-- Develop the engine through small, incremental changes.
-- Write clear, readable code; avoid unnecessarily complex solutions.
-- Verify new functionality after adding it.
-- Preserve existing working examples and verify them after making changes.
-- Use Git to commit changes and revert to previous working states.
-- Every task must leave the project in a state no worse than before, preserving existing functionality, buildability, code quality, readability, and architectural consistency.
-- Avoid unrelated refactoring. Make only the changes necessary to complete the current task, unless additional changes are explicitly requested or required for correctness.
+- Язык реализации: C++17.
+- Графический API: OpenGL 1.1.
+- Целевые платформы: Windows и Linux.
+- Система сборки: CMake.
+- Развивать движок небольшими последовательными изменениями.
+- Писать понятный, читаемый код; избегать неоправданно сложных решений.
+- Проверять новую функциональность после её добавления.
+- Тесты должны проверять уже реализованную функциональность через существующий API движка. Написание тестов не должно требовать изменения API движка или добавления в рабочий код движка специальных точек подключения, флагов или адаптеров только для тестирования. Любое необходимое искусственное создание отказов или подмена вызовов должны полностью оставаться в исходниках тестов и настройках их сборки.
+- Не добавлять для тестов системные пакеты, библиотеки или инструменты сверх зависимостей, необходимых самому движку и сценам. Не устанавливать дополнительные зависимости в систему ради прохождения тестов.
+- Тесты должны быть независимы от демоприложений, игровых сцен и игровой логики. Использовать отдельные тестовые программы и ресурсы вместо компиляции или запуска демосцен в составе теста.
+- Сохранять существующие работающие примеры и проверять их после внесения изменений.
+- Использовать Git для фиксации изменений и возврата к предыдущим рабочим состояниям.
+- Каждая задача должна оставлять проект в состоянии не хуже исходного: сохранять существующую функциональность, возможность сборки, качество и читаемость кода, а также согласованность архитектуры.
+- Избегать рефакторинга, не связанного с задачей. Вносить только изменения, необходимые для выполнения текущей задачи, если дополнительные изменения не запрошены явно и не требуются для корректной работы.
+- Писать код и защитные проверки для решения конкретных проблем в реальных сценариях использования. Не добавлять специальную обработку гипотетических крайних случаев без выявленной практической необходимости. Каждая дополнительная проверка должна иметь ясную цель, связанную с реальным сценарием использования, документированным требованием API или воспроизведённым сбоем; одной лишь возможности представить входные данные или состояние недостаточно для обоснования.
 
-## Git workflow
+## Работа с Git
 
-- Write commit messages in the past tense, describing completed changes. Example: "Упорядочена структура по roadmap и обновлены пути сборки".
+- Писать сообщения коммитов в прошедшем времени, описывая выполненные изменения. Пример: «Упорядочена структура по roadmap и обновлены пути сборки».
+- Перед началом каждого нового этапа разработки создавать ветку Git с именем `subsystem_nn`, где `nn` — двузначный номер подсистемы/этапа из `road map.md` (например, `subsystem_00`, `subsystem_01`). Разработку и коммиты этого этапа выполнять в этой ветке.
+- Отправлять изменения разработки с ПК только в соответствующую ветку `subsystem_nn`. Никогда не отправлять изменения с ПК напрямую в `main`, в том числе принудительно.
+- Интегрировать изменения в `main` только через Contribute в веб-интерфейсе GitHub, создавая и сливая pull request из ветки разработки.
+- Эти требования к рабочему процессу распространяются как на разработчика, так и на ИИ-агентов, даже если GitHub не обеспечивает их соблюдение правилами репозитория.
 
-- Before starting each new development stage, create a Git branch named `subsystem_nn`, where `nn` is the two-digit subsystem/stage number from `road map.md` (for example, `subsystem_00`, `subsystem_01`). Perform the stage's development and commits on that branch.
-- Push development changes from the PC only to the corresponding `subsystem_nn` branch. Never push directly to `main` from the PC, including force pushes.
-- Integrate changes into `main` only through Contribute in the GitHub web interface, by opening and merging a pull request from the development branch.
-- These workflow requirements apply to both the developer and AI agents, even when GitHub does not enforce repository rulesets.
+## Стиль кода
 
-## Code style
-
-- Return operation errors through output reference parameters, not through return values. Return values may indicate success/failure or carry the operation's normal result. Use a single error object or a collection of errors according to the operation's needs.
-- Prefer modern C++17 language features and standard-library facilities where practical. Use standard string types for text and standard streams for console output. Avoid arbitrary fixed-size character buffers when the required size can be determined dynamically. Preserve native API signatures and use their required allocation/deallocation functions at the platform boundary. Do not require a newer C++ standard or refactor unrelated code solely for style.
-- Keep resource management simple and proportional to the task. Use RAII and smart pointers where they provide a concrete benefit; do not introduce wrappers or custom deleters solely to use modern syntax. Explicit allocation/deallocation pairs are acceptable in short, straightforward native API code with a clear resource lifetime.
-- Apply one consistent style to all application-owned C++ code, including both platform implementations. Preserve the exact spelling and required signatures of external APIs, system types, macros, constants, and callbacks (Win32, X11, GLX, OpenGL, standard library).
-- Use four spaces for indentation; do not use tabs. Put opening braces of namespaces, functions, classes, and structs on a new line. Keep opening braces of if, else, for, while, and switch blocks on the same line as the statement. Always use braces for control-flow bodies.
-- Use `camelCase` for application functions, variables, fields, and parameters; use `PascalCase` for application types, enums, enum values, and named constants. Keep external identifiers unchanged.
-- Use meaningful English identifiers. Keep OS-specific names and types inside their platform implementation; expose OS-independent operations through a common platform interface.
-- Use spaces around binary operators and after commas; no space between a function name and `(`. Keep related declarations and statements together and separate logical sections with blank lines.
-- Use `const` for values that do not change, `const T&` for read-only larger objects, `nullptr` for null pointers, and explicit casts (`static_cast`) when conversion is needed.
-- Use `#pragma once` in project headers. Include project headers with quotes and system/library headers with angle brackets. Prefer explicit includes for direct dependencies.
-- Write comments in Russian. Treat the project as educational: explain unfamiliar APIs, including the purpose of functions, parameters, return values, and important usage details. Comments should help the reader learn the API directly from the source code. Avoid redundant comments about obvious application logic.
-- Avoid unexplained magic numbers: give meaningful names to repeated or domain-significant values. Group related visual constants and configuration values by purpose.
-- Format constructor initializer lists with the colon on a new line, followed by the first initializer. Place each subsequent initializer on a separate line, with the comma at the beginning. Align all initializers vertically.
-- Do not indent declarations inside namespaces.
+- Передавать ошибки операций через выходные параметры-ссылки, а не через возвращаемые значения. Возвращаемое значение может указывать на успех/неудачу или содержать обычный результат операции. Использовать один объект ошибки или коллекцию ошибок в зависимости от потребностей операции.
+- Предпочитать современные возможности C++17 и стандартной библиотеки там, где это целесообразно. Использовать стандартные строковые типы для текста и стандартные потоки для консольного вывода. Избегать символьных буферов произвольного фиксированного размера, если требуемый размер можно определить динамически. На границе платформенного кода сохранять сигнатуры нативных API и использовать предусмотренные ими функции выделения и освобождения памяти. Не требовать более нового стандарта C++ и не перерабатывать несвязанный с задачей код только ради стиля.
+- Управление ресурсами должно оставаться простым и соразмерным задаче. Использовать RAII и умные указатели там, где они дают конкретную пользу; не вводить обёртки или пользовательские функции освобождения ресурсов только ради современного синтаксиса. Явные пары выделения и освобождения ресурсов допустимы в коротком, понятном коде работы с нативным API, если время жизни ресурсов ясно.
+- Применять единый стиль ко всему собственному C++-коду проекта, включая обе платформенные реализации. Сохранять точное написание и требуемые сигнатуры внешних API, системных типов, макросов, констант и функций обратного вызова (Win32, X11, GLX, OpenGL, стандартная библиотека).
+- Использовать четыре пробела для отступов; не использовать табуляцию. Открывающие фигурные скобки пространств имён, функций, классов и структур размещать на новой строке. Открывающие скобки блоков `if`, `else`, `for`, `while` и `switch` оставлять на той же строке, что и соответствующая конструкция. Всегда заключать тела управляющих конструкций в фигурные скобки.
+- Использовать `camelCase` для собственных функций, переменных, полей и параметров; `PascalCase` — для собственных типов, перечислений, значений перечислений и именованных констант. Внешние идентификаторы оставлять без изменений.
+- Использовать осмысленные английские идентификаторы. Имена и типы, специфичные для ОС, оставлять внутри соответствующей платформенной реализации; независимые от ОС операции предоставлять через общий платформенный интерфейс.
+- Ставить пробелы вокруг бинарных операторов и после запятых; не ставить пробел между именем функции и `(`. Связанные объявления и инструкции располагать вместе, логические части разделять пустыми строками.
+- Использовать `const` для неизменяемых значений, `const T&` — для крупных объектов, доступных только для чтения, `nullptr` — для нулевых указателей и явные приведения типов (`static_cast`), когда требуется преобразование.
+- Использовать `#pragma once` в заголовках проекта. Подключать заголовки проекта в кавычках, а системные и библиотечные заголовки — в угловых скобках. Предпочитать явное подключение заголовков прямых зависимостей.
+- Писать комментарии на русском языке. Рассматривать проект как учебный: объяснять незнакомые API, включая назначение функций, параметров, возвращаемых значений и важные особенности использования. Комментарии должны помогать читателю изучать API непосредственно по исходному коду. Избегать избыточных комментариев об очевидной логике приложения.
+- Комментарии должны описывать фактическое поведение кода, ограничения и причины, необходимые для его понимания. Не включать повествование о ходе разработки, внутренние размышления или сравнения, которые лишь пересказывают принятые при реализации решения.
+- Избегать необъяснённых магических чисел: давать осмысленные имена повторяющимся значениям и значениям, существенным для предметной области. Группировать связанные визуальные константы и настройки по назначению.
+- В списках инициализации конструкторов размещать двоеточие на новой строке, а первый инициализатор — после него. Каждый следующий инициализатор размещать на отдельной строке, начиная её с запятой. Выравнивать все инициализаторы по вертикали.
+- Не добавлять отступы для объявлений внутри пространств имён.

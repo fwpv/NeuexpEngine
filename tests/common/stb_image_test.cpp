@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdio>
 #include <filesystem>
+#include <iostream>
 #include <string>
 #include <system_error>
 
@@ -26,18 +26,18 @@ bool checkPixels(const char* path)
     // stbi_load возвращает nullptr при ошибке, иначе выделяет память для пикселей.
     unsigned char* pixels = stbi_load(path, &width, &height, &channels, ImageChannels);
     if (!pixels) {
-        std::fprintf(stderr, "Cannot load PNG: %s\n", path);
+        std::cerr << "Cannot load PNG: " << path << "\n";
         return false;
     }
 
     bool passed = width == ImageWidth && height == ImageHeight && channels == ImageChannels;
     if (!passed) {
-        std::fprintf(stderr, "Expected 2x2 RGBA PNG, got %dx%d with %d channels\n",
-            width, height, channels);
+        std::cerr << "Expected 2x2 RGBA PNG, got " << width << "x" << height
+                  << " with " << channels << " channels\n";
     } else {
         passed = std::equal(ExpectedPixels.begin(), ExpectedPixels.end(), pixels);
         if (!passed) {
-            std::fprintf(stderr, "Decoded PNG colors or alpha values differ from expected pixels\n");
+            std::cerr << "Decoded PNG colors or alpha values differ from expected pixels\n";
         }
     }
 
@@ -52,7 +52,7 @@ bool checkLoadFailure(const char* path, bool shouldExist)
     std::error_code error;
     const bool exists = std::filesystem::exists(path, error);
     if (error || exists != shouldExist) {
-        std::fprintf(stderr, "Unexpected test file availability: %s\n", path);
+        std::cerr << "Unexpected test file availability: " << path << "\n";
         return false;
     }
 
@@ -61,7 +61,7 @@ bool checkLoadFailure(const char* path, bool shouldExist)
     int channels = 0;
     unsigned char* pixels = stbi_load(path, &width, &height, &channels, ImageChannels);
     if (pixels) {
-        std::fprintf(stderr, "Loading should have failed: %s\n", path);
+        std::cerr << "Loading should have failed: " << path << "\n";
         stbi_image_free(pixels);
         return false;
     }
@@ -72,7 +72,7 @@ bool checkLoadFailure(const char* path, bool shouldExist)
 int main(int argumentCount, char* arguments[])
 {
     if (argumentCount != 3) {
-        std::fprintf(stderr, "Usage: stb_image_test <pixels|missing|corrupt> <file>\n");
+        std::cerr << "Usage: stb_image_test <pixels|missing|corrupt> <file>\n";
         return 1;
     }
 
@@ -85,7 +85,7 @@ int main(int argumentCount, char* arguments[])
     } else if (scenario == "corrupt") {
         passed = checkLoadFailure(arguments[2], true);
     } else {
-        std::fprintf(stderr, "Unknown scenario: %s\n", arguments[1]);
+        std::cerr << "Unknown scenario: " << arguments[1] << "\n";
     }
 
     // Явный код возврата сохраняет проверки в Release, где assert может быть отключён.

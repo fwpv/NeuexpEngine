@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "window_validation.h"
 
 // windows.h предоставляет окна, сообщения, устройства ввода и WGL;
 // mmsystem.h объявляет функции точности системного таймера;
@@ -6,6 +7,7 @@
 #include <windows.h>
 #include <mmsystem.h>
 #include <GL/gl.h>
+#include <array>
 #include <iostream>
 
 namespace Platform
@@ -22,9 +24,17 @@ HGLRC openGLContext = nullptr;
 bool timerResolutionEnabled = false;
 
 HINSTANCE applicationInstance = nullptr;
-constexpr const char* WindowClassName = "OpenGLDemoWindow";
+constexpr const wchar_t* WindowClassName = L"EngineWindow";
 bool windowClassRegistered = false;
 bool closeRequested = false;
+bool initialized = false;
+WindowState windowState;
+bool viewportNeedsUpdate = false;
+// Win32 использует таблицу из 256 виртуальных кодов клавиш; старший бит означает удержание.
+std::array<BYTE, 256> keyState = {};
+WindowOptions windowOptions;
+LONG minimumTrackWidth = 0;
+LONG minimumTrackHeight = 0;
 
 Error windowsError(const char* operation, const char* message, DWORD code = ERROR_SUCCESS)
 {
@@ -57,10 +67,67 @@ Error windowsError(const char* operation, const char* message, DWORD code = ERRO
     return error;
 }
 
+bool convertTitle(const std::string& title, std::wstring& wideTitle, Error& error)
+{
+    if (title.empty()) {
+        wideTitle.clear();
+        return true;
+    }
+    // Сначала определяем размер UTF-16, затем выполняем преобразование в выделенную строку.
+    const int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, title.data(),
+        static_cast<int>(title.size()), nullptr, 0);
+    if (length == 0) {
+        error = windowsError("MultiByteToWideChar", "Could not convert the window title.", GetLastError());
+        return false;
+    }
+    wideTitle.resize(static_cast<std::size_t>(length));
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, title.data(),
+        static_cast<int>(title.size()), wideTitle.data(), length) == 0) {
+        error = windowsError("MultiByteToWideChar", "Could not convert the window title.", GetLastError());
+        return false;
+    }
+    return true;
+}
+
 // LRESULT — результат обработки сообщения; CALLBACK задаёт соглашение вызова Win32.
 // HWND — окно-получатель; UINT — код сообщения; WPARAM и LPARAM — его дополнительные данные.
 LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    // WM_GETMINMAXINFO задаёт ограничения внешней рамки, хотя API движка принимает клиентские размеры.
+    if (message == WM_GETMINMAXINFO) {
+        const LRESULT result = DefWindowProcW(handle, message, wParam, lParam);
+        auto* limits = reinterpret_cast<MINMAXINFO*>(lParam);
+        if (!windowOptions.resizable || windowOptions.minimumWidth > 0) {
+            limits->ptMinTrackSize.x = minimumTrackWidth;
+        }
+        if (!windowOptions.resizable || windowOptions.minimumHeight > 0) {
+            limits->ptMinTrackSize.y = minimumTrackHeight;
+        }
+        if (!windowOptions.resizable) {
+            limits->ptMaxTrackSize.x = minimumTrackWidth;
+            limits->ptMaxTrackSize.y = minimumTrackHeight;
+        }
+        return result;
+    }
+
+    // Эти сообщения уже содержат новое состояние: опрос ОС на каждом кадре не требуется.
+    if (message == WM_SIZE) {
+        const int width = static_cast<int>(LOWORD(lParam));
+        const int height = static_cast<int>(HIWORD(lParam));
+        viewportNeedsUpdate = viewportNeedsUpdate || width != windowState.width || height != windowState.height;
+        windowState.width = width;
+        windowState.height = height;
+        windowState.minimized = wParam == SIZE_MINIMIZED;
+        if (windowState.minimized) {
+            windowState.focused = false;
+        }
+        return 0;
+    }
+    if (message == WM_SETFOCUS || message == WM_KILLFOCUS) {
+        windowState.focused = message == WM_SETFOCUS && !windowState.minimized;
+        return 0;
+    }
+
     // WM_CLOSE только запрашивает выход. Контекст и HDC освобождаются до уничтожения окна в shutdown().
     if (message == WM_CLOSE) {
         closeRequested = true;
@@ -74,17 +141,53 @@ LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARA
             window = nullptr;
             deviceContext = nullptr; // При внешнем уничтожении окна его частный DC уже недоступен.
             closeRequested = true;
+            windowState.width = 0;
+            windowState.height = 0;
+            windowState.focused = false;
+            windowState.minimized = false;
         }
         PostQuitMessage(0);
         return 0;
     }
 
     // DefWindowProc выполняет стандартное поведение Windows для необработанных сообщений.
-    return DefWindowProc(handle, message, wParam, lParam);
+    return DefWindowProcW(handle, message, wParam, lParam);
 }
 
-bool initializeWindows(int width, int height, Error& error)
+bool requireWindow(const char* operation, Error& error)
 {
+    if (!initialized || !window) {
+        error = { operation, "The window is not initialized or has been destroyed.", std::nullopt };
+        return false;
+    }
+    return true;
+}
+
+bool initializeWindows(const WindowOptions& options, Error& error)
+{
+    std::wstring title;
+    if (!convertTitle(options.title, title, error)) {
+        return false;
+    }
+    windowOptions = options;
+    windowState = {};
+    // AdjustWindowRectEx добавляет рамку и заголовок к запрошенной клиентской области.
+    const DWORD style = options.resizable ? WS_OVERLAPPEDWINDOW
+        : WS_OVERLAPPEDWINDOW & ~static_cast<DWORD>(WS_THICKFRAME | WS_MAXIMIZEBOX);
+    RECT bounds = { 0, 0, options.width, options.height };
+    RECT minimumBounds = { 0, 0, options.resizable ? options.minimumWidth : options.width,
+        options.resizable ? options.minimumHeight : options.height };
+    if (!AdjustWindowRectEx(&bounds, style, FALSE, 0)
+        || !AdjustWindowRectEx(&minimumBounds, style, FALSE, 0)) {
+        error = windowsError("AdjustWindowRectEx", "Could not calculate the window frame size.", GetLastError());
+        return false;
+    }
+    minimumTrackWidth = minimumBounds.right - minimumBounds.left;
+    minimumTrackHeight = minimumBounds.bottom - minimumBounds.top;
+    // shutdown может оставить WM_QUIT от уничтоженного окна в очереди текущего потока.
+    MSG oldQuit;
+    while (PeekMessage(&oldQuit, nullptr, WM_QUIT, WM_QUIT, PM_REMOVE)) {
+    }
     // HINSTANCE — дескриптор текущего приложения; GetModuleHandle(nullptr) возвращает
     // экземпляр исполняемого файла, уже загруженный Windows.
     closeRequested = false;
@@ -95,7 +198,7 @@ bool initializeWindows(int width, int height, Error& error)
     }
 
     // WNDCLASS описывает класс будущих окон: обработчик, курсор и имя класса.
-    WNDCLASS windowClass = {};
+    WNDCLASSW windowClass = {};
     // CS_OWNDC просит Windows выделить окну постоянный собственный HDC для OpenGL.
     windowClass.style = CS_OWNDC;
     windowClass.lpfnWndProc = windowProcedure; // Функция обратного вызова для сообщений окна.
@@ -104,7 +207,7 @@ bool initializeWindows(int width, int height, Error& error)
     windowClass.hCursor = LoadCursor(nullptr, IDC_ARROW); // nullptr выбирает системный ресурс.
     windowClass.lpszClassName = WindowClassName;       // имя для CreateWindow.
     // RegisterClass публикует описание WNDCLASS в системе; без регистрации CreateWindow не найдёт класс.
-    if (!RegisterClass(&windowClass)) {
+    if (!RegisterClassW(&windowClass)) {
         error = windowsError("RegisterClass", "Could not register the window class.", GetLastError());
         return false;
     }
@@ -112,11 +215,12 @@ bool initializeWindows(int width, int height, Error& error)
     windowClassRegistered = true;
 
     // CreateWindow создаёт окно по зарегистрированному имени.
-    // WS_OVERLAPPEDWINDOW включает рамку, заголовок, системное меню и кнопки управления окном.
-    // Координаты 100, 100 задают начальное положение; width и height — размер окна.
+    // Для фиксированного размера исключены растягиваемая рамка и кнопка разворачивания.
+    // Координаты 100, 100 задают начальное положение; bounds включает рамку и заголовок.
     // nullptr для родителя и меню создаёт самостоятельное окно без меню приложения.
-    window = CreateWindow(windowClass.lpszClassName, "ORBITAL // SECTOR 09",
-        WS_OVERLAPPEDWINDOW, 100, 100, width, height, nullptr, nullptr, applicationInstance, nullptr);
+    window = CreateWindowW(windowClass.lpszClassName, title.c_str(),
+        style, 100, 100, bounds.right - bounds.left, bounds.bottom - bounds.top,
+        nullptr, nullptr, applicationInstance, nullptr);
     if (!window) {
         error = windowsError("CreateWindow", "Could not create the application window.", GetLastError());
         return false;
@@ -171,7 +275,17 @@ bool initializeWindows(int width, int height, Error& error)
 
     // ShowWindow показывает готовое окно; SW_SHOW означает обычный показ.
     ShowWindow(window, SW_SHOW);
-    return true;
+    // Начальный снимок запрашивается один раз; дальнейшие изменения приходят в оконную процедуру.
+    RECT clientBounds = {};
+    if (!GetClientRect(window, &clientBounds)) {
+        error = windowsError("GetClientRect", "Could not read the initial client dimensions.", GetLastError());
+        return false;
+    }
+    windowState = { static_cast<int>(clientBounds.right - clientBounds.left),
+        static_cast<int>(clientBounds.bottom - clientBounds.top), GetFocus() == window, IsIconic(window) != FALSE };
+    viewportNeedsUpdate = true;
+    initialized = true;
+    return processEvents(error);
 }
 }
 
@@ -200,22 +314,61 @@ void reportError(const Error& error, bool showDialog)
     }
 }
 
-bool initialize(int width, int height, Error& error)
+bool initialize(const WindowOptions& options, std::vector<Error>& errors)
 {
-    return initializeWindows(width, height, error);
+    errors.clear();
+    if (initialized || windowClassRegistered || window || openGLContext) {
+        errors.push_back({ "initialize", "Call shutdown before initializing again.", std::nullopt });
+        return false;
+    }
+    Error error;
+    if (!validateWindowOptions(options, error)) {
+        errors.push_back(error);
+        return false;
+    }
+    if (initializeWindows(options, error)) {
+        return true;
+    }
+    // Сохраняем исходную причину перед очисткой: shutdown заменяет переданный список.
+    shutdown(errors);
+    errors.insert(errors.begin(), error);
+    return false;
 }
 
-bool setWindowTitle(const char* title, Error& error)
+bool getWindowState(WindowState& state, Error& error)
 {
-    if (!SetWindowTextA(window, title)) {
-        error = windowsError("SetWindowTextA", "Could not update the window title.", GetLastError());
+    if (!initialized) {
+        error = { "getWindowState", "The platform is not initialized.", std::nullopt };
+        return false;
+    }
+    state = windowState;
+    return true;
+}
+
+bool setWindowTitle(const std::string& title, Error& error)
+{
+    if (!requireWindow("setWindowTitle", error) || !validateWindowTitle(title, "setWindowTitle", error)) {
+        return false;
+    }
+    std::wstring wideTitle;
+    if (!convertTitle(title, wideTitle, error)) {
+        return false;
+    }
+    if (!SetWindowTextW(window, wideTitle.c_str())) {
+        error = windowsError("SetWindowTextW", "Could not update the window title.", GetLastError());
         return false;
     }
     return true;
 }
 
-EventResult processEvents(Error&)
+bool processEvents(Error& error)
 {
+    if (initialized && !window && closeRequested) {
+        return true;
+    }
+    if (!requireWindow("processEvents", error)) {
+        return false;
+    }
     // MSG — структура одного сообщения Win32: код, окно и параметры события.
     MSG message;
     // Забираем все накопившиеся сообщения, чтобы окно отвечало на ввод и перерисовку.
@@ -223,7 +376,8 @@ EventResult processEvents(Error&)
     while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
         // WM_QUIT — специальное сообщение завершения потока сообщений.
         if (message.message == WM_QUIT) {
-            return EventResult::Quit;
+            closeRequested = true;
+            return true;
         }
 
         // TranslateMessage создаёт символьные сообщения из клавиатурных кодов,
@@ -232,48 +386,79 @@ EventResult processEvents(Error&)
         DispatchMessage(&message);
     }
 
-    // GetAsyncKeyState читает состояние клавиши асинхронно; VK_ESCAPE — виртуальный код Escape.
-    // Маска 0x8000 проверяет старший бит «клавиша удерживается».
-    return closeRequested || (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0
-        ? EventResult::Quit : EventResult::Continue;
+    // Область вывода занимает клиентскую область; матрицы игрового мира не меняются.
+    if (window && viewportNeedsUpdate) {
+        glViewport(0, 0, windowState.width, windowState.height);
+        viewportNeedsUpdate = false;
+    }
+    // Обновляем снимок клавиатуры после обработки накопленных событий.
+    // GetKeyboardState читает состояние очереди текущего потока; PeekMessage выше обновляет его.
+    if (window && windowState.focused && !windowState.minimized) {
+        if (!GetKeyboardState(keyState.data())) {
+            error = windowsError("GetKeyboardState", "Could not read the keyboard state.", GetLastError());
+            return false;
+        }
+    }
+    return true;
+}
+
+bool isCloseRequested()
+{
+    return initialized && closeRequested;
 }
 
 bool isKeyDown(Key key)
 {
-    // VK_SPACE и VK_UP/VK_DOWN/VK_LEFT/VK_RIGHT — виртуальные коды Windows.
-    // Для WASD используются символьные коды 'W'/'A'/'S'/'D'; ноль означает отсутствие альтернативы.
-    int primary = VK_SPACE;
-    int alternate = 0;
-    switch (key) {
-        case Key::Up:
-            primary = VK_UP;
-            alternate = 'W';
-            break;
-        case Key::Down:
-            primary = VK_DOWN;
-            alternate = 'S';
-            break;
-        case Key::Left:
-            primary = VK_LEFT;
-            alternate = 'A';
-            break;
-        case Key::Right:
-            primary = VK_RIGHT;
-            alternate = 'D';
-            break;
-        case Key::Fire:
-            break;
+    if (!initialized || !window || !windowState.focused || windowState.minimized) {
+        return false;
     }
-
-    // GetAsyncKeyState возвращает битовую маску; 0x8000 проверяет удержание.
-    // При alternate == 0 второй вызов не выполняется, поэтому Fire назначен только на пробел.
-    const bool primaryPressed = (GetAsyncKeyState(primary) & 0x8000) != 0;
-    const bool alternatePressed = alternate != 0 && (GetAsyncKeyState(alternate) & 0x8000) != 0;
-    return primaryPressed || alternatePressed;
+    int nativeKey = 0;
+    switch (key) {
+        case Key::ArrowUp:
+            nativeKey = VK_UP;
+            break;
+        case Key::ArrowDown:
+            nativeKey = VK_DOWN;
+            break;
+        case Key::ArrowLeft:
+            nativeKey = VK_LEFT;
+            break;
+        case Key::ArrowRight:
+            nativeKey = VK_RIGHT;
+            break;
+        case Key::W:
+            nativeKey = 'W';
+            break;
+        case Key::A:
+            nativeKey = 'A';
+            break;
+        case Key::S:
+            nativeKey = 'S';
+            break;
+        case Key::D:
+            nativeKey = 'D';
+            break;
+        case Key::Space:
+            nativeKey = VK_SPACE;
+            break;
+        case Key::Escape:
+            nativeKey = VK_ESCAPE;
+            break;
+        default:
+            return false;
+    }
+    return (keyState[static_cast<std::size_t>(nativeKey)] & 0x80U) != 0;
 }
+
 
 bool present(Error& error)
 {
+    if (!requireWindow("present", error)) {
+        return false;
+    }
+    if (windowState.minimized) {
+        return true;
+    }
     // SwapBuffers сообщает об отказе синхронно; уведомление выполняет вызывающий код.
     if (!SwapBuffers(deviceContext)) {
         error = windowsError("SwapBuffers", "Could not present the frame.", GetLastError());
@@ -316,12 +501,19 @@ void shutdown(std::vector<Error>& errors)
         window = nullptr;
     }
     if (windowClassRegistered) {
-        if (!UnregisterClass(WindowClassName, applicationInstance)) {
+        if (!UnregisterClassW(WindowClassName, applicationInstance)) {
             errors.push_back(windowsError("UnregisterClass", "Could not unregister the window class.", GetLastError()));
         }
         windowClassRegistered = false;
     }
     applicationInstance = nullptr;
     closeRequested = false;
+    initialized = false;
+    windowState = {};
+    viewportNeedsUpdate = false;
+    keyState = {};
+    windowOptions = {};
+    minimumTrackWidth = 0;
+    minimumTrackHeight = 0;
 }
 }
