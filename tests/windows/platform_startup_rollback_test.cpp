@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "../common/platform_test_diagnostics.h"
 #include "windows_gl_context.h"
 
 #include <iostream>
@@ -55,7 +56,7 @@ int main()
                 || errors[1].nativeCode != static_cast<int>(DetachFailureCode)
                 || errors[1].message.empty()))) {
             std::cerr << "Startup must retain the original error followed by cleanup errors.\n";
-            Platform::shutdown(errors);
+            PlatformTest::shutdownAfterFailure(errors);
             return 1;
         }
         Platform::WindowState state;
@@ -64,15 +65,19 @@ int main()
             || Platform::getWindowState(state, error) || Platform::isCloseRequested()
             || wglGetCurrentContext() != nullptr || wglGetCurrentDC() != nullptr) {
             std::cerr << "Failed initialization must destroy its window and leave no usable platform state.\n";
-            Platform::shutdown(errors);
+            PlatformTest::shutdownAfterFailure(errors);
             return 1;
         }
         // Без пользовательского shutdown после ошибки. Проверяем также повторную регистрацию класса окна.
-        if (!Platform::initialize(options, errors) || !errors.empty()
-            || !Platform::getWindowState(state, error) || state.width != 320 || state.height != 240
+        const bool restarted = Platform::initialize(options, errors);
+        const bool stateRead = restarted && Platform::getWindowState(state, error);
+        if (restarted && !stateRead) {
+            Platform::reportError(error, false);
+        }
+        if (!restarted || !errors.empty() || !stateRead || state.width != 320 || state.height != 240
             || wglGetCurrentContext() == nullptr || wglGetCurrentDC() == nullptr) {
             std::cerr << "Initialization after automatic rollback must succeed and clear old errors.\n";
-            Platform::shutdown(errors);
+            PlatformTest::shutdownAfterFailure(errors);
             return 1;
         }
         const HWND retryWindow = WindowFromDC(wglGetCurrentDC());
@@ -80,6 +85,7 @@ int main()
         if (!errors.empty() || !retryWindow || IsWindow(retryWindow)
             || wglGetCurrentContext() != nullptr || wglGetCurrentDC() != nullptr) {
             std::cerr << "Shutdown after a successful retry must release the window and detach the context.\n";
+            PlatformTest::reportErrors(errors);
             return 1;
         }
     }

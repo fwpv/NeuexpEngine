@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "../common/platform_test_diagnostics.h"
 
 #include <GL/glx.h>
 #include <cstdlib>
@@ -48,7 +49,7 @@ int main()
             || errors.front().operation != "glXMakeCurrent"
             || (cleanupFailure && errors[1].operation != "glXMakeCurrent (detach)")) {
             std::cerr << "Startup must retain the original error followed by cleanup errors.\n";
-            Platform::shutdown(errors);
+            PlatformTest::shutdownAfterFailure(errors);
             return 1;
         }
         Platform::WindowState state;
@@ -56,19 +57,24 @@ int main()
         if (Platform::getWindowState(state, error) || Platform::isCloseRequested()
             || glXGetCurrentContext() != nullptr) {
             std::cerr << "Failed initialization must leave no usable platform state.\n";
-            Platform::shutdown(errors);
+            PlatformTest::shutdownAfterFailure(errors);
             return 1;
         }
         // Без пользовательского shutdown после ошибки: следующий запуск должен быть успешным.
-        if (!Platform::initialize(options, errors) || !errors.empty()
-            || !Platform::getWindowState(state, error) || state.width != 320 || state.height != 240) {
+        const bool restarted = Platform::initialize(options, errors);
+        const bool stateRead = restarted && Platform::getWindowState(state, error);
+        if (restarted && !stateRead) {
+            Platform::reportError(error, false);
+        }
+        if (!restarted || !errors.empty() || !stateRead || state.width != 320 || state.height != 240) {
             std::cerr << "Initialization after automatic rollback must succeed and clear old errors.\n";
-            Platform::shutdown(errors);
+            PlatformTest::shutdownAfterFailure(errors);
             return 1;
         }
         Platform::shutdown(errors);
         if (!errors.empty()) {
             std::cerr << "Shutdown after a successful retry must succeed.\n";
+            PlatformTest::reportErrors(errors);
             return 1;
         }
     }

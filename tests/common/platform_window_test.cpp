@@ -1,13 +1,15 @@
 #include "platform.h"
+#include "platform_test_diagnostics.h"
 
 #ifdef _WIN32
 #include <windows.h>
+#include "../windows/keyboard_input.h"
 #else
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
+#include <GL/glx.h>
 #include <unistd.h>
-#include <dlfcn.h>
 #include "../linux/keyboard_query_counter.h"
 #endif
 
@@ -33,11 +35,11 @@ void require(bool condition, const std::string& message)
 Platform::WindowState readState()
 {
     Platform::Error error;
-    const auto result = Platform::processEvents(error);
-    require(result, error.operation + ": " + error.message);
+    const bool result = PlatformTest::checkOperation(Platform::processEvents(error), error);
+    require(result, "Event processing failed.");
     Platform::WindowState state;
-    const bool success = Platform::getWindowState(state, error);
-    require(success, error.operation + ": " + error.message);
+    const bool success = PlatformTest::checkOperation(Platform::getWindowState(state, error), error);
+    require(success, "Could not read the window state.");
     return state;
 }
 
@@ -152,7 +154,6 @@ struct NativeWindow
     Display* display = nullptr;
     Window handle = None;
     Window focusSink = None;
-    void* inputLibrary = nullptr;
 
     std::string readTitle(Window target)
     {
@@ -180,33 +181,13 @@ struct NativeWindow
         require(readTitle(handle) == title, "The native UTF-8 title differs from the requested title.");
     }
 
-    Window findWindow(Window parent, const std::string& title)
-    {
-        const bool found = readTitle(parent) == title;
-        if (found) {
-            return parent;
-        }
-        Window root = None;
-        Window actualParent = None;
-        Window* children = nullptr;
-        unsigned int count = 0;
-        XQueryTree(display, parent, &root, &actualParent, &children, &count);
-        Window result = None;
-        for (unsigned int index = 0; index < count && result == None; ++index) {
-            result = findWindow(children[index], title);
-        }
-        if (children) {
-            XFree(children);
-        }
-        return result;
-    }
-
     explicit NativeWindow(const std::string& title)
     {
         display = XOpenDisplay(nullptr);
         require(display != nullptr, "Could not open the test X11 connection.");
-        handle = findWindow(DefaultRootWindow(display), title);
-        if (handle == None) {
+        // glXGetCurrentDrawable возвращает окно, привязанное к текущему контексту OpenGL.
+        handle = glXGetCurrentDrawable();
+        if (handle == None || readTitle(handle) != title) {
             XCloseDisplay(display);
             display = nullptr;
             throw std::runtime_error("Could not find the test window.");
@@ -220,10 +201,6 @@ struct NativeWindow
                 XDestroyWindow(display, focusSink);
             }
             XCloseDisplay(display);
-        }
-        // XTest регистрирует обработчик XCloseDisplay, поэтому выгружается после соединения.
-        if (inputLibrary) {
-            dlclose(inputLibrary);
         }
     }
 
@@ -323,7 +300,8 @@ void shutdown()
 {
     std::vector<Platform::Error> errors;
     Platform::shutdown(errors);
-    require(errors.empty(), errors.empty() ? "" : errors.front().operation + ": " + errors.front().message);
+    PlatformTest::reportErrors(errors);
+    require(errors.empty(), "Shutdown failed.");
     Platform::WindowState state;
     Platform::Error error;
     require(!Platform::getWindowState(state, error), "State query after shutdown must fail.");
@@ -349,75 +327,36 @@ void checkRendering()
         require(glGetError() == GL_NO_ERROR && pixel == color,
             "The OpenGL back buffer does not contain the rendered color.");
         Platform::Error error;
-        require(Platform::present(error), "Present failed after rendering.");
+        const bool presented = PlatformTest::checkOperation(Platform::present(error), error);
+        require(presented, "Present failed after rendering.");
     }
 }
 
-// Ввод освобождается и при провале проверки, чтобы Escape не остался нажатым.
+// Подменённое состояние клавиатуры сбрасывается и при провале проверки.
 class EscapeInput
 {
 public:
-#ifndef _WIN32
-    using FakeKeyEvent = int (*)(Display*, unsigned int, Bool, unsigned long);
-    Display* display = nullptr;
-    FakeKeyEvent fakeKeyEvent = nullptr;
-    KeyCode keyCode = 0;
-#endif
-    bool held = false;
+    unsigned char keyCode = 0;
 
     explicit EscapeInput(NativeWindow& native)
     {
-#ifndef _WIN32
-        display = native.display;
-        // XTest нужен только тесту. Рабочая библиотека платформы от него не зависит.
-        native.inputLibrary = dlopen("libXtst.so.6", RTLD_NOW | RTLD_LOCAL);
-        if (native.inputLibrary) {
-            fakeKeyEvent = reinterpret_cast<FakeKeyEvent>(dlsym(native.inputLibrary, "XTestFakeKeyEvent"));
-        }
-        keyCode = XKeysymToKeycode(display, XK_Escape);
-#else
-        (void)native;
-#endif
-    }
-
-    bool available() const
-    {
-#ifndef _WIN32
-        int opcode = 0;
-        int event = 0;
-        int error = 0;
-        return fakeKeyEvent && keyCode != 0
-            && XQueryExtension(display, "XTEST", &opcode, &event, &error);
-#else
-        return true;
-#endif
-    }
-
-    bool setHeld(bool down)
-    {
 #ifdef _WIN32
-        // SendInput создаёт системный ввод; после обработки сообщений он виден GetKeyboardState.
-        INPUT input = {};
-        input.type = INPUT_KEYBOARD;
-        input.ki.wVk = VK_ESCAPE;
-        input.ki.dwFlags = down ? 0U : KEYEVENTF_KEYUP;
-        const bool success = SendInput(1, &input, static_cast<int>(sizeof(input))) == 1;
+        (void)native;
+        keyCode = VK_ESCAPE;
 #else
-        // XTest меняет серверное состояние, доступное через XQueryKeymap.
-        const bool success = fakeKeyEvent(display, keyCode, down ? True : False, CurrentTime) != 0;
-        XSync(display, False);
+        keyCode = XKeysymToKeycode(native.display, XK_Escape);
+        require(keyCode != 0, "The keyboard mapping has no Escape key.");
 #endif
-        if (success) {
-            held = down;
-        }
-        return success;
+    }
+
+    void setHeld(bool down)
+    {
+        setKeyboardKeyHeld(keyCode, down);
     }
 
     ~EscapeInput()
     {
-        if (held && !setHeld(false)) {
-            std::cerr << "Could not release injected Escape.\n";
-        }
+        useNativeKeyboardInput();
     }
 };
 
@@ -428,25 +367,23 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
     options.height = 300;
     options.title = title;
     std::vector<Platform::Error> errors;
-    require(Platform::initialize(options, errors), "Could not initialize the test window.");
+    const bool initialized = Platform::initialize(options, errors);
+    if (!initialized) {
+        PlatformTest::reportErrors(errors);
+    }
+    require(initialized, "Could not initialize the test window.");
     NativeWindow native(title);
     waitFor([](const auto& state) { return state.width == 400 && state.height == 300; },
         "Initial size is incorrect.");
     checkRendering();
     if (keyboard) {
         EscapeInput input(native);
-        if (!input.available()) {
-            std::cout << "Keyboard test requires the XTest library and server extension.\n";
-            shutdown();
-            return 77;
-        }
         native.focus(true);
         waitFor([](const auto& state) { return state.focused; }, "Focus acquisition failed.");
-        require(input.setHeld(true), "Could not press Escape.");
+        input.setHeld(true);
         waitFor([](const auto&) { return Platform::isKeyDown(Platform::Key::Escape); },
             "Injected Escape was not detected by the engine.");
         require(!Platform::isCloseRequested(), "Held Escape must not request shutdown.");
-#ifndef _WIN32
         const unsigned int beforeEvents = keyboardQueryCount();
         readState();
         require(keyboardQueryCount() == beforeEvents + 1,
@@ -458,8 +395,7 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
             (void)Platform::isKeyDown(key);
         }
         require(keyboardQueryCount() == beforeReads,
-            "Reading keys must reuse the snapshot without querying X11.");
-#endif
+            "Reading keys must reuse the snapshot without querying the OS.");
         native.focus(false);
         waitFor([](const auto& state) { return !state.focused; }, "Focus loss failed.");
         require(!Platform::isKeyDown(Platform::Key::Escape), "Unfocused window must ignore held keys.");
@@ -467,7 +403,7 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
         waitFor([](const auto& state) {
             return state.focused && Platform::isKeyDown(Platform::Key::Escape);
         }, "Held key was not refreshed after focus acquisition.");
-        require(input.setHeld(false), "Could not release Escape.");
+        input.setHeld(false);
         require(Platform::isKeyDown(Platform::Key::Escape),
             "Reading a key must retain the snapshot until event processing.");
         waitFor([](const auto&) { return !Platform::isKeyDown(Platform::Key::Escape); },
@@ -482,14 +418,14 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
 #ifndef _WIN32
         Platform::Error error;
         Platform::WindowState pending;
-        require(Platform::getWindowState(pending, error) && !pending.minimized,
+        require(PlatformTest::checkOperation(Platform::getWindowState(pending, error), error) && !pending.minimized,
             "Reading the snapshot must not consume minimization events.");
 #endif
         waitFor([](const auto& state) { return state.minimized && !state.focused; },
             "Minimization was not detected.");
         native.restore();
 #ifndef _WIN32
-        require(Platform::getWindowState(pending, error) && pending.minimized,
+        require(PlatformTest::checkOperation(Platform::getWindowState(pending, error), error) && pending.minimized,
             "Reading the snapshot must not consume restoration events.");
 #endif
         waitFor([](const auto& state) { return !state.minimized && state.width == 400 && state.height == 300; },
@@ -506,21 +442,24 @@ void runWindow(Platform::WindowOptions options, const std::string& title, bool e
     options.title = title;
     std::vector<Platform::Error> startupErrors;
     const bool success = Platform::initialize(options, startupErrors);
-    require(success, startupErrors.empty() ? "Initialization failed." : startupErrors.front().message);
+    if (!success) {
+        PlatformTest::reportErrors(startupErrors);
+    }
+    require(success, "Initialization failed.");
     require(startupErrors.empty(), "Successful initialization must clear previous errors.");
     NativeWindow native(title);
     native.checkTitle(title);
     const std::string changedTitle = u8"Движок — окно 🌌";
-    require(Platform::setWindowTitle(changedTitle, error), "Could not set a Unicode title.");
+    require(PlatformTest::checkOperation(Platform::setWindowTitle(changedTitle, error), error), "Could not set a Unicode title.");
     native.checkTitle(changedTitle);
     require(!Platform::setWindowTitle(std::string("a\0b", 3), error)
         && !Platform::setWindowTitle("\xED\xA0\x80", error), "Invalid titles must be rejected.");
     native.checkTitle(changedTitle);
-    require(Platform::setWindowTitle("", error), "Empty titles must be allowed.");
+    require(PlatformTest::checkOperation(Platform::setWindowTitle("", error), error), "Empty titles must be allowed.");
     native.checkTitle("");
-    require(Platform::setWindowTitle(title, error), "Could not restore title.");
+    require(PlatformTest::checkOperation(Platform::setWindowTitle(title, error), error), "Could not restore title.");
     Platform::WindowState initialState;
-    require(Platform::getWindowState(initialState, error)
+    require(PlatformTest::checkOperation(Platform::getWindowState(initialState, error), error)
         && initialState.width == options.width && initialState.height == options.height
         && !Platform::isCloseRequested(),
         "Window state must be readable before event processing without a close request.");
@@ -537,7 +476,7 @@ void runWindow(Platform::WindowOptions options, const std::string& title, bool e
     native.resize();
 #ifndef _WIN32
     Platform::WindowState pendingResize;
-    require(Platform::getWindowState(pendingResize, error)
+    require(PlatformTest::checkOperation(Platform::getWindowState(pendingResize, error), error)
         && pendingResize.width == options.width && pendingResize.height == options.height,
         "Reading the snapshot must not consume queued resize events.");
 #endif
@@ -548,7 +487,7 @@ void runWindow(Platform::WindowOptions options, const std::string& title, bool e
     native.focus(false);
 #ifndef _WIN32
     Platform::WindowState pendingFocus;
-    require(Platform::getWindowState(pendingFocus, error) && pendingFocus.focused,
+    require(PlatformTest::checkOperation(Platform::getWindowState(pendingFocus, error), error) && pendingFocus.focused,
         "Reading the snapshot must not consume queued focus events.");
 #endif
     waitFor([](const auto& state) { return !state.focused; }, "Focus loss was not detected.");
@@ -558,7 +497,7 @@ void runWindow(Platform::WindowOptions options, const std::string& title, bool e
 #ifndef _WIN32
         // Пока DestroyNotify не обработано, чтение возвращает прежний снимок без запросов к удалённому окну.
         Platform::WindowState unchanged;
-        require(Platform::getWindowState(unchanged, error)
+        require(PlatformTest::checkOperation(Platform::getWindowState(unchanged, error), error)
             && unchanged.width == 400 && unchanged.height == 300 && !Platform::isCloseRequested(),
             "Reading the snapshot must not query or detect native destruction.");
 
@@ -566,13 +505,13 @@ void runWindow(Platform::WindowOptions options, const std::string& title, bool e
         require(!Platform::setWindowTitle("destroyed window", error)
             && error.nativeCode == BadWindow && !error.message.empty(),
             "A native title error must be reported by setWindowTitle.");
-        require(Platform::getWindowState(unchanged, error) && unchanged.width == 400,
+        require(PlatformTest::checkOperation(Platform::getWindowState(unchanged, error), error) && unchanged.width == 400,
             "A native title error must not affect reading the snapshot.");
 #endif
     } else {
         native.close();
         Platform::WindowState pendingCloseState;
-        require(Platform::getWindowState(pendingCloseState, error) && !Platform::isCloseRequested(),
+        require(PlatformTest::checkOperation(Platform::getWindowState(pendingCloseState, error), error) && !Platform::isCloseRequested(),
             "Reading native window state must not process the pending close event.");
     }
     waitFor([](const auto&) { return Platform::isCloseRequested(); }, "Close request was not detected.");
@@ -611,7 +550,10 @@ int main(int argumentCount, char* arguments[])
         fixedOptions.title = title;
         std::vector<Platform::Error> startupErrors;
         const bool initialized = Platform::initialize(fixedOptions, startupErrors);
-        require(initialized, startupErrors.empty() ? "Initialization failed." : startupErrors.front().message);
+        if (!initialized) {
+            PlatformTest::reportErrors(startupErrors);
+        }
+        require(initialized, "Initialization failed.");
         NativeWindow fixedWindow(title);
         fixedWindow.checkMinimum(fixedOptions);
         waitFor([](const auto& state) { return state.width == 320 && state.height == 240; },
