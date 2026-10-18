@@ -7,6 +7,7 @@
 #else
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/Xatom.h>
 #include <X11/keysym.h>
 #include <GL/glx.h>
 #include <unistd.h>
@@ -125,6 +126,21 @@ struct NativeWindow
             "Could not resize the window.");
     }
 
+    bool isViewable()
+    {
+        return IsWindowVisible(handle) != FALSE && IsIconic(handle) == FALSE;
+    }
+
+    void activateForRendering()
+    {
+        require(SetWindowPos(handle, HWND_TOP, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW) != FALSE,
+            "Could not raise the rendering window.");
+        require(SetForegroundWindow(handle) != FALSE,
+            "Could not activate the rendering window.");
+        SetFocus(handle);
+    }
+
     void focus(bool focused)
     {
         SetFocus(focused ? handle : nullptr);
@@ -227,6 +243,58 @@ struct NativeWindow
         XSync(display, False);
     }
 
+    bool isViewable()
+    {
+        XWindowAttributes attributes = {};
+        require(XGetWindowAttributes(display, handle, &attributes) != 0,
+            "Could not read the native window visibility.");
+        // IsViewable означает, что показаны и само окно, и все его родительские окна.
+        return attributes.map_state == IsViewable;
+    }
+
+    void activateForRendering()
+    {
+        const Window root = DefaultRootWindow(display);
+        const Atom activeWindow = XInternAtom(display, "_NET_ACTIVE_WINDOW", False);
+        const Atom supported = XInternAtom(display, "_NET_SUPPORTED", False);
+        Atom type = None;
+        int format = 0;
+        unsigned long count = 0;
+        unsigned long remaining = 0;
+        unsigned char* bytes = nullptr;
+        const int result = XGetWindowProperty(display, root, supported, 0, 1024,
+            False, XA_ATOM, &type, &format, &count, &remaining, &bytes);
+        bool supportsActivation = false;
+        if (result == Success && bytes && type == XA_ATOM && format == 32) {
+            const auto* atoms = reinterpret_cast<const Atom*>(bytes);
+            for (unsigned long index = 0; index < count; ++index) {
+                supportsActivation = supportsActivation || atoms[index] == activeWindow;
+            }
+        }
+        if (bytes) {
+            XFree(bytes);
+        }
+        if (supportsActivation) {
+            // EWMH передаёт менеджеру запрос поднять и активировать окно вместе с его рамкой.
+            XEvent event = {};
+            event.xclient.type = ClientMessage;
+            event.xclient.window = handle;
+            event.xclient.message_type = activeWindow;
+            event.xclient.format = 32;
+            constexpr long WindowManagementSource = 2;
+            event.xclient.data.l[0] = WindowManagementSource;
+            event.xclient.data.l[1] = CurrentTime;
+            require(XSendEvent(display, root, False,
+                SubstructureRedirectMask | SubstructureNotifyMask, &event) != 0,
+                "Could not request rendering window activation.");
+        } else {
+            // Без поддержки EWMH используем базовые операции X11.
+            XRaiseWindow(display, handle);
+            XSetInputFocus(display, handle, RevertToPointerRoot, CurrentTime);
+        }
+        XSync(display, False);
+    }
+
     void focus(bool focused)
     {
         // PointerRoot позволяет менеджеру вернуть фокус окну под курсором.
@@ -309,8 +377,14 @@ void shutdown()
 }
 
 // Проверяем реальный задний буфер без зависимости от сцены и игрового рендера.
-void checkRendering()
+void checkRendering(NativeWindow& native, const char* stage)
 {
+    // Размеры снимка известны до показа окна; оконный буфер проверяется после фактического показа.
+    waitFor([&](const auto& state) { return native.isViewable() && !state.minimized; },
+        "The native window did not become viewable before rendering.");
+    native.activateForRendering();
+    waitFor([](const auto& state) { return state.focused && !state.minimized; },
+        "The rendering window did not become active.");
     const auto state = readState();
     glViewport(0, 0, state.width, state.height);
     glDrawBuffer(GL_BACK);
@@ -324,7 +398,25 @@ void checkRendering()
         std::array<GLubyte, 3> pixel = {};
         // glReadPixels ждёт завершения команд рисования до чтения результата.
         glReadPixels(state.width / 2, state.height / 2, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, pixel.data());
-        require(glGetError() == GL_NO_ERROR && pixel == color,
+        const GLenum renderError = glGetError();
+        if (renderError != GL_NO_ERROR || pixel != color) {
+            std::cerr << "Rendering check: " << stage
+                << "; client=" << state.width << "x" << state.height
+                << "; focused=" << state.focused << "; minimized=" << state.minimized
+                << "; sample=(" << state.width / 2 << ", " << state.height / 2 << ")"
+                << "; expected RGB=(" << static_cast<int>(color[0]) << ", "
+                << static_cast<int>(color[1]) << ", " << static_cast<int>(color[2]) << ")"
+                << "; actual RGB=(" << static_cast<int>(pixel[0]) << ", "
+                << static_cast<int>(pixel[1]) << ", " << static_cast<int>(pixel[2]) << ")"
+                << "; OpenGL error=" << renderError << '\n';
+            const auto* renderer = glGetString(GL_RENDERER);
+            const auto* version = glGetString(GL_VERSION);
+            std::cerr << "OpenGL renderer: "
+                << (renderer ? reinterpret_cast<const char*>(renderer) : "unavailable")
+                << "; version: "
+                << (version ? reinterpret_cast<const char*>(version) : "unavailable") << '\n';
+        }
+        require(renderError == GL_NO_ERROR && pixel == color,
             "The OpenGL back buffer does not contain the rendered color.");
         Platform::Error error;
         const bool presented = PlatformTest::checkOperation(Platform::present(error), error);
@@ -375,7 +467,7 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
     NativeWindow native(title);
     waitFor([](const auto& state) { return state.width == 400 && state.height == 300; },
         "Initial size is incorrect.");
-    checkRendering();
+    checkRendering(native, "initial window before minimize/keyboard scenario");
     if (keyboard) {
         EscapeInput input(native);
         native.focus(true);
@@ -430,7 +522,7 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
 #endif
         waitFor([](const auto& state) { return !state.minimized && state.width == 400 && state.height == 300; },
             "Restoration was not detected.");
-        checkRendering();
+        checkRendering(native, "after restore");
     }
     shutdown();
     return 0;
@@ -467,7 +559,7 @@ void runWindow(Platform::WindowOptions options, const std::string& title, bool e
         return state.width == options.width && state.height == options.height && !state.minimized
             && !Platform::isCloseRequested();
     }, "Initial client dimensions do not match the requested size.");
-    checkRendering();
+    checkRendering(native, "initial resizable window");
     native.checkMinimum(options);
     require(!Platform::initialize(options, startupErrors) && startupErrors.size() == 1
         && startupErrors.front().operation == "initialize",
@@ -491,7 +583,7 @@ void runWindow(Platform::WindowOptions options, const std::string& title, bool e
         "Reading the snapshot must not consume queued focus events.");
 #endif
     waitFor([](const auto& state) { return !state.focused; }, "Focus loss was not detected.");
-    checkRendering();
+    checkRendering(native, "after resize and focus restoration");
     if (externalDestroy) {
         native.destroy();
 #ifndef _WIN32

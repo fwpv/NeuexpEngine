@@ -501,9 +501,22 @@ void shutdown(std::vector<Error>& errors)
             openGLContext = nullptr;
         }
         if (window) {
-            XDestroyWindow(display, window);
-            if (!synchronize("XDestroyWindow", error)) {
-                errors.push_back(error);
+            // DestroyNotify может ожидать обработки, если окно удалил другой клиент X11.
+            XEvent destroyedEvent;
+            if (!XCheckTypedWindowEvent(display, window, DestroyNotify, &destroyedEvent)) {
+                const unsigned long destroySerial = NextRequest(display);
+                XDestroyWindow(display, window);
+                XSync(display, False);
+                // Окно могло исчезнуть между проверкой очереди и запросом удаления.
+                // Принимаем только BadWindow этого запроса и ресурса с подтверждённым DestroyNotify.
+                if (pendingError.error_code == BadWindow && pendingError.resourceid == window
+                    && pendingError.serial == destroySerial
+                    && XCheckTypedWindowEvent(display, window, DestroyNotify, &destroyedEvent)) {
+                    pendingError = {};
+                }
+                if (!takeError("XDestroyWindow", error)) {
+                    errors.push_back(error);
+                }
             }
             window = 0;
         }
