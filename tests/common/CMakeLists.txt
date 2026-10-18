@@ -55,7 +55,15 @@ add_test(NAME platform_window_minimize COMMAND platform_window_test minimize)
 add_test(NAME platform_keyboard COMMAND platform_window_test keyboard)
 set_tests_properties(platform_window platform_window_minimize platform_keyboard PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60 LABELS "display" RUN_SERIAL TRUE)
 
-set(TEST_TARGETS stb_image_test miniaudio_test platform_cleanup_test platform_validation_test platform_window_test)
+add_executable(platform_viewport_test platform_viewport_test.cpp)
+target_link_libraries(platform_viewport_test PRIVATE platform)
+if(WIN32)
+    target_compile_definitions(platform_viewport_test PRIVATE NOMINMAX)
+endif()
+add_test(NAME platform_viewport COMMAND platform_viewport_test)
+set_tests_properties(platform_viewport PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
+
+set(TEST_TARGETS stb_image_test miniaudio_test platform_cleanup_test platform_validation_test platform_window_test platform_viewport_test)
 
 # Одинаковый уровень предупреждений для тестовых программ.
 foreach(testTarget IN LISTS TEST_TARGETS)

@@ -29,6 +29,7 @@ bool windowClassRegistered = false;
 bool closeRequested = false;
 bool initialized = false;
 WindowState windowState;
+bool viewportNeedsUpdate = false;
 // Win32 использует таблицу из 256 виртуальных кодов клавиш; старший бит означает удержание.
 std::array<BYTE, 256> keyState = {};
 WindowOptions windowOptions;
@@ -111,8 +112,11 @@ LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARA
 
     // Эти сообщения уже содержат новое состояние: опрос ОС на каждом кадре не требуется.
     if (message == WM_SIZE) {
-        windowState.width = static_cast<int>(LOWORD(lParam));
-        windowState.height = static_cast<int>(HIWORD(lParam));
+        const int width = static_cast<int>(LOWORD(lParam));
+        const int height = static_cast<int>(HIWORD(lParam));
+        viewportNeedsUpdate = viewportNeedsUpdate || width != windowState.width || height != windowState.height;
+        windowState.width = width;
+        windowState.height = height;
         windowState.minimized = wParam == SIZE_MINIMIZED;
         if (windowState.minimized) {
             windowState.focused = false;
@@ -279,6 +283,7 @@ bool initializeWindows(const WindowOptions& options, Error& error)
     }
     windowState = { static_cast<int>(clientBounds.right - clientBounds.left),
         static_cast<int>(clientBounds.bottom - clientBounds.top), GetFocus() == window, IsIconic(window) != FALSE };
+    viewportNeedsUpdate = true;
     initialized = true;
     return processEvents(error);
 }
@@ -381,6 +386,11 @@ bool processEvents(Error& error)
         DispatchMessage(&message);
     }
 
+    // Область вывода занимает клиентскую область; матрицы игрового мира не меняются.
+    if (window && viewportNeedsUpdate) {
+        glViewport(0, 0, windowState.width, windowState.height);
+        viewportNeedsUpdate = false;
+    }
     // Обновляем снимок клавиатуры после обработки накопленных событий.
     // GetKeyboardState читает состояние очереди текущего потока; PeekMessage выше обновляет его.
     if (window && windowState.focused && !windowState.minimized) {
@@ -497,6 +507,7 @@ void shutdown(std::vector<Error>& errors)
     closeRequested = false;
     initialized = false;
     windowState = {};
+    viewportNeedsUpdate = false;
     keyState = {};
     windowOptions = {};
     minimumTrackWidth = 0;

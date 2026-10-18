@@ -28,6 +28,7 @@ bool handlersInstalled = false;
 bool initialized = false;
 bool closeRequested = false;
 WindowState windowState;
+bool viewportNeedsUpdate = false;
 // XQueryKeymap возвращает фиксированные 256 бит состояния клавиатуры.
 char keyMap[32] = {};
 Atom stateMessage = None;
@@ -289,6 +290,7 @@ bool initializeLinux(const WindowOptions& options, Error& error)
     if (!readInitialWindowState(error)) {
         return false;
     }
+    viewportNeedsUpdate = true;
     initialized = true;
     return processEvents(error);
 }
@@ -366,6 +368,8 @@ bool processEvents(Error& error)
             continue;
         }
         if (event.type == ConfigureNotify) {
+            viewportNeedsUpdate = viewportNeedsUpdate || event.xconfigure.width != windowState.width
+                || event.xconfigure.height != windowState.height;
             windowState.width = event.xconfigure.width;
             windowState.height = event.xconfigure.height;
         }
@@ -402,6 +406,11 @@ bool processEvents(Error& error)
     // Не запрашиваем свойство уже уничтоженного окна; несколько уведомлений объединяем в одно чтение.
     if (window && minimizedStateChanged && !updateMinimizedState(error)) {
         return false;
+    }
+    // Область вывода занимает клиентскую область; матрицы игрового мира не меняются.
+    if (window && viewportNeedsUpdate) {
+        glViewport(0, 0, windowState.width, windowState.height);
+        viewportNeedsUpdate = false;
     }
     // Один снимок на обработку событий вместо запроса сервера для каждой клавиши.
     if (window && windowState.focused && !windowState.minimized) {
@@ -545,5 +554,6 @@ void shutdown(std::vector<Error>& errors)
     initialized = false;
     closeRequested = false;
     windowState = {};
+    viewportNeedsUpdate = false;
 }
 }
