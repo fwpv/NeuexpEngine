@@ -5,3 +5,4 @@
 // Заголовки Windows уже подключены, поэтому макрос не меняет объявление системной функции.
 // Этот файл принудительно подключается только при компиляции тестовой копии платформы.
 #define wglMakeCurrent Platform::Testing::makeContextCurrent
+#define wglDeleteContext Platform::Testing::deleteContext
