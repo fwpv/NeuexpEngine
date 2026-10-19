@@ -53,6 +53,10 @@ sudo apt install build-essential cmake libx11-dev libgl1-mesa-dev
 
 ## Управление
 
+Подсистема событий, клавиатуры и мыши описана в [engine/INPUT.md](engine/INPUT.md).
+Демо ввода запускается как `build/input_demo.exe` в Windows или `build/input_demo` в Linux.
+Оно показывает состояния клавиш и мыши, переходы, колесо, фокус и ввод Unicode.
+
 | Действие | Клавиши |
 | --- | --- |
 | Перемещение | WASD или стрелки |

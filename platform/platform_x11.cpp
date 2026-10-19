@@ -1,16 +1,24 @@
 #include "platform.h"
 #include "window_validation.h"
+#include "key_codes.h"
+#include "detail/platform_input.h"
 
 // Xlib управляет окном и событиями, GLX связывает контекст OpenGL с X11.
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
+#include <X11/XKBlib.h>
 #include <GL/gl.h>
 #include <GL/glx.h>
 #include <cerrno>
 #include <cstdlib>
 #include <iostream>
+#include <array>
+#include <clocale>
+#include <cstring>
+#include <string>
+#include <utility>
 
 namespace Platform
 {
@@ -29,9 +37,193 @@ bool initialized = false;
 bool closeRequested = false;
 WindowState windowState;
 bool viewportNeedsUpdate = false;
-// XQueryKeymap возвращает фиксированные 256 бит состояния клавиатуры.
-char keyMap[32] = {};
+std::array<Key, 256> physicalKeys = {};
+XIM inputMethod = nullptr;
+XIC inputContext = nullptr;
+bool detectableRepeat = false;
+unsigned int numLockMask = 0;
+unsigned int altMask = Mod1Mask;
+unsigned int superMask = Mod4Mask;
+std::string previousLocale;
+std::string previousLocaleModifiers;
 Atom stateMessage = None;
+
+Engine::Modifiers readModifiers(unsigned int state)
+{
+    return { (state & ShiftMask) != 0, (state & ControlMask) != 0,
+        (state & altMask) != 0, (state & superMask) != 0,
+        (state & LockMask) != 0, (state & numLockMask) != 0 };
+}
+
+void changeFocus(bool focused)
+{
+    if (windowState.focused == focused) {
+        return;
+    }
+    windowState.focused = focused;
+    if (inputContext) {
+        if (focused) {
+            XSetICFocus(inputContext);
+        } else {
+            XUnsetICFocus(inputContext);
+            // Отменяем незавершённую композицию при уходе из окна.
+            char* discarded = Xutf8ResetIC(inputContext);
+            if (discarded) {
+                XFree(discarded);
+            }
+        }
+    }
+    Engine::Event event;
+    event.type = focused ? Engine::EventType::FocusGained : Engine::EventType::FocusLost;
+    if (focused) {
+        // FocusIn не содержит lock-флагов. Читаем их один раз при входе, не восстанавливая
+        // удержание клавиш из снимка и не опрашивая сервер на каждом кадре.
+        // XkbUseCoreKbd выбирает основную клавиатуру; Success подтверждает получение
+        // XkbStateRec. locked_mods содержит переключатели, а не удерживаемые модификаторы.
+        XkbStateRec state = {};
+        if (XkbGetState(display, XkbUseCoreKbd, &state) == Success) {
+            event.modifiers.capsLock = (state.locked_mods & LockMask) != 0;
+            event.modifiers.numLock = (state.locked_mods & numLockMask) != 0;
+        }
+    }
+    Detail::queueEvent(event);
+}
+
+bool readPhysicalKeys(Error& error)
+{
+    // XkbGetKeyboard возвращает описание основной клавиатуры. XkbAllComponentsMask
+    // запрашивает в том числе имена физических клавиш; nullptr означает отказ.
+    // Описание принадлежит вызывающему коду и освобождается XkbFreeKeyboard.
+    XkbDescPtr keyboard = XkbGetKeyboard(display, XkbAllComponentsMask, XkbUseCoreKbd);
+    if (!keyboard || !keyboard->names || !keyboard->names->keys) {
+        if (keyboard) {
+            XkbFreeKeyboard(keyboard, XkbAllComponentsMask, True);
+        }
+        error = { "XkbGetKeyboard", "Physical keyboard names are unavailable.", std::nullopt };
+        return false;
+    }
+    physicalKeys.fill(Key::Unknown);
+    for (unsigned int code = keyboard->min_key_code; code <= keyboard->max_key_code; ++code) {
+        for (const auto& mapping : Detail::KeyMappings) {
+            // XKB хранит имя в четырёх байтах без обязательного завершающего нуля.
+            if (std::strncmp(keyboard->names->keys[code].name, mapping.xName, XkbKeyNameLength) == 0) {
+                physicalKeys[code] = mapping.key;
+                break;
+            }
+        }
+    }
+    XkbFreeKeyboard(keyboard, XkbAllComponentsMask, True);
+    // XkbKeysymToModifiers переводит символ в маску модификатора текущей карты.
+    // Ноль означает, что символ не назначен модификатору; AltGr также учитывается как Alt.
+    numLockMask = XkbKeysymToModifiers(display, XK_Num_Lock);
+    altMask = XkbKeysymToModifiers(display, XK_Alt_L) | XkbKeysymToModifiers(display, XK_Alt_R)
+        | XkbKeysymToModifiers(display, XK_ISO_Level3_Shift);
+    superMask = XkbKeysymToModifiers(display, XK_Super_L) | XkbKeysymToModifiers(display, XK_Super_R);
+    return true;
+}
+
+void readText(XKeyEvent& keyEvent)
+{
+    // Xutf8LookupString поддерживает раскладки, dead keys и подтверждение через XIM.
+    // При переполнении Xlib сообщает точный размер; фиксированного ограничения текста нет.
+    std::string text(32, '\0');
+    Status status = 0;
+    KeySym symbol = NoSymbol;
+    int length = Xutf8LookupString(inputContext, &keyEvent, text.data(),
+        static_cast<int>(text.size()), &symbol, &status);
+    if (status == XBufferOverflow) {
+        text.resize(static_cast<std::size_t>(length));
+        length = Xutf8LookupString(inputContext, &keyEvent, text.data(), length, &symbol, &status);
+    }
+    if ((status == XLookupChars || status == XLookupBoth) && length > 0) {
+        text.resize(static_cast<std::size_t>(length));
+        // Управляющие ASCII приходят через события клавиш; UTF-8 байты сохраняются без изменений.
+        if (static_cast<unsigned char>(text.front()) >= 0x20 && text.front() != '\x7f') {
+            Engine::Event event;
+            event.type = Engine::EventType::TextInput;
+            event.text = std::move(text);
+            event.modifiers = readModifiers(keyEvent.state);
+            Detail::queueEvent(event);
+        }
+    }
+}
+
+void handleInput(XEvent& native, bool filtered)
+{
+    using Engine::EventType;
+    using Engine::MouseButton;
+    Engine::Event event;
+    if (native.type == KeyPress || native.type == KeyRelease) {
+        if (!windowState.focused) {
+            return;
+        }
+        event.type = native.type == KeyPress ? EventType::KeyPressed : EventType::KeyReleased;
+        event.key = physicalKeys[native.xkey.keycode & 255U];
+        event.modifiers = readModifiers(native.xkey.state);
+        // state относится к состоянию ДО события. Для модификатора добавляем сам переход.
+        const bool down = native.type == KeyPress;
+        if (event.key == Key::LeftShift || event.key == Key::RightShift) { event.modifiers.shift = down; }
+        if (event.key == Key::LeftControl || event.key == Key::RightControl) { event.modifiers.control = down; }
+        if (event.key == Key::LeftAlt || event.key == Key::RightAlt) { event.modifiers.alt = down; }
+        if (event.key == Key::LeftSuper || event.key == Key::RightSuper) { event.modifiers.super = down; }
+        if (down && event.key == Key::CapsLock) { event.modifiers.capsLock = !event.modifiers.capsLock; }
+        if (down && event.key == Key::NumLock) { event.modifiers.numLock = !event.modifiers.numLock; }
+        Detail::queueEvent(event);
+        if (down && !filtered) {
+            readText(native.xkey);
+        }
+        return;
+    }
+    if (filtered) {
+        return;
+    }
+    if (native.type == MotionNotify) {
+        event.type = EventType::MouseMoved;
+        event.x = native.xmotion.x;
+        event.y = native.xmotion.y;
+        event.modifiers = readModifiers(native.xmotion.state);
+    } else if (native.type == EnterNotify || native.type == LeaveNotify) {
+        event.type = native.type == EnterNotify ? EventType::MouseEntered : EventType::MouseLeft;
+        event.x = native.xcrossing.x;
+        event.y = native.xcrossing.y;
+        event.modifiers = readModifiers(native.xcrossing.state);
+        // NotifyGrab/NotifyUngrab не являются физическим пересечением границы окна.
+        if (native.xcrossing.mode != NotifyNormal) {
+            return;
+        }
+    } else if (native.type == ButtonPress || native.type == ButtonRelease) {
+        event.x = native.xbutton.x;
+        event.y = native.xbutton.y;
+        event.modifiers = readModifiers(native.xbutton.state);
+        const unsigned int button = native.xbutton.button;
+        if (button >= 4 && button <= 7) {
+            // В core X11 колесо представлено парами кнопок; отпускание не означает второй шаг.
+            if (native.type == ButtonRelease) {
+                return;
+            }
+            event.type = EventType::MouseWheel;
+            event.wheelY = button == 4 ? 1 : button == 5 ? -1 : 0;
+            event.wheelX = button == 7 ? 1 : button == 6 ? -1 : 0;
+        } else {
+            if (!windowState.focused) {
+                return;
+            }
+            event.type = native.type == ButtonPress ? EventType::MousePressed : EventType::MouseReleased;
+            switch (button) {
+                case 1: event.button = MouseButton::Left; break;
+                case 2: event.button = MouseButton::Middle; break;
+                case 3: event.button = MouseButton::Right; break;
+                case 8: event.button = MouseButton::Back; break;
+                case 9: event.button = MouseButton::Forward; break;
+                default: event.button = MouseButton::Unknown; break;
+            }
+        }
+    } else {
+        // Остальные события обслуживаются оконной частью processEvents и фильтром XIM.
+        return;
+    }
+    Detail::queueEvent(event);
+}
 
 // Обработчик не выделяет память и не вызывает Xlib: сохраняет первую ещё не разобранную ошибку.
 // Все вызовы платформы и разбор ошибок выполняются в одном, главном потоке.
@@ -126,9 +318,12 @@ bool updateMinimizedState(Error& error)
         error = { "XGetWindowProperty (WM_STATE)", "Could not read the window state.", result };
         return false;
     }
+    if (windowState.minimized != minimized) {
+        Detail::queueEvent(minimized ? Engine::EventType::WindowMinimized : Engine::EventType::WindowRestored);
+    }
     windowState.minimized = minimized;
     if (minimized) {
-        windowState.focused = false;
+        changeFocus(false);
     }
     return true;
 }
@@ -167,6 +362,7 @@ bool applyWindowTitle(const std::string& title, Error& error)
 
 bool initializeLinux(const WindowOptions& options, Error& error)
 {
+    Detail::resetInput();
     const int width = options.width;
     const int height = options.height;
 
@@ -210,7 +406,9 @@ bool initializeLinux(const WindowOptions& options, Error& error)
 
     XSetWindowAttributes settings = {};
     settings.colormap = colorMap;
-    settings.event_mask = KeyPressMask | StructureNotifyMask | FocusChangeMask | PropertyChangeMask;
+    settings.event_mask = KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask
+        | PointerMotionMask | EnterWindowMask | LeaveWindowMask
+        | StructureNotifyMask | FocusChangeMask | PropertyChangeMask;
     // Маска указывает, какие поля settings используются при создании окна InputOutput.
     // XCreateWindow принимает беззнаковые размеры; положительность проверена до открытия дисплея.
     window = XCreateWindow(display, RootWindow(display, visual->screen), 100, 100,
@@ -262,6 +460,52 @@ bool initializeLinux(const WindowOptions& options, Error& error)
         return false;
     }
 
+    if (!readPhysicalKeys(error)) {
+        XFree(visual);
+        return false;
+    }
+    // Detectable autorepeat оставляет только повторные KeyPress, без искусственного
+    // KeyRelease перед каждым повтором. True запрашивает режим для этого соединения,
+    // repeatSupported сообщает поддержку сервером; иначе processEvents разбирает пары вручную.
+    Bool repeatSupported = False;
+    detectableRepeat = XkbSetDetectableAutoRepeat(display, True, &repeatSupported) && repeatSupported;
+    // LC_CTYPE определяет правила ввода символов. Пустая строка выбирает локаль окружения,
+    // nullptr читает текущую; копия нужна для восстановления после завершения платформы.
+    previousLocale = std::setlocale(LC_CTYPE, nullptr);
+    // XSetLocaleModifiers задаёт настройки XIM: nullptr читает текущие модификаторы,
+    // пустая строка выбирает XMODIFIERS из окружения, например сервер IBus/Fcitx.
+    const char* oldModifiers = XSetLocaleModifiers(nullptr);
+    previousLocaleModifiers = oldModifiers ? oldModifiers : "";
+    std::setlocale(LC_CTYPE, "");
+    XSetLocaleModifiers("");
+    // XOpenIM открывает метод ввода (XIM), связанный с display. Остальные nullptr
+    // отключают базу ресурсов и имена приложения для неё. При отказе возвращается nullptr.
+    inputMethod = XOpenIM(display, nullptr, nullptr, nullptr);
+    if (!inputMethod) {
+        // Локальный XIM обеспечивает Compose/dead keys, если внешний сервер ввода недоступен.
+        XSetLocaleModifiers("@im=none");
+        inputMethod = XOpenIM(display, nullptr, nullptr, nullptr);
+    }
+    if (inputMethod) {
+        // XCreateIC создаёт контекст ввода (XIC) для окна; аргументы идут парами имя/значение.
+        // XNInputStyle задаёт способ отображения незавершённой композиции и статуса:
+        // XIMPreeditNothing/XIMStatusNothing оставляют их отображение методу ввода.
+        // XNClientWindow — окно-владелец контекста, XNFocusWindow — получатель ввода.
+        // nullptr завершает список. При отказе возвращается nullptr; успешный контекст
+        // освобождается XDestroyIC до XCloseIM, закрывающего сам метод ввода.
+        inputContext = XCreateIC(inputMethod, XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
+            XNClientWindow, window, XNFocusWindow, window, nullptr);
+    }
+    if (!inputContext) {
+        error = { "XCreateIC", "Could not create the Unicode input context. Check LC_CTYPE and XIM.", std::nullopt };
+        XFree(visual);
+        return false;
+    }
+    // XNFilterEvents сообщает маску событий, нужных методу ввода. Добавляем её к событиям
+    // приложения: XFilterEvent должен получать эти сообщения для обработки композиции.
+    long filterMask = 0;
+    XGetICValues(inputContext, XNFilterEvents, &filterMask, nullptr);
+    XSelectInput(display, window, settings.event_mask | filterMask);
     XMapWindow(display, window);
     if (!synchronize("XMapWindow", error)) {
         XFree(visual);
@@ -289,6 +533,10 @@ bool initializeLinux(const WindowOptions& options, Error& error)
     }
     if (!readInitialWindowState(error)) {
         return false;
+    }
+    if (windowState.focused) {
+        windowState.focused = false;
+        changeFocus(true);
     }
     viewportNeedsUpdate = true;
     initialized = true;
@@ -345,6 +593,14 @@ bool setWindowTitle(const std::string& title, Error& error)
 
 bool processEvents(Error& error)
 {
+    // Публикуем и при ошибке уже полученные события; следующий вызов начинает новый кадр.
+    struct FramePublisher
+    {
+        ~FramePublisher()
+        {
+            Detail::finishInputFrame();
+        }
+    } publisher;
     if (initialized && closeRequested && !window) {
         return true;
     }
@@ -359,17 +615,39 @@ bool processEvents(Error& error)
     while (XPending(display)) {
         XEvent event;
         XNextEvent(display, &event);
+        // Старые серверы имитируют autorepeat парой Release/Press с одним временем.
+        // Убираем только искусственный Release; следующий Press сохраняется как repeat.
+        if (!detectableRepeat && event.type == KeyRelease && XPending(display)) {
+            XEvent next;
+            XPeekEvent(display, &next);
+            if (next.type == KeyPress && next.xkey.window == event.xkey.window
+                && next.xkey.keycode == event.xkey.keycode && next.xkey.time == event.xkey.time) {
+                continue;
+            }
+        }
+        const bool filtered = XFilterEvent(&event, None) != False;
         if (event.type == MappingNotify) {
             // После смены раскладки Xlib должен обновить соответствие KeySym и KeyCode.
             XRefreshKeyboardMapping(&event.xmapping);
+            if (!readPhysicalKeys(error)) {
+                return false;
+            }
         }
         // События чужих окон не должны менять состояние единственного окна движка.
         if (!window || event.xany.window != window) {
             continue;
         }
+        handleInput(event, filtered);
         if (event.type == ConfigureNotify) {
             viewportNeedsUpdate = viewportNeedsUpdate || event.xconfigure.width != windowState.width
                 || event.xconfigure.height != windowState.height;
+            if (windowState.width != event.xconfigure.width || windowState.height != event.xconfigure.height) {
+                Engine::Event resized;
+                resized.type = Engine::EventType::WindowResized;
+                resized.width = event.xconfigure.width;
+                resized.height = event.xconfigure.height;
+                Detail::queueEvent(resized);
+            }
             windowState.width = event.xconfigure.width;
             windowState.height = event.xconfigure.height;
         }
@@ -377,30 +655,39 @@ bool processEvents(Error& error)
             // Захват мыши/клавиатуры не означает смены фокуса самого окна.
             if (event.xfocus.mode != NotifyGrab && event.xfocus.mode != NotifyUngrab
                 && event.xfocus.detail != NotifyInferior) {
-                windowState.focused = event.type == FocusIn && !windowState.minimized;
+                changeFocus(event.type == FocusIn && !windowState.minimized);
             }
         }
         if (event.type == UnmapNotify) {
-            windowState.focused = false;
+            changeFocus(false);
         }
         if (event.type == MapNotify) {
+            if (windowState.minimized) {
+                Detail::queueEvent(Engine::EventType::WindowRestored);
+            }
             windowState.minimized = false;
         }
         if (event.type == PropertyNotify && event.xproperty.atom == stateMessage) {
             minimizedStateChanged = true;
         }
         if (event.type == DestroyNotify && event.xdestroywindow.window == window) {
+            changeFocus(false);
+            Detail::queueEvent(Engine::EventType::WindowDestroyed);
             windowState.width = 0;
             windowState.height = 0;
             windowState.focused = false;
             windowState.minimized = false;
             window = 0; // Не уничтожаем уже удалённое сервером окно второй раз.
+            if (!closeRequested) {
+                Detail::queueEvent(Engine::EventType::CloseRequested);
+            }
             closeRequested = true;
         }
         if (event.type == ClientMessage && event.xclient.window == window
             && event.xclient.message_type == protocolsMessage && event.xclient.format == 32
             && static_cast<Atom>(event.xclient.data.l[0]) == closeMessage) {
             closeRequested = true;
+            Detail::queueEvent(Engine::EventType::CloseRequested);
         }
     }
     // Не запрашиваем свойство уже уничтоженного окна; несколько уведомлений объединяем в одно чтение.
@@ -412,10 +699,6 @@ bool processEvents(Error& error)
         glViewport(0, 0, windowState.width, windowState.height);
         viewportNeedsUpdate = false;
     }
-    // Один снимок на обработку событий вместо запроса сервера для каждой клавиши.
-    if (window && windowState.focused && !windowState.minimized) {
-        XQueryKeymap(display, keyMap);
-    }
     // Ошибка имеет приоритет над запросом закрытия, если они пришли в одной очереди.
     return takeError("processEvents", error);
 }
@@ -424,54 +707,6 @@ bool isCloseRequested()
 {
     return initialized && closeRequested;
 }
-
-bool isKeyDown(Key key)
-{
-    if (!initialized || !window || !windowState.focused || windowState.minimized) {
-        return false;
-    }
-    KeySym nativeKey = 0;
-    switch (key) {
-        case Key::ArrowUp:
-            nativeKey = XK_Up;
-            break;
-        case Key::ArrowDown:
-            nativeKey = XK_Down;
-            break;
-        case Key::ArrowLeft:
-            nativeKey = XK_Left;
-            break;
-        case Key::ArrowRight:
-            nativeKey = XK_Right;
-            break;
-        case Key::W:
-            nativeKey = XK_w;
-            break;
-        case Key::A:
-            nativeKey = XK_a;
-            break;
-        case Key::S:
-            nativeKey = XK_s;
-            break;
-        case Key::D:
-            nativeKey = XK_d;
-            break;
-        case Key::Space:
-            nativeKey = XK_space;
-            break;
-        case Key::Escape:
-            nativeKey = XK_Escape;
-            break;
-        default:
-            return false;
-    }
-    const KeyCode code = XKeysymToKeycode(display, nativeKey);
-    if (code == 0) {
-        return false;
-    }
-    return (keyMap[code / 8] & (1 << (code % 8))) != 0;
-}
-
 
 bool present(Error& error)
 {
@@ -494,6 +729,14 @@ void shutdown(std::vector<Error>& errors)
     errors.clear();
     if (display) {
         Error error;
+        if (inputContext) {
+            XDestroyIC(inputContext);
+            inputContext = nullptr;
+        }
+        if (inputMethod) {
+            XCloseIM(inputMethod);
+            inputMethod = nullptr;
+        }
         // Сначала сохраняем отложенную ошибку работы, чтобы не приписать её очистке.
         if (!synchronize("pending X11 requests before shutdown", error)) {
             errors.push_back(error);
@@ -558,5 +801,17 @@ void shutdown(std::vector<Error>& errors)
     closeRequested = false;
     windowState = {};
     viewportNeedsUpdate = false;
+    physicalKeys.fill(Key::Unknown);
+    detectableRepeat = false;
+    numLockMask = 0;
+    altMask = Mod1Mask;
+    superMask = Mod4Mask;
+    if (!previousLocale.empty()) {
+        std::setlocale(LC_CTYPE, previousLocale.c_str());
+        previousLocale.clear();
+        XSetLocaleModifiers(previousLocaleModifiers.c_str());
+        previousLocaleModifiers.clear();
+    }
+    Detail::resetInput();
 }
 }
