@@ -479,7 +479,8 @@ void shutdown(std::vector<Error>& errors)
         timerResolutionEnabled = false;
     }
     if (openGLContext) {
-        if (!wglMakeCurrent(nullptr, nullptr)) {
+        // После отказа активации контекст может не быть текущим: отсоединять тогда нечего.
+        if (wglGetCurrentContext() == openGLContext && !wglMakeCurrent(nullptr, nullptr)) {
             errors.push_back(windowsError("wglMakeCurrent (detach)", "Could not detach the OpenGL context.", GetLastError()));
         }
         if (!wglDeleteContext(openGLContext)) {

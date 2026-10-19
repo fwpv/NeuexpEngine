@@ -137,8 +137,8 @@ struct NativeWindow
         require(SetWindowPos(handle, HWND_TOP, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW) != FALSE,
             "Could not raise the rendering window.");
-        require(SetForegroundWindow(handle) != FALSE,
-            "Could not activate the rendering window.");
+        // Windows может запретить перевод в foreground; фокус проверяется по состоянию окна.
+        SetForegroundWindow(handle);
         SetFocus(handle);
     }
 
