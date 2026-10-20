@@ -44,7 +44,8 @@ enum class EventType
     KeyPressed, KeyReleased, TextInput,
     MouseMoved, MousePressed, MouseReleased, MouseWheel, MouseEntered, MouseLeft,
     MouseCaptureLost, FocusGained, FocusLost, WindowResized, WindowMinimized,
-    WindowRestored, CloseRequested, WindowDestroyed
+    WindowRestored, CloseRequested, WindowDestroyed,
+    LockStateChanged // Изменились capsLock/numLock; остальные поля modifiers не используются.
 };
 
 // Поля читаются согласно type; остальные имеют нулевое значение.

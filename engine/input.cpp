@@ -71,6 +71,10 @@ void InputState::releaseButtons(const Event& cause, bool keyboard)
 
 void InputState::handleEvent(Event event)
 {
+    if (event.type == EventType::LockStateChanged) {
+        modifierState.capsLock = event.modifiers.capsLock;
+        modifierState.numLock = event.modifiers.numLock;
+    }
     if (event.type == EventType::KeyPressed || event.type == EventType::KeyReleased) {
         auto* state = findState(keys, event.key);
         if (event.type == EventType::KeyPressed) {

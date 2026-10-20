@@ -209,6 +209,29 @@ void cancellationAndText()
             && input.events().back().time == 15, "Window event payload was lost.");
     }
 }
+
+void lockStates()
+{
+    InputState input;
+    input.handleEvent(keyEvent(EventType::KeyPressed, Key::LeftShift));
+    Event changed;
+    changed.type = EventType::LockStateChanged;
+    changed.modifiers.capsLock = true;
+    changed.modifiers.numLock = true;
+    input.handleEvent(changed);
+    require(input.modifiers().capsLock && input.modifiers().numLock && input.modifiers().shift,
+        "Lock notification must preserve held modifiers.");
+    require(input.key(Key::LeftShift).down && !input.key(Key::CapsLock).down,
+        "Lock notification fabricated physical key states.");
+    input.beginFrame();
+    require(input.modifiers().capsLock && input.modifiers().numLock, "Locks expired at frame boundary.");
+    changed.modifiers = {};
+    input.handleEvent(changed);
+    require(!input.modifiers().capsLock && !input.modifiers().numLock && input.modifiers().shift,
+        "Unlock notification changed unrelated modifiers.");
+    require(input.events().size() == 1 && input.events().front().type == EventType::LockStateChanged,
+        "Lock notification was not preserved.");
+}
 }
 
 int main()
@@ -218,6 +241,7 @@ int main()
         modifiersAndFocus();
         mouse();
         cancellationAndText();
+        lockStates();
         std::cout << "Input state checks passed.\n";
         return 0;
     } catch (const std::exception& error) {

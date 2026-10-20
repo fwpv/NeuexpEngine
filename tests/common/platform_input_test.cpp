@@ -8,6 +8,7 @@
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <X11/XKBlib.h>
+#include <X11/Xproto.h>
 #endif
 
 #include <algorithm>
@@ -32,6 +33,45 @@ bool commitArmed = false;
 bool filterNextKey = false;
 bool legacyRepeat = false;
 unsigned int closedDisplays = 0;
+
+// Поиск затрагивает чужие окна: они могут исчезнуть после XQueryTree.
+// Подмена обработчика действует только во время поиска и только для BadWindow
+// от чтения свойств/дерева на тестовом соединении. Остальные ошибки не скрываются.
+class WindowLookupErrors
+{
+public:
+    explicit WindowLookupErrors(Display* display)
+        : display(display)
+    {
+        XSync(display, False);
+        previous = XSetErrorHandler(handle);
+        active = this;
+    }
+
+    ~WindowLookupErrors()
+    {
+        XSync(display, False);
+        XSetErrorHandler(previous);
+        active = nullptr;
+    }
+
+    WindowLookupErrors(const WindowLookupErrors&) = delete;
+    WindowLookupErrors& operator=(const WindowLookupErrors&) = delete;
+
+private:
+    static int handle(Display* display, XErrorEvent* error)
+    {
+        if (display == active->display && error->error_code == BadWindow
+            && (error->request_code == X_GetProperty || error->request_code == X_QueryTree)) {
+            return 0;
+        }
+        return active->previous(display, error);
+    }
+
+    Display* display;
+    XErrorHandler previous = nullptr;
+    inline static WindowLookupErrors* active = nullptr;
+};
 }
 // Счётчик остаётся в тесте: проверяем закрытие соединения при отказе конструктора.
 extern "C" int __real_XCloseDisplay(Display*);
@@ -39,6 +79,33 @@ extern "C" int __wrap_XCloseDisplay(Display* display)
 {
     ++closedDisplays;
     return __real_XCloseDisplay(display);
+}
+
+// Доставляем уведомление XKB через очередь тестового окна, не меняя глобальные
+// CapsLock/NumLock рабочего стола. Рабочая библиотека не содержит тестовых ветвей.
+extern "C" int __real_XNextEvent(Display*, XEvent*);
+extern "C" int __wrap_XNextEvent(Display* display, XEvent* event)
+{
+    const int result = __real_XNextEvent(display, event);
+    if (event->type == ClientMessage
+        && event->xclient.message_type == XInternAtom(display, "ENGINE_TEST_LOCK_STATE", False)) {
+        int opcode = 0;
+        int eventBase = 0;
+        int errorBase = 0;
+        int major = XkbMajorVersion;
+        int minor = XkbMinorVersion;
+        XkbQueryExtension(display, &opcode, &eventBase, &errorBase, &major, &minor);
+        XkbEvent keyboardEvent = {};
+        keyboardEvent.state.type = eventBase;
+        keyboardEvent.state.display = display;
+        keyboardEvent.state.xkb_type = XkbStateNotify;
+        keyboardEvent.state.device = XkbUseCoreKbd;
+        keyboardEvent.state.changed = XkbModifierLockMask;
+        keyboardEvent.state.locked_mods = static_cast<unsigned int>(event->xclient.data.l[0]);
+        static_assert(sizeof(keyboardEvent) <= sizeof(*event));
+        std::memcpy(event, &keyboardEvent, sizeof(keyboardEvent));
+    }
+    return result;
 }
 
 extern "C" Bool __real_XkbSetDetectableAutoRepeat(Display*, Bool, Bool*);
@@ -203,11 +270,25 @@ struct NativeInput
 
     Window findWindow(Window root, const char* expectedTitle)
     {
-        // XFetchName выделяет строку заголовка в Xlib; освобождение выполняет XFree.
-        char* title = nullptr;
-        XFetchName(display, root, &title);
-        const bool found = title && std::strcmp(title, expectedTitle) == 0;
-        if (title) { XFree(title); }
+        // Тест однопоточный; рекурсия выполняется под одним временным обработчиком.
+        WindowLookupErrors lookupErrors(display);
+        return findWindowInTree(root, expectedTitle);
+    }
+
+    Window findWindowInTree(Window root, const char* expectedTitle)
+    {
+        // XGetWMName читает WM_NAME вместе с кодировкой и длиной.
+        // Платформа записывает UTF8_STRING: XFetchName для свойства STRING
+        // не подходит, даже когда сам заголовок содержит только ASCII.
+        XTextProperty title = {};
+        const bool titleRead = XGetWMName(display, root, &title) != 0;
+        const Atom utf8 = XInternAtom(display, "UTF8_STRING", False);
+        const std::size_t expectedLength = std::strlen(expectedTitle);
+        const bool found = titleRead && title.value && title.encoding == utf8
+            && title.format == 8 && title.nitems == expectedLength
+            && std::memcmp(title.value, expectedTitle, expectedLength) == 0;
+        // Xlib выделяет value; освобождаем его и при неподходящем заголовке.
+        if (title.value) { XFree(title.value); }
         if (found) { return root; }
         Window parent = None;
         Window actualRoot = None;
@@ -216,7 +297,7 @@ struct NativeInput
         Window result = None;
         if (XQueryTree(display, root, &actualRoot, &parent, &children, &count)) {
             for (unsigned int index = 0; index < count && result == None; ++index) {
-                result = findWindow(children[index], expectedTitle);
+                result = findWindowInTree(children[index], expectedTitle);
             }
         }
         if (children) { XFree(children); }
@@ -410,6 +491,23 @@ void keyboard(NativeInput& native)
         native.frame();
         if (!Platform::isKeyPressed(item.first) || !Platform::isKeyDown(item.first)) {
             std::cerr << "Key mapping failed: expected=" << static_cast<int>(item.first) << " native=" << item.second << '\n';
+            if (const auto* received = findEvent(EventType::KeyPressed)) {
+                std::cerr << "Received engine key=" << static_cast<int>(received->key) << '\n';
+            }
+#ifndef _WIN32
+            // Имя из реальной карты помогает отличить ошибку преобразования
+            // от выбора другой физической позиции через XKeysymToKeycode.
+            XkbDescPtr keyboard = XkbGetKeyboard(native.display, XkbAllComponentsMask, XkbUseCoreKbd);
+            const KeyCode code = XKeysymToKeycode(native.display, item.second);
+            if (keyboard && keyboard->names && keyboard->names->keys
+                && code >= keyboard->min_key_code && code <= keyboard->max_key_code) {
+                std::cerr << "XKB keycode=" << static_cast<unsigned int>(code)
+                    << " name=" << std::string(keyboard->names->keys[code].name, XkbKeyNameLength) << '\n';
+            }
+            if (keyboard) {
+                XkbFreeKeyboard(keyboard, XkbAllComponentsMask, True);
+            }
+#endif
             throw std::runtime_error("Physical key mapping failed.");
         }
         native.key(item.second, false);
@@ -584,6 +682,10 @@ void text(NativeInput& native)
     native.send(WM_CHAR, '\t', 1);
     native.frame();
     require(Platform::getInput().text() == "xxx", "Character repeat/control handling failed.");
+    native.send(WM_UNICHAR, 'x', 3);
+    native.send(WM_UNICHAR, 0x1f642, 2);
+    native.frame();
+    require(Platform::getInput().text() == u8"xxx🙂🙂", "WM_UNICHAR repeat count was ignored.");
     native.send(WM_CHAR, 0xd800, 1);
     native.frame();
     native.focus(false);
@@ -606,6 +708,17 @@ void text(NativeInput& native)
     native.key(XK_a, false);
     native.frame();
     require(Platform::getInput().text() == pendingCommit && !commitArmed, "XIM Unicode/overflow commit was lost.");
+    pendingCommit = u8"Подтверждённый текст";
+    commitArmed = true;
+    XEvent committed = {};
+    committed.xkey.type = KeyPress;
+    committed.xkey.keycode = 0;
+    native.send(committed, KeyPressMask);
+    native.frame();
+    require(!commitArmed && Platform::getInput().text() == pendingCommit,
+        "XIM keycode zero did not deliver committed text.");
+    require(!findEvent(EventType::KeyPressed) && !findEvent(EventType::KeyReleased),
+        "XIM commit became a physical key transition.");
     native.key(XK_a, true);
     native.key(XK_a, false);
     native.frame();
@@ -619,17 +732,90 @@ void text(NativeInput& native)
     require(Platform::getInput().text().empty(), "Text did not expire.");
 }
 
+#ifndef _WIN32
+void lockStates(NativeInput& native)
+{
+    const auto notify = [&](unsigned int modifiers) {
+        XEvent event = {};
+        event.xclient.type = ClientMessage;
+        event.xclient.message_type = XInternAtom(native.display, "ENGINE_TEST_LOCK_STATE", False);
+        event.xclient.format = 32;
+        event.xclient.data.l[0] = static_cast<long>(modifiers);
+        native.send(event, NoEventMask);
+        native.frame();
+    };
+    const unsigned int numLock = XkbKeysymToModifiers(native.display, XK_Num_Lock);
+    require(numLock != 0, "NumLock mask is unavailable.");
+    notify(0);
+    // Сама физическая клавиша не определяет действие XKB: она могла быть переназначена.
+    native.key(XK_Caps_Lock, true);
+    native.key(XK_Caps_Lock, false);
+    native.frame();
+    require(!Platform::getInput().modifiers().capsLock, "Physical CapsLock fabricated a lock change.");
+    notify(LockMask);
+    require(Platform::getInput().modifiers().capsLock && !Platform::getInput().modifiers().numLock,
+        "XKB CapsLock notification was lost.");
+    // Снятие блокировки приходит после отпускания, отдельным уведомлением.
+    native.key(XK_Caps_Lock, true);
+    native.key(XK_Caps_Lock, false);
+    native.frame();
+    require(Platform::getInput().modifiers().capsLock, "CapsLock changed before XKB notification.");
+    notify(numLock);
+    const auto* changed = findEvent(EventType::LockStateChanged);
+    require(changed && !changed->modifiers.capsLock && changed->modifiers.numLock
+        && !Platform::getInput().modifiers().capsLock && Platform::getInput().modifiers().numLock,
+        "XKB unlock/NumLock state was not published.");
+    native.motion(50, 50);
+    native.frame();
+    require(Platform::getInput().modifiers().numLock, "Mouse state overwrote XKB lock state.");
+    notify(0);
+    require(!Platform::getInput().modifiers().numLock, "NumLock release notification was lost.");
+    // Возвращаем тестовую модель к реальному состоянию, не меняя состояние сервера.
+    XkbStateRec actual = {};
+    require(XkbGetState(native.display, XkbUseCoreKbd, &actual) == Success, "Could not read keyboard locks.");
+    notify(actual.locked_mods);
+}
+#endif
+
 void windowEvents(NativeInput& native)
 {
+    constexpr int ResizedWidth = 450;
+    constexpr int ResizedHeight = 320;
+    constexpr auto ResizeTimeout = std::chrono::seconds(3);
+    constexpr auto ResizePollInterval = std::chrono::milliseconds(10);
 #ifdef _WIN32
     // Синхронные сообщения не должны пропасть при начале следующего кадра.
-    SendMessageW(native.window, WM_SIZE, SIZE_RESTORED, MAKELPARAM(450, 320));
+    SendMessageW(native.window, WM_SIZE, SIZE_RESTORED, MAKELPARAM(ResizedWidth, ResizedHeight));
 #else
-    XResizeWindow(native.display, native.window, 450, 320);
+    XResizeWindow(native.display, native.window, ResizedWidth, ResizedHeight);
 #endif
-    native.frame();
-    const auto* resized = findEvent(EventType::WindowResized);
-    require(resized && resized->width == 450 && resized->height == 320, "Resize event payload was lost.");
+    // XSync подтверждает обработку запроса сервером, но оконный менеджер
+    // выполняет перенаправленный запрос размера через собственное соединение.
+    // Проверяем события каждого кадра до срока, включая промежуточные размеры.
+    // Снимок состояния не заменяет проверку полезных данных самого события.
+    const auto deadline = std::chrono::steady_clock::now() + ResizeTimeout;
+    bool resized = false;
+    int lastWidth = 0;
+    int lastHeight = 0;
+    do {
+        native.frame();
+        for (const auto& event : Platform::getEvents()) {
+            if (event.type == EventType::WindowResized) {
+                lastWidth = event.width;
+                lastHeight = event.height;
+                resized = resized || (event.width == ResizedWidth && event.height == ResizedHeight);
+            }
+        }
+        if (resized) {
+            break;
+        }
+        std::this_thread::sleep_for(ResizePollInterval);
+    } while (std::chrono::steady_clock::now() < deadline);
+    if (!resized) {
+        std::cerr << "Resize event timeout: expected=" << ResizedWidth << 'x' << ResizedHeight
+            << " last event=" << lastWidth << 'x' << lastHeight << '\n';
+    }
+    require(resized, "Resize event payload was lost.");
 #ifdef _WIN32
     native.send(WM_SIZE, SIZE_MINIMIZED, 0);
 #else
@@ -641,7 +827,7 @@ void windowEvents(NativeInput& native)
     native.frame();
     require(findEvent(EventType::WindowMinimized), "Minimize event was lost.");
 #ifdef _WIN32
-    native.send(WM_SIZE, SIZE_RESTORED, MAKELPARAM(450, 320));
+    native.send(WM_SIZE, SIZE_RESTORED, MAKELPARAM(ResizedWidth, ResizedHeight));
 #else
     const long restored[] = { NormalState, None };
     XChangeProperty(native.display, native.window, state, state, 32, PropModeReplace,
@@ -717,7 +903,31 @@ int main(int argc, char** argv)
         }
         {
             NativeInput native;
+#ifndef _WIN32
+            // Детерминированно воспроизводим исчезновение окна до чтения свойств.
+            // XDestroyWindow завершится на сервере до следующих запросов этого соединения.
+            const Window disappeared = XCreateSimpleWindow(native.display, DefaultRootWindow(native.display),
+                0, 0, 1, 1, 0, 0, 0);
+            XDestroyWindow(native.display, disappeared);
+            require(native.findWindow(disappeared, options.title.c_str()) == None,
+                "Destroyed window was not skipped during lookup.");
+            // Проверяем поиск настоящего окна с UTF-8, без подмены Xlib.
+            // Исходный ASCII-заголовок уже проверен конструктором NativeInput.
+            const std::string unicodeTitle = u8"Engine input test — Проверка";
+            Platform::Error titleError;
+            require(PlatformTest::checkOperation(Platform::setWindowTitle(unicodeTitle, titleError), titleError),
+                "Could not set Unicode test title.");
+            require(native.findWindow(DefaultRootWindow(native.display), unicodeTitle.c_str()) == native.window,
+                "Test window not found by its UTF-8 title.");
+            require(native.findWindow(DefaultRootWindow(native.display), options.title.c_str()) == None,
+                "Window lookup matched the previous title.");
+            require(PlatformTest::checkOperation(Platform::setWindowTitle(options.title, titleError), titleError),
+                "Could not restore test title.");
+#endif
             keyboard(native);
+#ifndef _WIN32
+            lockStates(native);
+#endif
             mouse(native);
             text(native);
             windowEvents(native);

@@ -183,7 +183,10 @@ bool handleInput(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
                     queueText(0xfffd);
                     highSurrogate = 0;
                 }
-                queueText(code);
+                const unsigned int repeats = LOWORD(lParam) == 0 ? 1 : LOWORD(lParam);
+                for (unsigned int index = 0; index < repeats; ++index) {
+                    queueText(code);
+                }
             } else {
                 const unsigned int repeats = LOWORD(lParam) == 0 ? 1 : LOWORD(lParam);
                 for (unsigned int index = 0; index < repeats; ++index) {
@@ -471,6 +474,20 @@ bool initializeWindows(const WindowOptions& options, Error& error)
     // SetPixelFormat закрепляет выбранный формат за HDC; формат поверхности после этого неизменяем.
     if (pixelFormat == 0) {
         error = windowsError("ChoosePixelFormat", "No compatible OpenGL pixel format was found.", GetLastError());
+        return false;
+    }
+    // ChoosePixelFormat возвращает ближайший формат, а не гарантию всех свойств.
+    // DescribePixelFormat читает фактические возможности выбранного формата.
+    PIXELFORMATDESCRIPTOR actualFormat = {};
+    if (!DescribePixelFormat(deviceContext, pixelFormat, sizeof(actualFormat), &actualFormat)) {
+        error = windowsError("DescribePixelFormat", "Could not inspect the selected pixel format.", GetLastError());
+        return false;
+    }
+    constexpr DWORD RequiredPixelFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    if ((actualFormat.dwFlags & RequiredPixelFlags) != RequiredPixelFlags
+        || actualFormat.iPixelType != PFD_TYPE_RGBA
+        || actualFormat.cColorBits < 24 || actualFormat.cDepthBits < 24) {
+        error = windowsError("ChoosePixelFormat", "The selected format requires window OpenGL, double buffering, RGB >= 24 and depth >= 24.");
         return false;
     }
     if (!SetPixelFormat(deviceContext, pixelFormat, &format)) {

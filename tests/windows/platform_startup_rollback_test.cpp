@@ -13,10 +13,34 @@ unsigned int detachCount = 0;
 HWND failedWindow = nullptr;
 constexpr DWORD ActivationFailureCode = ERROR_INVALID_HANDLE;
 constexpr DWORD DeletionFailureCode = ERROR_GEN_FAILURE;
+enum class PixelFailure { None, Read, Window, OpenGL, DoubleBuffer, Type, Color, Depth };
+PixelFailure pixelFailure = PixelFailure::None;
 }
 
 namespace Platform::Testing
 {
+int describePixelFormat(HDC deviceContext, int format, UINT size, LPPIXELFORMATDESCRIPTOR description)
+{
+    const int result = DescribePixelFormat(deviceContext, format, size, description);
+    if (pixelFailure == PixelFailure::None || result == 0) {
+        return result;
+    }
+    failedWindow = WindowFromDC(deviceContext);
+    const auto failure = pixelFailure;
+    pixelFailure = PixelFailure::None;
+    switch (failure) {
+        case PixelFailure::Read: SetLastError(ERROR_GEN_FAILURE); return 0;
+        case PixelFailure::Window: description->dwFlags &= ~static_cast<DWORD>(PFD_DRAW_TO_WINDOW); break;
+        case PixelFailure::OpenGL: description->dwFlags &= ~static_cast<DWORD>(PFD_SUPPORT_OPENGL); break;
+        case PixelFailure::DoubleBuffer: description->dwFlags &= ~static_cast<DWORD>(PFD_DOUBLEBUFFER); break;
+        case PixelFailure::Type: description->iPixelType = PFD_TYPE_COLORINDEX; break;
+        case PixelFailure::Color: description->cColorBits = 16; break;
+        case PixelFailure::Depth: description->cDepthBits = 16; break;
+        case PixelFailure::None: break;
+    }
+    return result;
+}
+
 // Эта реализация используется только в тестовой копии платформы.
 // При обычном запуске и последующем успешном повторе вызывается настоящий wglMakeCurrent.
 BOOL makeContextCurrent(HDC deviceContext, HGLRC context)
@@ -54,6 +78,37 @@ int main()
     options.height = 240;
     options.title = "Startup rollback test";
     std::vector<Platform::Error> errors;
+    for (const auto failure : { PixelFailure::Read, PixelFailure::Window, PixelFailure::OpenGL,
+        PixelFailure::DoubleBuffer, PixelFailure::Type, PixelFailure::Color, PixelFailure::Depth }) {
+        pixelFailure = failure;
+        failedWindow = nullptr;
+        const bool started = Platform::initialize(options, errors);
+        const char* operation = failure == PixelFailure::Read ? "DescribePixelFormat" : "ChoosePixelFormat";
+        Platform::WindowState state;
+        Platform::Error error;
+        if (started || pixelFailure != PixelFailure::None || errors.size() != 1
+            || errors.front().operation != operation || errors.front().message.empty()
+            || !failedWindow || IsWindow(failedWindow)
+            || Platform::getWindowState(state, error) || wglGetCurrentContext()) {
+            std::cerr << "Invalid pixel format must fail and release the window.\n";
+            PlatformTest::shutdownAfterFailure(errors);
+            return 1;
+        }
+        if (failure == PixelFailure::Read && errors.front().nativeCode != static_cast<int>(ERROR_GEN_FAILURE)) {
+            std::cerr << "DescribePixelFormat error code was lost.\n";
+            return 1;
+        }
+        if (!Platform::initialize(options, errors)) {
+            std::cerr << "Restart after pixel format rejection failed.\n";
+            PlatformTest::shutdownAfterFailure(errors);
+            return 1;
+        }
+        Platform::shutdown(errors);
+        if (!errors.empty()) {
+            PlatformTest::reportErrors(errors);
+            return 1;
+        }
+    }
     for (const bool cleanupFailure : { false, true }) {
         rejectActivation = true;
         rejectDeletion = cleanupFailure;

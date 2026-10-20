@@ -41,6 +41,8 @@ std::array<Key, 256> physicalKeys = {};
 XIM inputMethod = nullptr;
 XIC inputContext = nullptr;
 bool detectableRepeat = false;
+int keyboardEventBase = 0;
+unsigned int lockedModifiers = 0;
 unsigned int numLockMask = 0;
 unsigned int altMask = Mod1Mask;
 unsigned int superMask = Mod4Mask;
@@ -52,7 +54,7 @@ Engine::Modifiers readModifiers(unsigned int state)
 {
     return { (state & ShiftMask) != 0, (state & ControlMask) != 0,
         (state & altMask) != 0, (state & superMask) != 0,
-        (state & LockMask) != 0, (state & numLockMask) != 0 };
+        (lockedModifiers & LockMask) != 0, (lockedModifiers & numLockMask) != 0 };
 }
 
 void changeFocus(bool focused)
@@ -82,6 +84,7 @@ void changeFocus(bool focused)
         // XkbStateRec. locked_mods содержит переключатели, а не удерживаемые модификаторы.
         XkbStateRec state = {};
         if (XkbGetState(display, XkbUseCoreKbd, &state) == Success) {
+            lockedModifiers = state.locked_mods;
             event.modifiers.capsLock = (state.locked_mods & LockMask) != 0;
             event.modifiers.numLock = (state.locked_mods & numLockMask) != 0;
         }
@@ -109,6 +112,27 @@ bool readPhysicalKeys(Error& error)
             if (std::strncmp(keyboard->names->keys[code].name, mapping.xName, XkbKeyNameLength) == 0) {
                 physicalKeys[code] = mapping.key;
                 break;
+            }
+        }
+        if (physicalKeys[code] == Key::Unknown) {
+            // В evdev клавиша Menu имеет основное имя COMP и псевдоним MENU.
+            // XkbKeyAliasRec связывает alias с real; обе строки имеют четыре байта.
+            // Сначала учитываем основное имя, затем псевдонимы из карты сервера:
+            // физическая позиция не должна зависеть от назначенного ей KeySym.
+            for (unsigned int index = 0; index < keyboard->names->num_key_aliases; ++index) {
+                const auto& alias = keyboard->names->key_aliases[index];
+                if (std::strncmp(keyboard->names->keys[code].name, alias.real, XkbKeyNameLength) != 0) {
+                    continue;
+                }
+                for (const auto& mapping : Detail::KeyMappings) {
+                    if (std::strncmp(alias.alias, mapping.xName, XkbKeyNameLength) == 0) {
+                        physicalKeys[code] = mapping.key;
+                        break;
+                    }
+                }
+                if (physicalKeys[code] != Key::Unknown) {
+                    break;
+                }
             }
         }
     }
@@ -158,6 +182,13 @@ void handleInput(XEvent& native, bool filtered)
             return;
         }
         event.type = native.type == KeyPress ? EventType::KeyPressed : EventType::KeyReleased;
+        // KeyCode 0 — сигнал готового текста от XIM, а не физическая клавиша.
+        if (native.xkey.keycode == 0) {
+            if (native.type == KeyPress && !filtered) {
+                readText(native.xkey);
+            }
+            return;
+        }
         event.key = physicalKeys[native.xkey.keycode & 255U];
         event.modifiers = readModifiers(native.xkey.state);
         // state относится к состоянию ДО события. Для модификатора добавляем сам переход.
@@ -166,8 +197,6 @@ void handleInput(XEvent& native, bool filtered)
         if (event.key == Key::LeftControl || event.key == Key::RightControl) { event.modifiers.control = down; }
         if (event.key == Key::LeftAlt || event.key == Key::RightAlt) { event.modifiers.alt = down; }
         if (event.key == Key::LeftSuper || event.key == Key::RightSuper) { event.modifiers.super = down; }
-        if (down && event.key == Key::CapsLock) { event.modifiers.capsLock = !event.modifiers.capsLock; }
-        if (down && event.key == Key::NumLock) { event.modifiers.numLock = !event.modifiers.numLock; }
         Detail::queueEvent(event);
         if (down && !filtered) {
             readText(native.xkey);
@@ -460,7 +489,21 @@ bool initializeLinux(const WindowOptions& options, Error& error)
         return false;
     }
 
-    if (!readPhysicalKeys(error)) {
+    int keyboardOpcode = 0;
+    int keyboardErrorBase = 0;
+    int keyboardMajor = XkbMajorVersion;
+    int keyboardMinor = XkbMinorVersion;
+    // XKB уведомляет об изменении locked_mods, включая снятие блокировки
+    // при отпускании и переназначенные клавиши. Опрос по кадрам не требуется.
+    if (!XkbQueryExtension(display, &keyboardOpcode, &keyboardEventBase, &keyboardErrorBase,
+        &keyboardMajor, &keyboardMinor)
+        || !XkbSelectEventDetails(display, XkbUseCoreKbd, XkbStateNotify,
+            XkbModifierLockMask, XkbModifierLockMask)) {
+        error = { "XkbSelectEventDetails", "Could not subscribe to keyboard lock state changes.", std::nullopt };
+        XFree(visual);
+        return false;
+    }
+    if (!synchronize("XkbSelectEventDetails", error) || !readPhysicalKeys(error)) {
         XFree(visual);
         return false;
     }
@@ -504,7 +547,12 @@ bool initializeLinux(const WindowOptions& options, Error& error)
     // XNFilterEvents сообщает маску событий, нужных методу ввода. Добавляем её к событиям
     // приложения: XFilterEvent должен получать эти сообщения для обработки композиции.
     long filterMask = 0;
-    XGetICValues(inputContext, XNFilterEvents, &filterMask, nullptr);
+    const char* failedAttribute = XGetICValues(inputContext, XNFilterEvents, &filterMask, nullptr);
+    if (failedAttribute) {
+        error = { "XGetICValues", std::string("Could not read input context attribute: ") + failedAttribute, std::nullopt };
+        XFree(visual);
+        return false;
+    }
     XSelectInput(display, window, settings.event_mask | filterMask);
     XMapWindow(display, window);
     if (!synchronize("XMapWindow", error)) {
@@ -615,6 +663,20 @@ bool processEvents(Error& error)
     while (XPending(display)) {
         XEvent event;
         XNextEvent(display, &event);
+        // События расширения имеют другую структуру: их нельзя проверять через xany.window.
+        if (event.type == keyboardEventBase) {
+            const auto& keyboardEvent = reinterpret_cast<const XkbEvent&>(event);
+            if (keyboardEvent.any.xkb_type == XkbStateNotify) {
+                lockedModifiers = keyboardEvent.state.locked_mods;
+                if (windowState.focused) {
+                    Engine::Event changed;
+                    changed.type = Engine::EventType::LockStateChanged;
+                    changed.modifiers = readModifiers(0);
+                    Detail::queueEvent(changed);
+                }
+            }
+            continue;
+        }
         // Старые серверы имитируют autorepeat парой Release/Press с одним временем.
         // Убираем только искусственный Release; следующий Press сохраняется как repeat.
         if (!detectableRepeat && event.type == KeyRelease && XPending(display)) {
@@ -803,6 +865,8 @@ void shutdown(std::vector<Error>& errors)
     viewportNeedsUpdate = false;
     physicalKeys.fill(Key::Unknown);
     detectableRepeat = false;
+    keyboardEventBase = 0;
+    lockedModifiers = 0;
     numLockMask = 0;
     altMask = Mod1Mask;
     superMask = Mod4Mask;

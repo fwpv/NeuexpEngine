@@ -12,7 +12,8 @@ if(WIN32)
     target_compile_definitions(platform_input_test PRIVATE NOMINMAX)
 else()
     target_link_options(platform_input_test PRIVATE "-Wl,--wrap=Xutf8LookupString"
-        "-Wl,--wrap=XFilterEvent" "-Wl,--wrap=XkbSetDetectableAutoRepeat" "-Wl,--wrap=XCloseDisplay")
+        "-Wl,--wrap=XFilterEvent" "-Wl,--wrap=XkbSetDetectableAutoRepeat" "-Wl,--wrap=XCloseDisplay"
+        "-Wl,--wrap=XNextEvent")
 endif()
 add_test(NAME platform_input COMMAND platform_input_test)
 set_tests_properties(platform_input PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60 LABELS "display" RUN_SERIAL TRUE)
