@@ -1,3 +1,7 @@
+add_executable(event_dispatcher_test event_dispatcher_test.cpp)
+target_link_libraries(event_dispatcher_test PRIVATE engine_events engine_input project_warnings)
+add_test(NAME event_dispatcher COMMAND event_dispatcher_test)
+
 add_executable(input_state_test input_state_test.cpp)
 target_link_libraries(input_state_test PRIVATE engine_input project_warnings)
 add_test(NAME input_state COMMAND input_state_test)

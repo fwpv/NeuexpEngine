@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "events.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -80,6 +81,17 @@ int main()
     std::array<double, static_cast<std::size_t>(Engine::Key::Count)> releasedUntil = {};
     std::string text;
     int lastKey = 0;
+    Engine::EventDispatcher events;
+    // Объекты подписок живут до выхода из main и отключаются до уничтожения
+    // захваченных данных. Диспетчер можно использовать без привязки к окну.
+    auto keySubscription = events.subscribe([&lastKey](const Engine::Event& event) {
+        if (event.type == Engine::EventType::KeyPressed || event.type == Engine::EventType::KeyReleased) {
+            lastKey = static_cast<int>(event.key);
+        }
+    });
+    auto textSubscription = events.subscribe(Engine::EventType::TextInput, [&text](const Engine::Event& event) {
+        text = event.text;
+    });
     bool success = true;
     Platform::Error error;
     while (success) {
@@ -94,12 +106,7 @@ int main()
         const auto& mouse = input.mouse();
         const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
         for (const auto& event : Platform::getEvents()) {
-            if (event.type == Engine::EventType::KeyPressed || event.type == Engine::EventType::KeyReleased) {
-                lastKey = static_cast<int>(event.key);
-            }
-            if (event.type == Engine::EventType::TextInput) {
-                text = event.text;
-            }
+            events.dispatch(event);
         }
         if (!Platform::getEvents().empty()) {
             std::ostringstream title;

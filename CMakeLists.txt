@@ -60,6 +60,8 @@ else()
         -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion)
 endif()
 
+add_subdirectory(engine)
+
 # Платформенная библиотека нужна демо и платформенным тестам.
 # При отключении обеих групп поиск оконных зависимостей не выполняется.
 if(BUILD_DEMOS OR BUILD_TESTING)
