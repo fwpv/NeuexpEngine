@@ -781,7 +781,7 @@ void windowEvents(NativeInput& native)
 {
     constexpr int ResizedWidth = 450;
     constexpr int ResizedHeight = 320;
-    constexpr auto ResizeTimeout = std::chrono::seconds(3);
+    constexpr auto ResizeTimeout = std::chrono::milliseconds(500);
     constexpr auto ResizePollInterval = std::chrono::milliseconds(10);
 #ifdef _WIN32
     // Синхронные сообщения не должны пропасть при начале следующего кадра.

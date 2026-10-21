@@ -444,6 +444,26 @@ public:
 #endif
     }
 
+    void setFocus(bool focused)
+    {
+#ifdef _WIN32
+        native.focus(focused);
+#else
+        // Клавиши этого сценария синтетические; переходы фокуса также адресуем
+        // только тестовому окну, без зависимости от политики оконного менеджера.
+        // Настоящее переключение фокуса проверяется отдельно в runWindow.
+        XEvent event = {};
+        event.xfocus.type = focused ? FocusIn : FocusOut;
+        event.xfocus.display = native.display;
+        event.xfocus.window = native.handle;
+        event.xfocus.mode = NotifyNormal;
+        event.xfocus.detail = NotifyNonlinear;
+        require(XSendEvent(native.display, native.handle, False, FocusChangeMask, &event) != 0,
+            "Could not send the keyboard scenario focus event.");
+        XSync(native.display, False);
+#endif
+    }
+
     void setHeld(bool down)
     {
 #ifdef _WIN32
@@ -489,7 +509,7 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
         "Visible rendering must exchange buffers for each tested color.");
     if (keyboard) {
         EscapeInput input(native);
-        native.focus(true);
+        input.setFocus(true);
         waitFor([](const auto& state) { return state.focused; }, "Focus acquisition failed.");
         input.setHeld(true);
         waitFor([](const auto&) { return Platform::isKeyDown(Platform::Key::Escape); },
@@ -507,10 +527,10 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
         }
         require(keyboardQueryCount() == beforeReads,
             "Reading keys must reuse the snapshot without querying the OS.");
-        native.focus(false);
+        input.setFocus(false);
         waitFor([](const auto& state) { return !state.focused; }, "Focus loss failed.");
         require(!Platform::isKeyDown(Platform::Key::Escape), "Unfocused window must ignore held keys.");
-        native.focus(true);
+        input.setFocus(true);
         waitFor([](const auto& state) {
             return state.focused;
         }, "Focus was not restored.");

@@ -407,8 +407,9 @@ bool initializeLinux(const WindowOptions& options, Error& error)
     handlersInstalled = true;
     pendingError = {};
 
-    // None завершает список; запрашиваем RGBA, двойной буфер и глубину не меньше 24 бит.
-    int attributes[] = { GLX_RGBA, GLX_DOUBLEBUFFER, GLX_DEPTH_SIZE, 24, None };
+    // None завершает список; для 2D достаточно RGBA и двойного буфера.
+    // Буфер глубины не используется, поэтому требование к его размеру не задаётся.
+    int attributes[] = { GLX_RGBA, GLX_DOUBLEBUFFER, None };
     XVisualInfo* visual = glXChooseVisual(display, DefaultScreen(display), attributes);
     const bool visualSucceeded = synchronize("glXChooseVisual", error);
     if (!visual || !visualSucceeded) {

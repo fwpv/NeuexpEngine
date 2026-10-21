@@ -464,10 +464,10 @@ bool initializeWindows(const WindowOptions& options, Error& error)
     PIXELFORMATDESCRIPTOR format = {};
     format.nSize = sizeof(format); // Размер структуры нужен Win32 для проверки версии описания.
     format.nVersion = 1;           // Версия PIXELFORMATDESCRIPTOR.
-    format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER | PFD_DEPTH_DONTCARE;
     format.iPixelType = PFD_TYPE_RGBA; // Тип пикселей RGBA; точность альфа-канала отдельно не запрашивается.
     format.cColorBits = 32; // cColorBits задаёт число бит цветового буфера на пиксель.
-    format.cDepthBits = 24; // cDepthBits задаёт точность буфера глубины.
+    format.cDepthBits = 0; // Для текущего 2D-вывода буфер глубины не требуется.
     // ChoosePixelFormat выбирает поддерживаемый драйвером формат, ближайший к запросу.
     const int pixelFormat = ChoosePixelFormat(deviceContext, &format);
 
@@ -484,10 +484,10 @@ bool initializeWindows(const WindowOptions& options, Error& error)
         return false;
     }
     constexpr DWORD RequiredPixelFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    // Разрядность цвета и глубины — предпочтения запроса, а не условия отказа.
     if ((actualFormat.dwFlags & RequiredPixelFlags) != RequiredPixelFlags
-        || actualFormat.iPixelType != PFD_TYPE_RGBA
-        || actualFormat.cColorBits < 24 || actualFormat.cDepthBits < 24) {
-        error = windowsError("ChoosePixelFormat", "The selected format requires window OpenGL, double buffering, RGB >= 24 and depth >= 24.");
+        || actualFormat.iPixelType != PFD_TYPE_RGBA) {
+        error = windowsError("ChoosePixelFormat", "The selected format requires window OpenGL, double buffering and RGBA colors.");
         return false;
     }
     if (!SetPixelFormat(deviceContext, pixelFormat, &format)) {
