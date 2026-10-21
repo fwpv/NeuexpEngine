@@ -23,7 +23,6 @@ using Matrix = std::array<GLdouble, 16>;
 bool checkViewport(const Viewport& expected)
 {
     Viewport actual = {};
-    // GL_VIEWPORT содержит начало прямоугольника и его ширину и высоту.
     glGetIntegerv(GL_VIEWPORT, actual.data());
     const GLenum error = glGetError();
     if (error != GL_NO_ERROR || actual != expected) {
@@ -54,11 +53,9 @@ bool resizeWindow(int width, int height, Platform::Error& error)
     }
 #else
     Display* display = glXGetCurrentDisplay();
-    // GLX предоставляет дескриптор настоящего окна без расширения API движка.
     XResizeWindow(display, glXGetCurrentDrawable(), static_cast<unsigned int>(width),
         static_cast<unsigned int>(height));
     XSync(display, False);
-    // Асинхронные ошибки X11 будут получены через Platform::processEvents.
     (void)error;
 #endif
     return true;
@@ -96,7 +93,6 @@ bool runTest()
     glGetDoublev(GL_MODELVIEW_MATRIX, modelView.data());
 
     Platform::Error error;
-    // Изменяем отдельно высоту, отдельно ширину и затем возвращаем начальный размер.
     const std::array<std::array<int, 2>, 4> sizes = {{
         { 400, 300 }, { 400, 360 }, { 480, 360 }, { InitialWidth, InitialHeight }
     }};

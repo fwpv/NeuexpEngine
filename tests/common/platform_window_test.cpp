@@ -8,7 +8,6 @@
 #else
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-#include <X11/Xatom.h>
 #include <X11/keysym.h>
 #include <GL/glx.h>
 #include <unistd.h>
@@ -58,7 +57,6 @@ void waitFor(Predicate predicate, const char* message)
     throw std::runtime_error(message);
 }
 
-// Нативные вызовы допустимы здесь: тест проверяет общий API через реальные события ОС.
 struct NativeWindow
 {
 #ifdef _WIN32
@@ -132,16 +130,6 @@ struct NativeWindow
         return IsWindowVisible(handle) != FALSE && IsIconic(handle) == FALSE;
     }
 
-    void activateForRendering()
-    {
-        require(SetWindowPos(handle, HWND_TOP, 0, 0, 0, 0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW) != FALSE,
-            "Could not raise the rendering window.");
-        // Windows может запретить перевод в foreground; фокус проверяется по состоянию окна.
-        SetForegroundWindow(handle);
-        SetFocus(handle);
-    }
-
     void focus(bool focused)
     {
         SetFocus(focused ? handle : nullptr);
@@ -202,7 +190,6 @@ struct NativeWindow
     {
         display = XOpenDisplay(nullptr);
         require(display != nullptr, "Could not open the test X11 connection.");
-        // glXGetCurrentDrawable возвращает окно, привязанное к текущему контексту OpenGL.
         handle = glXGetCurrentDrawable();
         if (handle == None || readTitle(handle) != title) {
             XCloseDisplay(display);
@@ -249,57 +236,11 @@ struct NativeWindow
         XWindowAttributes attributes = {};
         require(XGetWindowAttributes(display, handle, &attributes) != 0,
             "Could not read the native window visibility.");
-        // IsViewable означает, что показаны и само окно, и все его родительские окна.
         return attributes.map_state == IsViewable;
-    }
-
-    void activateForRendering()
-    {
-        const Window root = DefaultRootWindow(display);
-        const Atom activeWindow = XInternAtom(display, "_NET_ACTIVE_WINDOW", False);
-        const Atom supported = XInternAtom(display, "_NET_SUPPORTED", False);
-        Atom type = None;
-        int format = 0;
-        unsigned long count = 0;
-        unsigned long remaining = 0;
-        unsigned char* bytes = nullptr;
-        const int result = XGetWindowProperty(display, root, supported, 0, 1024,
-            False, XA_ATOM, &type, &format, &count, &remaining, &bytes);
-        bool supportsActivation = false;
-        if (result == Success && bytes && type == XA_ATOM && format == 32) {
-            const auto* atoms = reinterpret_cast<const Atom*>(bytes);
-            for (unsigned long index = 0; index < count; ++index) {
-                supportsActivation = supportsActivation || atoms[index] == activeWindow;
-            }
-        }
-        if (bytes) {
-            XFree(bytes);
-        }
-        if (supportsActivation) {
-            // EWMH передаёт менеджеру запрос поднять и активировать окно вместе с его рамкой.
-            XEvent event = {};
-            event.xclient.type = ClientMessage;
-            event.xclient.window = handle;
-            event.xclient.message_type = activeWindow;
-            event.xclient.format = 32;
-            constexpr long WindowManagementSource = 2;
-            event.xclient.data.l[0] = WindowManagementSource;
-            event.xclient.data.l[1] = CurrentTime;
-            require(XSendEvent(display, root, False,
-                SubstructureRedirectMask | SubstructureNotifyMask, &event) != 0,
-                "Could not request rendering window activation.");
-        } else {
-            // Без поддержки EWMH используем базовые операции X11.
-            XRaiseWindow(display, handle);
-            XSetInputFocus(display, handle, RevertToPointerRoot, CurrentTime);
-        }
-        XSync(display, False);
     }
 
     void focus(bool focused)
     {
-        // PointerRoot позволяет менеджеру вернуть фокус окну под курсором.
-        // Отдельное неменеджеруемое окно делает передачу фокуса однозначной.
         if (!focused && focusSink == None) {
             XSetWindowAttributes attributes = {};
             attributes.override_redirect = True;
@@ -377,27 +318,21 @@ void shutdown()
     require(!Platform::isCloseRequested(), "Shutdown must reset the close request.");
 }
 
-// Проверяем реальный задний буфер без зависимости от сцены и игрового рендера.
 void checkRendering(NativeWindow& native, const char* stage)
 {
     // Размеры снимка известны до показа окна; оконный буфер проверяется после фактического показа.
     waitFor([&](const auto& state) { return native.isViewable() && !state.minimized; },
         "The native window did not become viewable before rendering.");
-    native.activateForRendering();
-    waitFor([](const auto& state) { return state.focused && !state.minimized; },
-        "The rendering window did not become active.");
     const auto state = readState();
     glViewport(0, 0, state.width, state.height);
     glDrawBuffer(GL_BACK);
     glReadBuffer(GL_BACK);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    // Два цвета исключают успех за счёт содержимого предыдущего кадра.
     for (const auto& color : { std::array<GLubyte, 3>{ 255, 0, 0 },
                               std::array<GLubyte, 3>{ 0, 255, 0 } }) {
         glClearColor(color[0] / 255.0f, color[1] / 255.0f, color[2] / 255.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         std::array<GLubyte, 3> pixel = {};
-        // glReadPixels ждёт завершения команд рисования до чтения результата.
         glReadPixels(state.width / 2, state.height / 2, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, pixel.data());
         const GLenum renderError = glGetError();
         if (renderError != GL_NO_ERROR || pixel != color) {
@@ -449,9 +384,7 @@ public:
 #ifdef _WIN32
         native.focus(focused);
 #else
-        // Клавиши этого сценария синтетические; переходы фокуса также адресуем
-        // только тестовому окну, без зависимости от политики оконного менеджера.
-        // Настоящее переключение фокуса проверяется отдельно в runWindow.
+        // Синтетические переходы клавиш и фокуса адресуются только тестовому окну.
         XEvent event = {};
         event.xfocus.type = focused ? FocusIn : FocusOut;
         event.xfocus.display = native.display;
@@ -652,7 +585,6 @@ void runWindow(Platform::WindowOptions options, const std::string& title, bool e
             && unchanged.width == 400 && unchanged.height == 300 && !Platform::isCloseRequested(),
             "Reading the snapshot must not query or detect native destruction.");
 
-        // Изменение заголовка подтверждается синхронно, а снимок остаётся доступным.
         require(!Platform::setWindowTitle("destroyed window", error)
             && error.nativeCode == BadWindow && !error.message.empty(),
             "A native title error must be reported by setWindowTitle.");

@@ -1,4 +1,3 @@
-# Компилируем исходник платформы отдельно для этого теста; рабочая библиотека не меняется.
 set(PLATFORM_TEST_SOURCE "${PROJECT_SOURCE_DIR}/platform/platform_windows.cpp")
 set(WGL_TEST_OVERRIDE "${CMAKE_CURRENT_SOURCE_DIR}/windows_gl_override.h")
 if(MSVC)

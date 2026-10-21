@@ -41,7 +41,7 @@ void InputState::beginFrame()
 
 void InputState::releaseButtons(const Event& cause, bool keyboard)
 {
-    // Отмена приходит после причины. GUI может отличить отмену drag от обычного отпускания.
+    // События отмены следуют за событием потери фокуса или захвата.
     if (keyboard) {
         for (std::size_t index = 1; index < keys.size(); ++index) {
             if (keys[index].down) {
@@ -78,8 +78,7 @@ void InputState::handleEvent(Event event)
     if (event.type == EventType::KeyPressed || event.type == EventType::KeyReleased) {
         auto* state = findState(keys, event.key);
         if (event.type == EventType::KeyPressed) {
-            // Одинаковая семантика Win32/X11: повтор — новое сообщение уже удерживаемой
-            // в этом окне клавиши. После отмены первое полученное сообщение начинает новое нажатие.
+            // Повтор относится к удерживаемой клавише; после отмены начинается новое нажатие.
             event.repeat = state && state->down;
         }
         updateButton(state, event.type == EventType::KeyPressed);

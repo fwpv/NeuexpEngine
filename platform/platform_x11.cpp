@@ -1,9 +1,9 @@
 #include "platform.h"
 #include "window_validation.h"
 #include "key_codes.h"
+#include "extension_names.h"
 #include "detail/platform_input.h"
 
-// Xlib управляет окном и событиями, GLX связывает контекст OpenGL с X11.
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <X11/Xutil.h>
@@ -68,7 +68,7 @@ void changeFocus(bool focused)
             XSetICFocus(inputContext);
         } else {
             XUnsetICFocus(inputContext);
-            // Отменяем незавершённую композицию при уходе из окна.
+            // Незавершённая композиция отменяется при потере фокуса.
             char* discarded = Xutf8ResetIC(inputContext);
             if (discarded) {
                 XFree(discarded);
@@ -78,10 +78,7 @@ void changeFocus(bool focused)
     Engine::Event event;
     event.type = focused ? Engine::EventType::FocusGained : Engine::EventType::FocusLost;
     if (focused) {
-        // FocusIn не содержит lock-флагов. Читаем их один раз при входе, не восстанавливая
-        // удержание клавиш из снимка и не опрашивая сервер на каждом кадре.
-        // XkbUseCoreKbd выбирает основную клавиатуру; Success подтверждает получение
-        // XkbStateRec. locked_mods содержит переключатели, а не удерживаемые модификаторы.
+        // Lock-флаги запрашиваются при получении фокуса; удержание не восстанавливается.
         XkbStateRec state = {};
         if (XkbGetState(display, XkbUseCoreKbd, &state) == Success) {
             lockedModifiers = state.locked_mods;
@@ -94,9 +91,6 @@ void changeFocus(bool focused)
 
 bool readPhysicalKeys(Error& error)
 {
-    // XkbGetKeyboard возвращает описание основной клавиатуры. XkbAllComponentsMask
-    // запрашивает в том числе имена физических клавиш; nullptr означает отказ.
-    // Описание принадлежит вызывающему коду и освобождается XkbFreeKeyboard.
     XkbDescPtr keyboard = XkbGetKeyboard(display, XkbAllComponentsMask, XkbUseCoreKbd);
     if (!keyboard || !keyboard->names || !keyboard->names->keys) {
         if (keyboard) {
@@ -115,10 +109,7 @@ bool readPhysicalKeys(Error& error)
             }
         }
         if (physicalKeys[code] == Key::Unknown) {
-            // В evdev клавиша Menu имеет основное имя COMP и псевдоним MENU.
-            // XkbKeyAliasRec связывает alias с real; обе строки имеют четыре байта.
-            // Сначала учитываем основное имя, затем псевдонимы из карты сервера:
-            // физическая позиция не должна зависеть от назначенного ей KeySym.
+            // Основное имя клавиши имеет приоритет перед псевдонимами XKB.
             for (unsigned int index = 0; index < keyboard->names->num_key_aliases; ++index) {
                 const auto& alias = keyboard->names->key_aliases[index];
                 if (std::strncmp(keyboard->names->keys[code].name, alias.real, XkbKeyNameLength) != 0) {
@@ -137,8 +128,6 @@ bool readPhysicalKeys(Error& error)
         }
     }
     XkbFreeKeyboard(keyboard, XkbAllComponentsMask, True);
-    // XkbKeysymToModifiers переводит символ в маску модификатора текущей карты.
-    // Ноль означает, что символ не назначен модификатору; AltGr также учитывается как Alt.
     numLockMask = XkbKeysymToModifiers(display, XK_Num_Lock);
     altMask = XkbKeysymToModifiers(display, XK_Alt_L) | XkbKeysymToModifiers(display, XK_Alt_R)
         | XkbKeysymToModifiers(display, XK_ISO_Level3_Shift);
@@ -148,8 +137,7 @@ bool readPhysicalKeys(Error& error)
 
 void readText(XKeyEvent& keyEvent)
 {
-    // Xutf8LookupString поддерживает раскладки, dead keys и подтверждение через XIM.
-    // При переполнении Xlib сообщает точный размер; фиксированного ограничения текста нет.
+    // XBufferOverflow сообщает требуемый размер текста.
     std::string text(32, '\0');
     Status status = 0;
     KeySym symbol = NoSymbol;
@@ -191,12 +179,20 @@ void handleInput(XEvent& native, bool filtered)
         }
         event.key = physicalKeys[native.xkey.keycode & 255U];
         event.modifiers = readModifiers(native.xkey.state);
-        // state относится к состоянию ДО события. Для модификатора добавляем сам переход.
+        // state содержит модификаторы до события; переход применяется отдельно.
         const bool down = native.type == KeyPress;
-        if (event.key == Key::LeftShift || event.key == Key::RightShift) { event.modifiers.shift = down; }
-        if (event.key == Key::LeftControl || event.key == Key::RightControl) { event.modifiers.control = down; }
-        if (event.key == Key::LeftAlt || event.key == Key::RightAlt) { event.modifiers.alt = down; }
-        if (event.key == Key::LeftSuper || event.key == Key::RightSuper) { event.modifiers.super = down; }
+        if (event.key == Key::LeftShift || event.key == Key::RightShift) {
+            event.modifiers.shift = down;
+        }
+        if (event.key == Key::LeftControl || event.key == Key::RightControl) {
+            event.modifiers.control = down;
+        }
+        if (event.key == Key::LeftAlt || event.key == Key::RightAlt) {
+            event.modifiers.alt = down;
+        }
+        if (event.key == Key::LeftSuper || event.key == Key::RightSuper) {
+            event.modifiers.super = down;
+        }
         Detail::queueEvent(event);
         if (down && !filtered) {
             readText(native.xkey);
@@ -285,8 +281,7 @@ bool takeError(const char* operation, Error& error)
     pendingError = {};
     std::string description;
     if (display) {
-        // XGetErrorText не умеет сообщать требуемый размер. Увеличиваем строку,
-        // пока текст помещается с запасом для завершающего нуля.
+        // XGetErrorText не сообщает требуемый размер буфера.
         description.resize(128);
         while (true) {
             XGetErrorText(display, event.error_code, description.data(), static_cast<int>(description.size()));
@@ -308,7 +303,6 @@ bool takeError(const char* operation, Error& error)
 
 bool synchronize(const char* operation, Error& error)
 {
-    // Синхронизация нужна при создании и удалении ресурсов, но не на каждом кадре.
     XSync(display, False);
     return takeError(operation, error);
 }
@@ -322,8 +316,7 @@ bool requireWindow(const char* operation, Error& error)
     return true;
 }
 
-// В X11 событие PropertyNotify содержит имя свойства, но не его значение.
-// Поэтому читаем WM_STATE только при запуске и после уведомления о его изменении.
+// WM_STATE читается при запуске и после PropertyNotify этого свойства.
 bool updateMinimizedState(Error& error)
 {
     Atom actualType = None;
@@ -378,14 +371,14 @@ bool readInitialWindowState(Error& error)
 
 bool applyWindowTitle(const std::string& title, Error& error)
 {
-    // Современные менеджеры читают _NET_WM_NAME; WM_NAME оставляем как текстовое свойство UTF-8.
+    // Оба свойства заголовка содержат UTF-8.
     const Atom utf8 = XInternAtom(display, "UTF8_STRING", False);
     const Atom name = XInternAtom(display, "_NET_WM_NAME", False);
     XChangeProperty(display, window, name, utf8, 8, PropModeReplace,
         reinterpret_cast<const unsigned char*>(title.data()), static_cast<int>(title.size()));
     XChangeProperty(display, window, XA_WM_NAME, utf8, 8, PropModeReplace,
         reinterpret_cast<const unsigned char*>(title.data()), static_cast<int>(title.size()));
-    // Смена заголовка редка; подтверждаем результат, чтобы bool имел одинаковый смысл на обеих ОС.
+    // Синхронное подтверждение изменения заголовка.
     return synchronize("setWindowTitle", error);
 }
 
@@ -395,20 +388,17 @@ bool initializeLinux(const WindowOptions& options, Error& error)
     const int width = options.width;
     const int height = options.height;
 
-    // nullptr выбирает DISPLAY из окружения. Без соединения окно сообщения недоступно.
     display = XOpenDisplay(nullptr);
     if (!display) {
         error = { "XOpenDisplay", "Could not connect to the X server. Check DISPLAY and access to an X11 or XWayland session.", std::nullopt };
         return false;
     }
-    // Обработчики глобальны для процесса. Сохраняем прежние и восстанавливаем после XCloseDisplay.
+    // Глобальные обработчики Xlib восстанавливаются после XCloseDisplay.
     previousErrorHandler = XSetErrorHandler(recordError);
     previousIOErrorHandler = XSetIOErrorHandler(connectionLost);
     handlersInstalled = true;
     pendingError = {};
 
-    // None завершает список; для 2D достаточно RGBA и двойного буфера.
-    // Буфер глубины не используется, поэтому требование к его размеру не задаётся.
     int attributes[] = { GLX_RGBA, GLX_DOUBLEBUFFER, None };
     XVisualInfo* visual = glXChooseVisual(display, DefaultScreen(display), attributes);
     const bool visualSucceeded = synchronize("glXChooseVisual", error);
@@ -422,7 +412,6 @@ bool initializeLinux(const WindowOptions& options, Error& error)
         return false;
     }
 
-    // Visual определяет формат окна; AllocNone не выделяет цветовые ячейки заранее.
     colorMap = XCreateColormap(display, RootWindow(display, visual->screen), visual->visual, AllocNone);
     const bool colorMapSucceeded = synchronize("XCreateColormap", error);
     if (!colorMap || !colorMapSucceeded) {
@@ -439,8 +428,6 @@ bool initializeLinux(const WindowOptions& options, Error& error)
     settings.event_mask = KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask
         | PointerMotionMask | EnterWindowMask | LeaveWindowMask
         | StructureNotifyMask | FocusChangeMask | PropertyChangeMask;
-    // Маска указывает, какие поля settings используются при создании окна InputOutput.
-    // XCreateWindow принимает беззнаковые размеры; положительность проверена до открытия дисплея.
     window = XCreateWindow(display, RootWindow(display, visual->screen), 100, 100,
         static_cast<unsigned int>(width), static_cast<unsigned int>(height),
         0, visual->depth, InputOutput, visual->visual, CWColormap | CWEventMask, &settings);
@@ -454,8 +441,6 @@ bool initializeLinux(const WindowOptions& options, Error& error)
         return false;
     }
 
-    // WM_NORMAL_HINTS сообщает оконному менеджеру минимальный размер клиентской области.
-    // Нули допустимы: движок не подменяет их произвольным положительным минимумом.
     XSizeHints hints = {};
     hints.flags = PMinSize;
     hints.min_width = options.resizable ? options.minimumWidth : options.width;
@@ -473,7 +458,6 @@ bool initializeLinux(const WindowOptions& options, Error& error)
         return false;
     }
 
-    // False разрешает создавать Atom, если такого имени ещё нет на сервере.
     if (!applyWindowTitle(options.title, error)) {
         XFree(visual);
         return false;
@@ -494,8 +478,7 @@ bool initializeLinux(const WindowOptions& options, Error& error)
     int keyboardErrorBase = 0;
     int keyboardMajor = XkbMajorVersion;
     int keyboardMinor = XkbMinorVersion;
-    // XKB уведомляет об изменении locked_mods, включая снятие блокировки
-    // при отпускании и переназначенные клавиши. Опрос по кадрам не требуется.
+    // XKB доставляет изменения locked_mods отдельными уведомлениями.
     if (!XkbQueryExtension(display, &keyboardOpcode, &keyboardEventBase, &keyboardErrorBase,
         &keyboardMajor, &keyboardMinor)
         || !XkbSelectEventDetails(display, XkbUseCoreKbd, XkbStateNotify,
@@ -508,22 +491,14 @@ bool initializeLinux(const WindowOptions& options, Error& error)
         XFree(visual);
         return false;
     }
-    // Detectable autorepeat оставляет только повторные KeyPress, без искусственного
-    // KeyRelease перед каждым повтором. True запрашивает режим для этого соединения,
-    // repeatSupported сообщает поддержку сервером; иначе processEvents разбирает пары вручную.
+    // Detectable autorepeat не создаёт KeyRelease перед повторным KeyPress.
     Bool repeatSupported = False;
     detectableRepeat = XkbSetDetectableAutoRepeat(display, True, &repeatSupported) && repeatSupported;
-    // LC_CTYPE определяет правила ввода символов. Пустая строка выбирает локаль окружения,
-    // nullptr читает текущую; копия нужна для восстановления после завершения платформы.
     previousLocale = std::setlocale(LC_CTYPE, nullptr);
-    // XSetLocaleModifiers задаёт настройки XIM: nullptr читает текущие модификаторы,
-    // пустая строка выбирает XMODIFIERS из окружения, например сервер IBus/Fcitx.
     const char* oldModifiers = XSetLocaleModifiers(nullptr);
     previousLocaleModifiers = oldModifiers ? oldModifiers : "";
     std::setlocale(LC_CTYPE, "");
     XSetLocaleModifiers("");
-    // XOpenIM открывает метод ввода (XIM), связанный с display. Остальные nullptr
-    // отключают базу ресурсов и имена приложения для неё. При отказе возвращается nullptr.
     inputMethod = XOpenIM(display, nullptr, nullptr, nullptr);
     if (!inputMethod) {
         // Локальный XIM обеспечивает Compose/dead keys, если внешний сервер ввода недоступен.
@@ -531,12 +506,6 @@ bool initializeLinux(const WindowOptions& options, Error& error)
         inputMethod = XOpenIM(display, nullptr, nullptr, nullptr);
     }
     if (inputMethod) {
-        // XCreateIC создаёт контекст ввода (XIC) для окна; аргументы идут парами имя/значение.
-        // XNInputStyle задаёт способ отображения незавершённой композиции и статуса:
-        // XIMPreeditNothing/XIMStatusNothing оставляют их отображение методу ввода.
-        // XNClientWindow — окно-владелец контекста, XNFocusWindow — получатель ввода.
-        // nullptr завершает список. При отказе возвращается nullptr; успешный контекст
-        // освобождается XDestroyIC до XCloseIM, закрывающего сам метод ввода.
         inputContext = XCreateIC(inputMethod, XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
             XNClientWindow, window, XNFocusWindow, window, nullptr);
     }
@@ -545,8 +514,7 @@ bool initializeLinux(const WindowOptions& options, Error& error)
         XFree(visual);
         return false;
     }
-    // XNFilterEvents сообщает маску событий, нужных методу ввода. Добавляем её к событиям
-    // приложения: XFilterEvent должен получать эти сообщения для обработки композиции.
+    // Маска XNFilterEvents дополняет подписку окна для XFilterEvent.
     long filterMask = 0;
     const char* failedAttribute = XGetICValues(inputContext, XNFilterEvents, &filterMask, nullptr);
     if (failedAttribute) {
@@ -561,7 +529,6 @@ bool initializeLinux(const WindowOptions& options, Error& error)
         return false;
     }
 
-    // True запрашивает прямой рендеринг; nullptr означает отсутствие разделяемого контекста.
     openGLContext = glXCreateContext(display, visual, nullptr, True);
     XFree(visual);
     const bool contextSucceeded = synchronize("glXCreateContext", error);
@@ -617,7 +584,6 @@ bool initialize(const WindowOptions& options, std::vector<Error>& errors)
     if (initializeLinux(options, error)) {
         return true;
     }
-    // Сохраняем исходную причину перед очисткой: shutdown заменяет переданный список.
     shutdown(errors);
     errors.insert(errors.begin(), error);
     return false;
@@ -640,9 +606,70 @@ bool setWindowTitle(const std::string& title, Error& error)
         && applyWindowTitle(title, error);
 }
 
+bool setVSync(bool enabled, Error& error)
+{
+    if (!requireWindow("setVSync", error) || !takeError("before setVSync", error)) {
+        return false;
+    }
+    const char* extensions = glXQueryExtensionsString(display, DefaultScreen(display));
+    if (!synchronize("glXQueryExtensionsString", error)) {
+        return false;
+    }
+    if (Detail::hasExtension(extensions, "GLX_EXT_swap_control")) {
+        using SwapInterval = void (*)(Display*, GLXDrawable, int);
+        const auto swapInterval = reinterpret_cast<SwapInterval>(
+            glXGetProcAddressARB(reinterpret_cast<const GLubyte*>("glXSwapIntervalEXT")));
+        if (swapInterval) {
+            swapInterval(display, window, enabled ? 1 : 0);
+            return synchronize("glXSwapIntervalEXT", error);
+        }
+    }
+    if (Detail::hasExtension(extensions, "GLX_MESA_swap_control")) {
+        const Bool direct = glXIsDirect(display, openGLContext);
+        if (!synchronize("glXIsDirect", error)) {
+            return false;
+        }
+        if (direct) {
+            using SwapInterval = int (*)(unsigned int);
+            const auto swapInterval = reinterpret_cast<SwapInterval>(
+                glXGetProcAddressARB(reinterpret_cast<const GLubyte*>("glXSwapIntervalMESA")));
+            if (swapInterval) {
+                const int result = swapInterval(enabled ? 1U : 0U);
+                if (!synchronize("glXSwapIntervalMESA", error)) {
+                    return false;
+                }
+                if (result != 0) {
+                    error = { "glXSwapIntervalMESA", "Could not change VSync.", result };
+                    return false;
+                }
+                return true;
+            }
+        }
+    }
+    if (enabled && Detail::hasExtension(extensions, "GLX_SGI_swap_control")) {
+        using SwapInterval = int (*)(int);
+        const auto swapInterval = reinterpret_cast<SwapInterval>(
+            glXGetProcAddressARB(reinterpret_cast<const GLubyte*>("glXSwapIntervalSGI")));
+        if (swapInterval) {
+            const int result = swapInterval(1);
+            if (!synchronize("glXSwapIntervalSGI", error)) {
+                return false;
+            }
+            if (result != 0) {
+                error = { "glXSwapIntervalSGI", "Could not enable VSync.", result };
+                return false;
+            }
+            return true;
+        }
+    }
+    error = { "setVSync", enabled ? "VSync control is unavailable." :
+        "Disabling VSync requires GLX_EXT_swap_control or GLX_MESA_swap_control.", std::nullopt };
+    return false;
+}
+
 bool processEvents(Error& error)
 {
-    // Публикуем и при ошибке уже полученные события; следующий вызов начинает новый кадр.
+    // Полученные события публикуются и при ошибке обработки.
     struct FramePublisher
     {
         ~FramePublisher()
@@ -678,8 +705,7 @@ bool processEvents(Error& error)
             }
             continue;
         }
-        // Старые серверы имитируют autorepeat парой Release/Press с одним временем.
-        // Убираем только искусственный Release; следующий Press сохраняется как repeat.
+        // В старом autorepeat искусственный Release/Press имеют одинаковое время.
         if (!detectableRepeat && event.type == KeyRelease && XPending(display)) {
             XEvent next;
             XPeekEvent(display, &next);
@@ -690,7 +716,6 @@ bool processEvents(Error& error)
         }
         const bool filtered = XFilterEvent(&event, None) != False;
         if (event.type == MappingNotify) {
-            // После смены раскладки Xlib должен обновить соответствие KeySym и KeyCode.
             XRefreshKeyboardMapping(&event.xmapping);
             if (!readPhysicalKeys(error)) {
                 return false;
@@ -753,7 +778,7 @@ bool processEvents(Error& error)
             Detail::queueEvent(Engine::EventType::CloseRequested);
         }
     }
-    // Не запрашиваем свойство уже уничтоженного окна; несколько уведомлений объединяем в одно чтение.
+    // Уведомления WM_STATE объединяются в одно чтение для существующего окна.
     if (window && minimizedStateChanged && !updateMinimizedState(error)) {
         return false;
     }
@@ -800,7 +825,7 @@ void shutdown(std::vector<Error>& errors)
             XCloseIM(inputMethod);
             inputMethod = nullptr;
         }
-        // Сначала сохраняем отложенную ошибку работы, чтобы не приписать её очистке.
+        // Отложенная ошибка работы сохраняется отдельно от ошибок очистки.
         if (!synchronize("pending X11 requests before shutdown", error)) {
             errors.push_back(error);
         }

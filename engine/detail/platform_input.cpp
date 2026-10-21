@@ -1,5 +1,5 @@
 #include "platform.h"
-#include "detail/platform_input.h"
+#include "platform_input.h"
 
 #include <chrono>
 #include <utility>

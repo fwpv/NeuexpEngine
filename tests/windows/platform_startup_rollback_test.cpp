@@ -48,7 +48,6 @@ BOOL makeContextCurrent(HDC deviceContext, HGLRC context)
 {
     if (context && rejectActivation) {
         rejectActivation = false;
-        // WindowFromDC подтверждает, что отказ происходит после создания окна и его HDC.
         failedWindow = WindowFromDC(deviceContext);
         SetLastError(ActivationFailureCode);
         return FALSE;
@@ -63,7 +62,7 @@ BOOL deleteContext(HGLRC context)
 {
     const BOOL deleted = wglDeleteContext(context);
     if (deleted && rejectDeletion) {
-        // Освобождаем настоящий ресурс, затем имитируем ошибку для проверки списка диагностики.
+        // Ошибка имитируется после освобождения настоящего ресурса.
         rejectDeletion = false;
         SetLastError(DeletionFailureCode);
         return FALSE;
@@ -110,8 +109,7 @@ int main()
             return 1;
         }
     }
-    // Проверяем принятие альтернативной разрядности без изменения реального
-    // формата драйвера: подменяется только возвращённое описание.
+    // Подменяется описание формата; формат драйвера не меняется.
     for (const auto alternative : { PixelCase::Color, PixelCase::Depth, PixelCase::NoDepth }) {
         pixelCase = alternative;
         const bool started = Platform::initialize(options, errors);
@@ -155,7 +153,7 @@ int main()
             PlatformTest::shutdownAfterFailure(errors);
             return 1;
         }
-        // Без пользовательского shutdown после ошибки. Проверяем также повторную регистрацию класса окна.
+        // Повторный запуск без shutdown после отказа инициализации.
         const bool restarted = Platform::initialize(options, errors);
         const bool stateRead = restarted && Platform::getWindowState(state, error);
         if (restarted && !stateRead) {

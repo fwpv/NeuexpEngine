@@ -6,12 +6,9 @@
 #include <string>
 #include <vector>
 
-// Единая граница между игровой логикой и операционной системой.
-// Игровой код вызывает эти функции, а CMake подключает реализацию
-// только для выбранной платформы: Windows или Linux/X11.
 namespace Platform
 {
-// Данные ошибки не зависят от Win32/X11. Наличие ошибки определяется результатом операции.
+// Ошибка операции; nativeCode содержит необязательный код ОС.
 struct Error
 {
     std::string operation;
@@ -20,10 +17,8 @@ struct Error
 };
 
 // Всегда пишет в stderr; в Windows дополнительно показывает MessageBox, если showDialog == true.
-// Для некритичных ошибок и ошибок очистки диалог можно отключить.
 void reportError(const Error& error, bool showDialog = true);
 
-// Отдельные клавиши без назначения игровых действий и без объединения WASD со стрелками.
 using Key = Engine::Key;
 
 struct WindowOptions
@@ -65,6 +60,10 @@ bool getWindowState(WindowState& state, Error& error);
 
 // Меняет заголовок окна. UTF-8 без встроенных нулей; некорректная строка отклоняется.
 bool setWindowTitle(const std::string& title, Error& error);
+
+// Меняет интервал обмена буферов: true — один период развёртки, false — без синхронизации.
+// При отсутствии поддержки возвращает false с ошибкой; режим не меняется.
+bool setVSync(bool enabled, Error& error);
 
 // Обрабатывает события и обновляет снимок окна. false означает ошибку обработки.
 // При изменении размеров обновляет viewport на всю клиентскую область, не меняя матрицы OpenGL.

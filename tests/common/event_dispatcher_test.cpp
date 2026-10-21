@@ -73,7 +73,6 @@ void testOwnership()
             survivor = dispatcher.subscribe([&](const Engine::Event&) { calls += 100; });
             survivor = std::move(moved);
             require(!moved.connected() && survivor.connected(), "Move assignment");
-            // Самоприсваивание через ссылку проверяет сохранение владения.
             auto& alias = survivor;
             survivor = std::move(alias);
             dispatcher.dispatch({});

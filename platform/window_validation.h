@@ -9,7 +9,7 @@ namespace Platform
 // Размеры X11 передаются в 16-битных беззнаковых полях протокола.
 constexpr int MaximumWindowDimension = 65535;
 
-// Проверяем UTF-8 до обращения к ОС, чтобы обе платформы одинаково отклоняли повреждённый текст.
+// Проверка UTF-8 до передачи строки в системный API.
 inline bool validateWindowTitle(const std::string& title, const char* operation, Error& error)
 {
     bool valid = title.size() <= static_cast<std::size_t>(std::numeric_limits<int>::max());
@@ -48,7 +48,7 @@ inline bool validateWindowTitle(const std::string& title, const char* operation,
                 valid = (byte & 0xC0U) == 0x80U;
                 codePoint = (codePoint << 6U) | (byte & 0x3FU);
             }
-            // Исключаем избыточные кодировки, суррогаты UTF-16 и значения за пределами Unicode.
+            // Избыточные кодировки, суррогаты UTF-16 и значения вне Unicode недопустимы.
             valid = valid && codePoint >= minimumCodePoint && codePoint <= 0x10FFFF
                 && !(codePoint >= 0xD800 && codePoint <= 0xDFFF);
         }
