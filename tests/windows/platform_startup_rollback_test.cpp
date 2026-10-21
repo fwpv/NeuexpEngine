@@ -13,10 +13,35 @@ unsigned int detachCount = 0;
 HWND failedWindow = nullptr;
 constexpr DWORD ActivationFailureCode = ERROR_INVALID_HANDLE;
 constexpr DWORD DeletionFailureCode = ERROR_GEN_FAILURE;
+enum class PixelCase { None, Read, Window, OpenGL, DoubleBuffer, Type, Color, Depth, NoDepth };
+PixelCase pixelCase = PixelCase::None;
 }
 
 namespace Platform::Testing
 {
+int describePixelFormat(HDC deviceContext, int format, UINT size, LPPIXELFORMATDESCRIPTOR description)
+{
+    const int result = DescribePixelFormat(deviceContext, format, size, description);
+    if (pixelCase == PixelCase::None || result == 0) {
+        return result;
+    }
+    failedWindow = WindowFromDC(deviceContext);
+    const auto failure = pixelCase;
+    pixelCase = PixelCase::None;
+    switch (failure) {
+        case PixelCase::Read: SetLastError(ERROR_GEN_FAILURE); return 0;
+        case PixelCase::Window: description->dwFlags &= ~static_cast<DWORD>(PFD_DRAW_TO_WINDOW); break;
+        case PixelCase::OpenGL: description->dwFlags &= ~static_cast<DWORD>(PFD_SUPPORT_OPENGL); break;
+        case PixelCase::DoubleBuffer: description->dwFlags &= ~static_cast<DWORD>(PFD_DOUBLEBUFFER); break;
+        case PixelCase::Type: description->iPixelType = PFD_TYPE_COLORINDEX; break;
+        case PixelCase::Color: description->cColorBits = 16; break;
+        case PixelCase::Depth: description->cDepthBits = 16; break;
+        case PixelCase::NoDepth: description->cDepthBits = 0; break;
+        case PixelCase::None: break;
+    }
+    return result;
+}
+
 // Эта реализация используется только в тестовой копии платформы.
 // При обычном запуске и последующем успешном повторе вызывается настоящий wglMakeCurrent.
 BOOL makeContextCurrent(HDC deviceContext, HGLRC context)
@@ -54,6 +79,55 @@ int main()
     options.height = 240;
     options.title = "Startup rollback test";
     std::vector<Platform::Error> errors;
+    for (const auto failure : { PixelCase::Read, PixelCase::Window, PixelCase::OpenGL,
+        PixelCase::DoubleBuffer, PixelCase::Type }) {
+        pixelCase = failure;
+        failedWindow = nullptr;
+        const bool started = Platform::initialize(options, errors);
+        const char* operation = failure == PixelCase::Read ? "DescribePixelFormat" : "ChoosePixelFormat";
+        Platform::WindowState state;
+        Platform::Error error;
+        if (started || pixelCase != PixelCase::None || errors.size() != 1
+            || errors.front().operation != operation || errors.front().message.empty()
+            || !failedWindow || IsWindow(failedWindow)
+            || Platform::getWindowState(state, error) || wglGetCurrentContext()) {
+            std::cerr << "Invalid pixel format must fail and release the window.\n";
+            PlatformTest::shutdownAfterFailure(errors);
+            return 1;
+        }
+        if (failure == PixelCase::Read && errors.front().nativeCode != static_cast<int>(ERROR_GEN_FAILURE)) {
+            std::cerr << "DescribePixelFormat error code was lost.\n";
+            return 1;
+        }
+        if (!Platform::initialize(options, errors)) {
+            std::cerr << "Restart after pixel format rejection failed.\n";
+            PlatformTest::shutdownAfterFailure(errors);
+            return 1;
+        }
+        Platform::shutdown(errors);
+        if (!errors.empty()) {
+            PlatformTest::reportErrors(errors);
+            return 1;
+        }
+    }
+    // Проверяем принятие альтернативной разрядности без изменения реального
+    // формата драйвера: подменяется только возвращённое описание.
+    for (const auto alternative : { PixelCase::Color, PixelCase::Depth, PixelCase::NoDepth }) {
+        pixelCase = alternative;
+        const bool started = Platform::initialize(options, errors);
+        Platform::Error error;
+        if (!started || !errors.empty() || pixelCase != PixelCase::None
+            || !Platform::present(error)) {
+            std::cerr << "Alternative color/depth precision must allow rendering.\n";
+            PlatformTest::shutdownAfterFailure(errors);
+            return 1;
+        }
+        Platform::shutdown(errors);
+        if (!errors.empty()) {
+            PlatformTest::reportErrors(errors);
+            return 1;
+        }
+    }
     for (const bool cleanupFailure : { false, true }) {
         rejectActivation = true;
         rejectDeletion = cleanupFailure;

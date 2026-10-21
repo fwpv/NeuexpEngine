@@ -1,3 +1,29 @@
+add_executable(event_dispatcher_test event_dispatcher_test.cpp)
+target_link_libraries(event_dispatcher_test PRIVATE engine_events engine_input project_warnings)
+add_test(NAME event_dispatcher COMMAND event_dispatcher_test)
+
+add_executable(input_state_test input_state_test.cpp)
+target_link_libraries(input_state_test PRIVATE engine_input project_warnings)
+add_test(NAME input_state COMMAND input_state_test)
+
+add_executable(platform_input_test platform_input_test.cpp)
+target_link_libraries(platform_input_test PRIVATE platform project_warnings)
+if(WIN32)
+    target_compile_definitions(platform_input_test PRIVATE NOMINMAX)
+else()
+    target_link_options(platform_input_test PRIVATE "-Wl,--wrap=Xutf8LookupString"
+        "-Wl,--wrap=XFilterEvent" "-Wl,--wrap=XkbSetDetectableAutoRepeat" "-Wl,--wrap=XCloseDisplay"
+        "-Wl,--wrap=XNextEvent")
+endif()
+add_test(NAME platform_input COMMAND platform_input_test)
+set_tests_properties(platform_input PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60 LABELS "display" RUN_SERIAL TRUE)
+if(UNIX AND NOT APPLE)
+    add_test(NAME platform_input_legacy_repeat COMMAND platform_input_test legacy-repeat)
+    add_test(NAME platform_input_constructor_rollback COMMAND platform_input_test constructor-rollback)
+    set_tests_properties(platform_input platform_input_legacy_repeat platform_input_constructor_rollback PROPERTIES
+        ENVIRONMENT "XMODIFIERS=@im=none" SKIP_RETURN_CODE 77 TIMEOUT 60 LABELS "display" RUN_SERIAL TRUE)
+endif()
+
 add_executable(stb_image_test stb_image_test.cpp)
 target_link_libraries(stb_image_test PRIVATE stb_image)
 target_include_directories(stb_image_test SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/third_party/stb")
@@ -45,7 +71,7 @@ if(WIN32)
     target_sources(platform_window_test PRIVATE "${WINDOW_PLATFORM_SOURCE}" ../windows/keyboard_input.cpp ../windows/presentation_counter.cpp)
     target_include_directories(platform_window_test PRIVATE "${PROJECT_SOURCE_DIR}/engine")
     target_compile_definitions(platform_window_test PRIVATE NOMINMAX)
-    target_link_libraries(platform_window_test PRIVATE opengl32 gdi32 user32 winmm)
+    target_link_libraries(platform_window_test PRIVATE engine_input opengl32 gdi32 user32 winmm)
 elseif(UNIX AND NOT APPLE)
     target_link_libraries(platform_window_test PRIVATE platform)
     target_sources(platform_window_test PRIVATE ../linux/keyboard_query_counter.cpp ../linux/presentation_counter.cpp)

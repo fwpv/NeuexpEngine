@@ -425,13 +425,15 @@ void checkRendering(NativeWindow& native, const char* stage)
     }
 }
 
-// Подменённое состояние клавиатуры сбрасывается и при провале проверки.
+// Переходы отправляются только тестовому окну, без изменения клавиатуры рабочего стола.
 class EscapeInput
 {
 public:
     unsigned char keyCode = 0;
+    NativeWindow& native;
 
-    explicit EscapeInput(NativeWindow& native)
+    explicit EscapeInput(NativeWindow& window)
+        : native(window)
     {
 #ifdef _WIN32
         (void)native;
@@ -442,15 +444,47 @@ public:
 #endif
     }
 
-    void setHeld(bool down)
+    void setFocus(bool focused)
     {
-        setKeyboardKeyHeld(keyCode, down);
+#ifdef _WIN32
+        native.focus(focused);
+#else
+        // Клавиши этого сценария синтетические; переходы фокуса также адресуем
+        // только тестовому окну, без зависимости от политики оконного менеджера.
+        // Настоящее переключение фокуса проверяется отдельно в runWindow.
+        XEvent event = {};
+        event.xfocus.type = focused ? FocusIn : FocusOut;
+        event.xfocus.display = native.display;
+        event.xfocus.window = native.handle;
+        event.xfocus.mode = NotifyNormal;
+        event.xfocus.detail = NotifyNonlinear;
+        require(XSendEvent(native.display, native.handle, False, FocusChangeMask, &event) != 0,
+            "Could not send the keyboard scenario focus event.");
+        XSync(native.display, False);
+#endif
     }
 
-    ~EscapeInput()
+    void setHeld(bool down)
     {
-        useNativeKeyboardInput();
+#ifdef _WIN32
+        const LPARAM data = 1 | (static_cast<LPARAM>(1) << 16)
+            | (down ? 0 : (static_cast<LPARAM>(3) << 30));
+        require(PostMessageW(native.handle, down ? WM_KEYDOWN : WM_KEYUP, VK_ESCAPE, data) != FALSE,
+            "Could not post a key event.");
+#else
+        XEvent event = {};
+        event.xkey.type = down ? KeyPress : KeyRelease;
+        event.xkey.display = native.display;
+        event.xkey.window = native.handle;
+        event.xkey.root = DefaultRootWindow(native.display);
+        event.xkey.keycode = keyCode;
+        event.xkey.same_screen = True;
+        require(XSendEvent(native.display, native.handle, False, down ? KeyPressMask : KeyReleaseMask, &event) != 0,
+            "Could not send a key event.");
+        XSync(native.display, False);
+#endif
     }
+
 };
 
 int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
@@ -475,7 +509,7 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
         "Visible rendering must exchange buffers for each tested color.");
     if (keyboard) {
         EscapeInput input(native);
-        native.focus(true);
+        input.setFocus(true);
         waitFor([](const auto& state) { return state.focused; }, "Focus acquisition failed.");
         input.setHeld(true);
         waitFor([](const auto&) { return Platform::isKeyDown(Platform::Key::Escape); },
@@ -483,8 +517,8 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
         require(!Platform::isCloseRequested(), "Held Escape must not request shutdown.");
         const unsigned int beforeEvents = keyboardQueryCount();
         readState();
-        require(keyboardQueryCount() == beforeEvents + 1,
-            "Event processing must query the keyboard exactly once while focused.");
+        require(keyboardQueryCount() == beforeEvents,
+            "Event processing must use key transitions without keyboard polling.");
         const unsigned int beforeReads = keyboardQueryCount();
         for (const auto key : { Platform::Key::Escape, Platform::Key::Space,
                                Platform::Key::W, Platform::Key::ArrowUp }) {
@@ -493,13 +527,16 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
         }
         require(keyboardQueryCount() == beforeReads,
             "Reading keys must reuse the snapshot without querying the OS.");
-        native.focus(false);
+        input.setFocus(false);
         waitFor([](const auto& state) { return !state.focused; }, "Focus loss failed.");
         require(!Platform::isKeyDown(Platform::Key::Escape), "Unfocused window must ignore held keys.");
-        native.focus(true);
+        input.setFocus(true);
         waitFor([](const auto& state) {
-            return state.focused && Platform::isKeyDown(Platform::Key::Escape);
-        }, "Held key was not refreshed after focus acquisition.");
+            return state.focused;
+        }, "Focus was not restored.");
+        require(!Platform::isKeyDown(Platform::Key::Escape), "Focus restoration must not resurrect canceled keys.");
+        input.setHeld(true);
+        waitFor([](const auto&) { return Platform::isKeyDown(Platform::Key::Escape); }, "New key press was lost.");
         input.setHeld(false);
         require(Platform::isKeyDown(Platform::Key::Escape),
             "Reading a key must retain the snapshot until event processing.");

@@ -6,3 +6,4 @@
 // Этот файл принудительно подключается только при компиляции тестовой копии платформы.
 #define wglMakeCurrent Platform::Testing::makeContextCurrent
 #define wglDeleteContext Platform::Testing::deleteContext
+#define DescribePixelFormat Platform::Testing::describePixelFormat

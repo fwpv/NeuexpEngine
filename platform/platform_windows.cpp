@@ -1,5 +1,8 @@
 #include "platform.h"
 #include "window_validation.h"
+#include "key_codes.h"
+#include "detail/platform_input.h"
+#include "detail/unicode.h"
 
 // windows.h предоставляет окна, сообщения, устройства ввода и WGL;
 // mmsystem.h объявляет функции точности системного таймера;
@@ -8,6 +11,7 @@
 #include <mmsystem.h>
 #include <GL/gl.h>
 #include <array>
+#include <cstdint>
 #include <iostream>
 
 namespace Platform
@@ -30,8 +34,10 @@ bool closeRequested = false;
 bool initialized = false;
 WindowState windowState;
 bool viewportNeedsUpdate = false;
-// Win32 использует таблицу из 256 виртуальных кодов клавиш; старший бит означает удержание.
-std::array<BYTE, 256> keyState = {};
+std::array<bool, static_cast<std::size_t>(Key::Count)> heldKeys = {};
+unsigned int heldMouseButtons = 0;
+bool mouseInside = false;
+std::uint32_t highSurrogate = 0;
 WindowOptions windowOptions;
 LONG minimumTrackWidth = 0;
 LONG minimumTrackHeight = 0;
@@ -89,10 +95,210 @@ bool convertTitle(const std::string& title, std::wstring& wideTitle, Error& erro
     return true;
 }
 
+Engine::Modifiers readModifiers()
+{
+    const auto held = [](Key key) { return heldKeys[static_cast<std::size_t>(key)]; };
+    return { held(Key::LeftShift) || held(Key::RightShift),
+        held(Key::LeftControl) || held(Key::RightControl),
+        held(Key::LeftAlt) || held(Key::RightAlt), held(Key::LeftSuper) || held(Key::RightSuper),
+        (GetKeyState(VK_CAPITAL) & 1) != 0, (GetKeyState(VK_NUMLOCK) & 1) != 0 };
+}
+
+void changeFocus(bool focused)
+{
+    if (windowState.focused == focused) {
+        return;
+    }
+    windowState.focused = focused;
+    Engine::Event event;
+    event.type = focused ? Engine::EventType::FocusGained : Engine::EventType::FocusLost;
+    if (!focused) {
+        heldKeys = {};
+        heldMouseButtons = 0;
+        highSurrogate = 0;
+        if (window && GetCapture() == window) {
+            ReleaseCapture();
+        }
+    }
+    event.modifiers = readModifiers();
+    Detail::queueEvent(event);
+}
+
+Key translateKey(WPARAM virtualKey, LPARAM data)
+{
+    if (virtualKey == VK_NUMLOCK) {
+        return Key::NumLock; // NumLock может иметь E0-флаг, совпадающий с кодом Pause.
+    }
+    if (virtualKey == VK_PAUSE) {
+        return Key::Pause;
+    }
+    if (virtualKey == VK_SNAPSHOT) {
+        return Key::PrintScreen;
+    }
+    // Бит 24 отличает правый Ctrl, Alt, цифровой Enter и навигационный блок.
+    const auto scan = static_cast<unsigned int>((data >> 16) & 0x1ff);
+    for (const auto& mapping : Detail::KeyMappings) {
+        if (mapping.scan == scan) {
+            return mapping.key;
+        }
+    }
+    return Key::Unknown;
+}
+
+void queueText(std::uint32_t code)
+{
+    // Tab, Enter, Backspace и Ctrl-команды обрабатываются как клавиши, а не вставляемый текст.
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) {
+        return;
+    }
+    Engine::Event event;
+    event.type = Engine::EventType::TextInput;
+    event.modifiers = readModifiers();
+    Engine::Detail::appendUtf8(event.text, code);
+    Detail::queueEvent(event);
+}
+
+bool handleInput(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    using Engine::EventType;
+    using Engine::MouseButton;
+    if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN || message == WM_KEYUP || message == WM_SYSKEYUP) {
+        if (windowState.focused) {
+            Engine::Event event;
+            const bool down = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
+            event.type = down ? EventType::KeyPressed : EventType::KeyReleased;
+            event.key = translateKey(wParam, lParam);
+            heldKeys[static_cast<std::size_t>(event.key)] = down;
+            event.modifiers = readModifiers();
+            Detail::queueEvent(event);
+        }
+        // Системные сочетания, включая Alt+F4, должны пройти DefWindowProc.
+        return message == WM_KEYDOWN || message == WM_KEYUP;
+    }
+    if (message == WM_CHAR || message == WM_UNICHAR) {
+        if (windowState.focused) {
+            const auto code = static_cast<std::uint32_t>(wParam);
+            if (message == WM_UNICHAR) {
+                if (highSurrogate != 0) {
+                    queueText(0xfffd);
+                    highSurrogate = 0;
+                }
+                const unsigned int repeats = LOWORD(lParam) == 0 ? 1 : LOWORD(lParam);
+                for (unsigned int index = 0; index < repeats; ++index) {
+                    queueText(code);
+                }
+            } else {
+                const unsigned int repeats = LOWORD(lParam) == 0 ? 1 : LOWORD(lParam);
+                for (unsigned int index = 0; index < repeats; ++index) {
+                    if (highSurrogate != 0) {
+                        if (code >= 0xdc00 && code <= 0xdfff) {
+                            queueText(0x10000 + ((highSurrogate - 0xd800) << 10) + code - 0xdc00);
+                            highSurrogate = 0;
+                            continue;
+                        }
+                        queueText(0xfffd);
+                        highSurrogate = 0;
+                    }
+                    if (code >= 0xd800 && code <= 0xdbff) {
+                        highSurrogate = code;
+                    } else {
+                        queueText(code);
+                    }
+                }
+            }
+        }
+        return true;
+    }
+    if (message == WM_CAPTURECHANGED || message == WM_CANCELMODE) {
+        if (heldMouseButtons != 0) {
+            heldMouseButtons = 0;
+            Detail::queueEvent(EventType::MouseCaptureLost);
+        }
+        if (message == WM_CANCELMODE && GetCapture() == handle) {
+            ReleaseCapture();
+        }
+        return false;
+    }
+    if (message == WM_MOUSELEAVE) {
+        if (mouseInside) {
+            mouseInside = false;
+            Detail::queueEvent(EventType::MouseLeft);
+        }
+        return true;
+    }
+    Engine::Event event;
+    event.x = static_cast<short>(LOWORD(lParam));
+    event.y = static_cast<short>(HIWORD(lParam));
+    event.modifiers = readModifiers();
+    if (message == WM_MOUSEMOVE) {
+        const bool inside = event.x >= 0 && event.y >= 0
+            && event.x < windowState.width && event.y < windowState.height;
+        if (inside != mouseInside) {
+            mouseInside = inside;
+            event.type = inside ? EventType::MouseEntered : EventType::MouseLeft;
+            Detail::queueEvent(event);
+        }
+        if (inside) {
+            // TME_LEAVE просит единственное уведомление о выходе; после входа запрос повторяется.
+            TRACKMOUSEEVENT tracking = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, handle, 0 };
+            TrackMouseEvent(&tracking);
+        }
+        event.type = EventType::MouseMoved;
+    } else if (message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL) {
+        POINT position = { event.x, event.y };
+        ScreenToClient(handle, &position); // Колесо, в отличие от кнопок, использует экранные координаты.
+        event.x = position.x;
+        event.y = position.y;
+        event.type = EventType::MouseWheel;
+        const double amount = static_cast<short>(HIWORD(wParam)) / static_cast<double>(WHEEL_DELTA);
+        event.wheelX = message == WM_MOUSEHWHEEL ? amount : 0;
+        event.wheelY = message == WM_MOUSEWHEEL ? amount : 0;
+    } else {
+        bool down = false;
+        switch (message) {
+            case WM_LBUTTONDOWN: down = true; event.button = MouseButton::Left; break;
+            case WM_LBUTTONUP: event.button = MouseButton::Left; break;
+            case WM_RBUTTONDOWN: down = true; event.button = MouseButton::Right; break;
+            case WM_RBUTTONUP: event.button = MouseButton::Right; break;
+            case WM_MBUTTONDOWN: down = true; event.button = MouseButton::Middle; break;
+            case WM_MBUTTONUP: event.button = MouseButton::Middle; break;
+            case WM_XBUTTONDOWN: down = true; [[fallthrough]];
+            case WM_XBUTTONUP:
+                event.button = HIWORD(wParam) == XBUTTON1 ? MouseButton::Back : MouseButton::Forward;
+                break;
+            default: return false;
+        }
+        if (!windowState.focused) {
+            return true;
+        }
+        const unsigned int bit = 1U << static_cast<unsigned int>(event.button);
+        if (down) {
+            heldMouseButtons |= bit;
+            SetCapture(handle); // Получаем отпускание и за пределами окна при drag.
+        } else {
+            heldMouseButtons &= ~bit;
+        }
+        event.type = down ? EventType::MousePressed : EventType::MouseReleased;
+        Detail::queueEvent(event);
+        if (!down && heldMouseButtons == 0 && GetCapture() == handle) {
+            ReleaseCapture();
+        }
+        return true;
+    }
+    Detail::queueEvent(event);
+    return true;
+}
+
 // LRESULT — результат обработки сообщения; CALLBACK задаёт соглашение вызова Win32.
 // HWND — окно-получатель; UINT — код сообщения; WPARAM и LPARAM — его дополнительные данные.
 LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    if (message == WM_UNICHAR && wParam == UNICODE_NOCHAR) {
+        return TRUE; // Проверка поддержки UTF-32 отправителем.
+    }
+    if (handleInput(handle, message, wParam, lParam)) {
+        return message == WM_XBUTTONDOWN || message == WM_XBUTTONUP ? TRUE : 0;
+    }
     // WM_GETMINMAXINFO задаёт ограничения внешней рамки, хотя API движка принимает клиентские размеры.
     if (message == WM_GETMINMAXINFO) {
         const LRESULT result = DefWindowProcW(handle, message, wParam, lParam);
@@ -115,22 +321,34 @@ LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARA
         const int width = static_cast<int>(LOWORD(lParam));
         const int height = static_cast<int>(HIWORD(lParam));
         viewportNeedsUpdate = viewportNeedsUpdate || width != windowState.width || height != windowState.height;
+        if (width != windowState.width || height != windowState.height) {
+            Engine::Event event;
+            event.type = Engine::EventType::WindowResized;
+            event.width = width;
+            event.height = height;
+            Detail::queueEvent(event);
+        }
+        const bool minimized = wParam == SIZE_MINIMIZED;
+        if (minimized != windowState.minimized) {
+            Detail::queueEvent(minimized ? Engine::EventType::WindowMinimized : Engine::EventType::WindowRestored);
+        }
         windowState.width = width;
         windowState.height = height;
         windowState.minimized = wParam == SIZE_MINIMIZED;
         if (windowState.minimized) {
-            windowState.focused = false;
+            changeFocus(false);
         }
         return 0;
     }
     if (message == WM_SETFOCUS || message == WM_KILLFOCUS) {
-        windowState.focused = message == WM_SETFOCUS && !windowState.minimized;
+        changeFocus(message == WM_SETFOCUS && !windowState.minimized);
         return 0;
     }
 
     // WM_CLOSE только запрашивает выход. Контекст и HDC освобождаются до уничтожения окна в shutdown().
     if (message == WM_CLOSE) {
         closeRequested = true;
+        Detail::queueEvent(Engine::EventType::CloseRequested);
         return 0;
     }
 
@@ -138,6 +356,11 @@ LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARA
     // processEvents извлечёт WM_QUIT и завершит игровой цикл.
     if (message == WM_DESTROY) {
         if (handle == window) {
+            changeFocus(false);
+            Detail::queueEvent(Engine::EventType::WindowDestroyed);
+            if (!closeRequested) {
+                Detail::queueEvent(Engine::EventType::CloseRequested);
+            }
             window = nullptr;
             deviceContext = nullptr; // При внешнем уничтожении окна его частный DC уже недоступен.
             closeRequested = true;
@@ -170,6 +393,7 @@ bool initializeWindows(const WindowOptions& options, Error& error)
         return false;
     }
     windowOptions = options;
+    Detail::resetInput();
     windowState = {};
     // AdjustWindowRectEx добавляет рамку и заголовок к запрошенной клиентской области.
     const DWORD style = options.resizable ? WS_OVERLAPPEDWINDOW
@@ -186,7 +410,7 @@ bool initializeWindows(const WindowOptions& options, Error& error)
     minimumTrackHeight = minimumBounds.bottom - minimumBounds.top;
     // shutdown может оставить WM_QUIT от уничтоженного окна в очереди текущего потока.
     MSG oldQuit;
-    while (PeekMessage(&oldQuit, nullptr, WM_QUIT, WM_QUIT, PM_REMOVE)) {
+    while (PeekMessageW(&oldQuit, nullptr, WM_QUIT, WM_QUIT, PM_REMOVE)) {
     }
     // HINSTANCE — дескриптор текущего приложения; GetModuleHandle(nullptr) возвращает
     // экземпляр исполняемого файла, уже загруженный Windows.
@@ -240,16 +464,30 @@ bool initializeWindows(const WindowOptions& options, Error& error)
     PIXELFORMATDESCRIPTOR format = {};
     format.nSize = sizeof(format); // Размер структуры нужен Win32 для проверки версии описания.
     format.nVersion = 1;           // Версия PIXELFORMATDESCRIPTOR.
-    format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER | PFD_DEPTH_DONTCARE;
     format.iPixelType = PFD_TYPE_RGBA; // Тип пикселей RGBA; точность альфа-канала отдельно не запрашивается.
     format.cColorBits = 32; // cColorBits задаёт число бит цветового буфера на пиксель.
-    format.cDepthBits = 24; // cDepthBits задаёт точность буфера глубины.
+    format.cDepthBits = 0; // Для текущего 2D-вывода буфер глубины не требуется.
     // ChoosePixelFormat выбирает поддерживаемый драйвером формат, ближайший к запросу.
     const int pixelFormat = ChoosePixelFormat(deviceContext, &format);
 
     // SetPixelFormat закрепляет выбранный формат за HDC; формат поверхности после этого неизменяем.
     if (pixelFormat == 0) {
         error = windowsError("ChoosePixelFormat", "No compatible OpenGL pixel format was found.", GetLastError());
+        return false;
+    }
+    // ChoosePixelFormat возвращает ближайший формат, а не гарантию всех свойств.
+    // DescribePixelFormat читает фактические возможности выбранного формата.
+    PIXELFORMATDESCRIPTOR actualFormat = {};
+    if (!DescribePixelFormat(deviceContext, pixelFormat, sizeof(actualFormat), &actualFormat)) {
+        error = windowsError("DescribePixelFormat", "Could not inspect the selected pixel format.", GetLastError());
+        return false;
+    }
+    constexpr DWORD RequiredPixelFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    // Разрядность цвета и глубины — предпочтения запроса, а не условия отказа.
+    if ((actualFormat.dwFlags & RequiredPixelFlags) != RequiredPixelFlags
+        || actualFormat.iPixelType != PFD_TYPE_RGBA) {
+        error = windowsError("ChoosePixelFormat", "The selected format requires window OpenGL, double buffering and RGBA colors.");
         return false;
     }
     if (!SetPixelFormat(deviceContext, pixelFormat, &format)) {
@@ -364,6 +602,7 @@ bool setWindowTitle(const std::string& title, Error& error)
 bool processEvents(Error& error)
 {
     if (initialized && !window && closeRequested) {
+        Detail::finishInputFrame();
         return true;
     }
     if (!requireWindow("processEvents", error)) {
@@ -373,17 +612,20 @@ bool processEvents(Error& error)
     MSG message;
     // Забираем все накопившиеся сообщения, чтобы окно отвечало на ввод и перерисовку.
     // PeekMessage не блокирует поток; PM_REMOVE извлекает найденное сообщение из очереди.
-    while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
         // WM_QUIT — специальное сообщение завершения потока сообщений.
         if (message.message == WM_QUIT) {
+            if (!closeRequested) {
+                Detail::queueEvent(Engine::EventType::CloseRequested);
+            }
             closeRequested = true;
-            return true;
+            continue;
         }
 
         // TranslateMessage создаёт символьные сообщения из клавиатурных кодов,
         // а DispatchMessage передаёт сообщение оконной процедуре.
         TranslateMessage(&message);
-        DispatchMessage(&message);
+        DispatchMessageW(&message);
     }
 
     // Область вывода занимает клиентскую область; матрицы игрового мира не меняются.
@@ -391,14 +633,7 @@ bool processEvents(Error& error)
         glViewport(0, 0, windowState.width, windowState.height);
         viewportNeedsUpdate = false;
     }
-    // Обновляем снимок клавиатуры после обработки накопленных событий.
-    // GetKeyboardState читает состояние очереди текущего потока; PeekMessage выше обновляет его.
-    if (window && windowState.focused && !windowState.minimized) {
-        if (!GetKeyboardState(keyState.data())) {
-            error = windowsError("GetKeyboardState", "Could not read the keyboard state.", GetLastError());
-            return false;
-        }
-    }
+    Detail::finishInputFrame();
     return true;
 }
 
@@ -406,50 +641,6 @@ bool isCloseRequested()
 {
     return initialized && closeRequested;
 }
-
-bool isKeyDown(Key key)
-{
-    if (!initialized || !window || !windowState.focused || windowState.minimized) {
-        return false;
-    }
-    int nativeKey = 0;
-    switch (key) {
-        case Key::ArrowUp:
-            nativeKey = VK_UP;
-            break;
-        case Key::ArrowDown:
-            nativeKey = VK_DOWN;
-            break;
-        case Key::ArrowLeft:
-            nativeKey = VK_LEFT;
-            break;
-        case Key::ArrowRight:
-            nativeKey = VK_RIGHT;
-            break;
-        case Key::W:
-            nativeKey = 'W';
-            break;
-        case Key::A:
-            nativeKey = 'A';
-            break;
-        case Key::S:
-            nativeKey = 'S';
-            break;
-        case Key::D:
-            nativeKey = 'D';
-            break;
-        case Key::Space:
-            nativeKey = VK_SPACE;
-            break;
-        case Key::Escape:
-            nativeKey = VK_ESCAPE;
-            break;
-        default:
-            return false;
-    }
-    return (keyState[static_cast<std::size_t>(nativeKey)] & 0x80U) != 0;
-}
-
 
 bool present(Error& error)
 {
@@ -512,7 +703,11 @@ void shutdown(std::vector<Error>& errors)
     initialized = false;
     windowState = {};
     viewportNeedsUpdate = false;
-    keyState = {};
+    heldKeys = {};
+    heldMouseButtons = 0;
+    mouseInside = false;
+    highSurrogate = 0;
+    Detail::resetInput();
     windowOptions = {};
     minimumTrackWidth = 0;
     minimumTrackHeight = 0;

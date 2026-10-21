@@ -1,5 +1,7 @@
 #pragma once
 
+#include "input.h"
+
 #include <optional>
 #include <string>
 #include <vector>
@@ -22,19 +24,7 @@ struct Error
 void reportError(const Error& error, bool showDialog = true);
 
 // Отдельные клавиши без назначения игровых действий и без объединения WASD со стрелками.
-enum class Key
-{
-    ArrowUp,
-    ArrowDown,
-    ArrowLeft,
-    ArrowRight,
-    W,
-    A,
-    S,
-    D,
-    Space,
-    Escape
-};
+using Key = Engine::Key;
 
 struct WindowOptions
 {
@@ -86,9 +76,20 @@ bool processEvents(Error& error);
 // Обнаруженный запрос сохраняется до shutdown(), даже при последующей ошибке обработки событий.
 bool isCloseRequested();
 
-// Проверяет удержание отдельной клавиши. Без фокуса, окна или для неизвестной клавиши — false.
-// Читает снимок клавиатуры, обновлённый последним processEvents().
+// Проверяет удержание по снимку, опубликованному последним processEvents().
+// Потеря фокуса, сворачивание и уничтожение окна сбрасывают удержание при публикации
+// соответствующих событий. До следующего processEvents() сохраняется прежний снимок,
+// даже если сообщение Win32 уже пришло синхронно. Для неизвестной клавиши — false.
 bool isKeyDown(Key key);
+bool isKeyPressed(Key key);
+bool isKeyReleased(Key key);
+
+// Снимок и упорядоченные события последнего processEvents; ссылки действуют до
+// следующего processEvents/initialize/shutdown. Один вызов processEvents — один кадр ввода.
+// pressed/released, текст, движение и колесо очищаются каждый кадр, down сохраняется.
+// До запуска и после shutdown возвращаются пустые данные. Читать можно многократно.
+const Engine::InputState& getInput();
+const std::vector<Engine::Event>& getEvents();
 
 // Показывает нарисованный кадр из заднего буфера окна.
 // Для свёрнутого окна пропускает обмен буферов и возвращает true.

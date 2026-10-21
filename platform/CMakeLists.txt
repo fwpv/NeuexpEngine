@@ -15,6 +15,10 @@ else()
 endif()
 
 # PUBLIC делает общий интерфейс доступным приложениям, подключившим platform.
+add_library(engine_input STATIC ../engine/input.cpp ../engine/platform_input.cpp)
+target_include_directories(engine_input PUBLIC "${PROJECT_SOURCE_DIR}/engine")
+target_link_libraries(engine_input PRIVATE project_warnings)
+target_link_libraries(platform PUBLIC engine_input)
 target_include_directories(platform PUBLIC "${PROJECT_SOURCE_DIR}/engine")
 # Предупреждения проверяют реализацию платформы, но не становятся её публичным API.
 target_link_libraries(platform PRIVATE project_warnings)
