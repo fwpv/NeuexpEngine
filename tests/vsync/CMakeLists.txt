@@ -1,0 +1,26 @@
+add_executable(platform_vsync_test platform_vsync_test.cpp)
+target_include_directories(platform_vsync_test PRIVATE "${PROJECT_SOURCE_DIR}/engine")
+target_link_libraries(platform_vsync_test PRIVATE engine_input project_warnings)
+if(WIN32)
+    target_sources(platform_vsync_test PRIVATE
+        "${PROJECT_SOURCE_DIR}/platform/platform_windows.cpp"
+        ../windows/vsync_driver.cpp)
+    target_compile_definitions(platform_vsync_test PRIVATE NOMINMAX)
+    set(VSYNC_OVERRIDE "${PROJECT_SOURCE_DIR}/tests/windows/vsync_override.h")
+    target_link_libraries(platform_vsync_test PRIVATE opengl32 gdi32 user32 winmm)
+else()
+    find_package(X11 REQUIRED)
+    find_package(OpenGL REQUIRED)
+    target_sources(platform_vsync_test PRIVATE
+        "${PROJECT_SOURCE_DIR}/platform/platform_x11.cpp"
+        ../linux/vsync_driver.cpp)
+    set(VSYNC_OVERRIDE "${PROJECT_SOURCE_DIR}/tests/linux/vsync_override.h")
+    target_link_libraries(platform_vsync_test PRIVATE X11::X11 OpenGL::GL)
+endif()
+if(MSVC)
+    target_compile_options(platform_vsync_test PRIVATE "/FI${VSYNC_OVERRIDE}")
+else()
+    target_compile_options(platform_vsync_test PRIVATE -include "${VSYNC_OVERRIDE}")
+endif()
+add_test(NAME platform_vsync COMMAND platform_vsync_test)
+set_tests_properties(platform_vsync PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)

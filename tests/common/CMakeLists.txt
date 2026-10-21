@@ -91,3 +91,30 @@ set(TEST_TARGETS stb_image_test miniaudio_test platform_cleanup_test platform_va
 foreach(testTarget IN LISTS TEST_TARGETS)
     target_link_libraries(${testTarget} PRIVATE project_warnings)
 endforeach()
+
+add_executable(frame_clock_test frame_clock_test.cpp)
+target_link_libraries(frame_clock_test PRIVATE engine_time project_warnings)
+add_test(NAME frame_clock COMMAND frame_clock_test)
+
+add_executable(application_test application_test.cpp application_runtime.cpp)
+target_link_libraries(application_test PRIVATE engine_application engine_events project_warnings)
+
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("#include <chrono>
+#ifndef __GLIBCXX__
+#error libstdc++ is required
+#endif
+int main() { return 0; }" APPLICATION_TEST_LIBSTDCXX)
+if(APPLICATION_TEST_LIBSTDCXX AND NOT MSVC)
+    target_compile_definitions(application_test PRIVATE APPLICATION_VIRTUAL_TIME)
+    target_link_options(application_test PRIVATE "-Wl,--wrap=_ZNSt6chrono3_V212steady_clock3nowEv")
+    if(WIN32)
+        target_link_options(application_test PRIVATE "-Wl,--wrap=_ZNSt11this_thread11__sleep_forENSt6chrono8durationIxSt5ratioILx1ELx1EEEENS1_IxS2_ILx1ELx1000000000EEEE")
+    else()
+        target_link_options(application_test PRIVATE "-Wl,--wrap=nanosleep")
+    endif()
+endif()
+foreach(group lifecycle pause failures vsync limiter statistics)
+    add_test(NAME application_${group} COMMAND application_test ${group})
+    set_tests_properties(application_${group} PROPERTIES TIMEOUT 15 SKIP_RETURN_CODE 77)
+endforeach()

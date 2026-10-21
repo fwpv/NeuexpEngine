@@ -6,3 +6,5 @@ if(WIN32)
 elseif(UNIX AND NOT APPLE)
     add_subdirectory(linux)
 endif()
+
+add_subdirectory(vsync)
