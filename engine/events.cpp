@@ -92,13 +92,11 @@ void EventDispatcher::removeDisconnected()
 void EventDispatcher::dispatch(const Event& event)
 {
     removeDisconnected();
-    // Копируются только shared_ptr, не функции: изменяемое состояние лямбды
-    // сохраняется между вызовами. Снимок устойчив к добавлению и удалению подписок.
+    // Снимок хранит shared_ptr; обработчики и их состояние остаются общими.
     const auto currentSlots = slots;
     for (const auto& slot : currentSlots) {
         if (!slot->type || *slot->type == event.type) {
-            // Локальное владение сохраняет выполняемый обработчик, даже если
-            // он отключит собственную подписку или уничтожит диспетчер.
+            // Обработчик остаётся жив до завершения вызова, включая самоотключение.
             const auto handler = slot->handler;
             if (handler) {
                 (*handler)(event);

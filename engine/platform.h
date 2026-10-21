@@ -6,12 +6,9 @@
 #include <string>
 #include <vector>
 
-// Единая граница между игровой логикой и операционной системой.
-// Игровой код вызывает эти функции, а CMake подключает реализацию
-// только для выбранной платформы: Windows или Linux/X11.
 namespace Platform
 {
-// Данные ошибки не зависят от Win32/X11. Наличие ошибки определяется результатом операции.
+// Ошибка операции; nativeCode содержит необязательный код ОС.
 struct Error
 {
     std::string operation;
@@ -20,10 +17,8 @@ struct Error
 };
 
 // Всегда пишет в stderr; в Windows дополнительно показывает MessageBox, если showDialog == true.
-// Для некритичных ошибок и ошибок очистки диалог можно отключить.
 void reportError(const Error& error, bool showDialog = true);
 
-// Отдельные клавиши без назначения игровых действий и без объединения WASD со стрелками.
 using Key = Engine::Key;
 
 struct WindowOptions

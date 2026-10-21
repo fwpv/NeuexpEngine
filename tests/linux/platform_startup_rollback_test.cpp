@@ -48,8 +48,7 @@ extern "C" Status __wrap_XCloseIM(XIM method)
     return __real_XCloseIM(method);
 }
 
-// Подмена только в тестовом исполняемом файле через --wrap: окно и контекст создаются реально.
-// Отказываем на позднем шаге запуска, чтобы проверить очистку уже выделенных ресурсов.
+// Подмена позднего отказа запуска через --wrap; окно и контекст создаются реально.
 extern "C" Bool __real_glXMakeCurrent(Display* display, GLXDrawable drawable, GLXContext context);
 
 extern "C" Bool __wrap_glXMakeCurrent(Display* display, GLXDrawable drawable, GLXContext context)
@@ -119,7 +118,7 @@ int main()
             PlatformTest::shutdownAfterFailure(errors);
             return 1;
         }
-        // Без пользовательского shutdown после ошибки: следующий запуск должен быть успешным.
+        // Повторный запуск без shutdown после отказа инициализации.
         const bool restarted = Platform::initialize(options, errors);
         const bool stateRead = restarted && Platform::getWindowState(state, error);
         if (restarted && !stateRead) {

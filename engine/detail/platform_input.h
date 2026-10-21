@@ -2,8 +2,7 @@
 
 #include "input.h"
 
-// Внутренний мост платформ: сообщения Win32 могут приходить и вне processEvents.
-// Поэтому сначала сохраняем их, а снимок публикуем только при завершении processEvents.
+// Входящие события сохраняются до публикации снимка в finishInputFrame().
 namespace Platform::Detail
 {
 void queueEvent(Engine::Event event);

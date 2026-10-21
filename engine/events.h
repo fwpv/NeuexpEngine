@@ -14,9 +14,8 @@ namespace Detail
 struct EventSlot;
 }
 
-// Владение подпиской: уничтожение и disconnect отключают обработчик.
-// weak_ptr позволяет подписке безопасно пережить уничтожение диспетчера.
-// Объект можно перемещать, но нельзя копировать: у подписки один владелец.
+// Уничтожение подписки и disconnect отключают обработчик.
+// Подписка перемещается, не копируется и может пережить диспетчер.
 class EventSubscription
 {
 public:
@@ -51,7 +50,7 @@ public:
     EventDispatcher(EventDispatcher&&) = delete;
     EventDispatcher& operator=(EventDispatcher&&) = delete;
 
-    // Возвращаемый объект нужно сохранить. Пустой Handler даёт пустую подписку.
+    // Уничтожение возвращённого объекта отключает обработчик. Пустой Handler даёт пустую подписку.
     [[nodiscard]] EventSubscription subscribe(Handler handler);
     [[nodiscard]] EventSubscription subscribe(EventType type, Handler handler);
 

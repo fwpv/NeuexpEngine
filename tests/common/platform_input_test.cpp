@@ -24,8 +24,7 @@
 #include <vector>
 
 #ifndef _WIN32
-// Подмена только результата метода ввода позволяет проверить Unicode/длинные commit
-// без установленного сервера IME. Обычные нажатия проходят настоящий Xutf8LookupString.
+// Подменяется результат XIM; обычные нажатия проходят через Xutf8LookupString.
 namespace
 {
 std::string pendingCommit;
@@ -73,7 +72,6 @@ private:
     inline static WindowLookupErrors* active = nullptr;
 };
 }
-// Счётчик остаётся в тесте: проверяем закрытие соединения при отказе конструктора.
 extern "C" int __real_XCloseDisplay(Display*);
 extern "C" int __wrap_XCloseDisplay(Display* display)
 {
@@ -81,8 +79,7 @@ extern "C" int __wrap_XCloseDisplay(Display* display)
     return __real_XCloseDisplay(display);
 }
 
-// Доставляем уведомление XKB через очередь тестового окна, не меняя глобальные
-// CapsLock/NumLock рабочего стола. Рабочая библиотека не содержит тестовых ветвей.
+// Уведомления XKB поступают в тестовое окно без изменения блокировок рабочего стола.
 extern "C" int __real_XNextEvent(Display*, XEvent*);
 extern "C" int __wrap_XNextEvent(Display* display, XEvent* event)
 {
@@ -208,7 +205,6 @@ struct NativeInput
 
     void key(unsigned int code, bool down, bool repeat = false)
     {
-        // MAPVK_VK_TO_VSC_EX возвращает scan code и префикс E0/E1 для выбранной раскладки.
         // LPARAM клавиатурного сообщения хранит число повторов в битах 0–15,
         // scan code в 16–23, признак E0 в 24, прежнее удержание в 30 и отпускание в 31.
         const UINT scan = MapVirtualKeyExW(code, MAPVK_VK_TO_VSC_EX, layout);
@@ -277,9 +273,7 @@ struct NativeInput
 
     Window findWindowInTree(Window root, const char* expectedTitle)
     {
-        // XGetWMName читает WM_NAME вместе с кодировкой и длиной.
-        // Платформа записывает UTF8_STRING: XFetchName для свойства STRING
-        // не подходит, даже когда сам заголовок содержит только ASCII.
+        // WM_NAME хранится как UTF8_STRING, включая ASCII-заголовки.
         XTextProperty title = {};
         const bool titleRead = XGetWMName(display, root, &title) != 0;
         const Atom utf8 = XInternAtom(display, "UTF8_STRING", False);
@@ -287,7 +281,6 @@ struct NativeInput
         const bool found = titleRead && title.value && title.encoding == utf8
             && title.format == 8 && title.nitems == expectedLength
             && std::memcmp(title.value, expectedTitle, expectedLength) == 0;
-        // Xlib выделяет value; освобождаем его и при неподходящем заголовке.
         if (title.value) { XFree(title.value); }
         if (found) { return root; }
         Window parent = None;
@@ -306,8 +299,6 @@ struct NativeInput
 
     explicit NativeInput(const char* expectedTitle = "Engine input test")
     {
-        // nullptr выбирает DISPLAY из окружения; каждый успешный XOpenDisplay
-        // должен иметь парный XCloseDisplay, в том числе при ошибке конструктора.
         display = XOpenDisplay(nullptr);
         require(display != nullptr, "Could not open test display.");
         try {
@@ -330,8 +321,6 @@ struct NativeInput
 
     void send(XEvent& event, long mask)
     {
-        // XSendEvent адресует сообщение конкретному окну с указанной маской подписки;
-        // состояние настоящей клавиатуры и других приложений не изменяется.
         event.xany.display = display;
         event.xany.window = window;
         require(XSendEvent(display, window, False, mask, &event) != 0, "XSendEvent failed.");
@@ -406,7 +395,6 @@ struct NativeInput
 
     void flush()
     {
-        // False сохраняет очередь: XSync ждёт обработки запросов сервером, не удаляя события.
         XSync(display, False);
     }
 #endif
@@ -476,7 +464,6 @@ void keyboard(NativeInput& native)
     };
     constexpr unsigned int FunctionBase = XK_F1;
     constexpr unsigned int NumpadBase = XK_KP_0;
-    // F13-F24 отсутствуют на стандартной X11 pc105; их состояние покрывает общий тест.
     constexpr int FunctionCount = 12;
 #endif
     keys.insert(keys.end(), std::begin(special), std::end(special));
@@ -495,8 +482,6 @@ void keyboard(NativeInput& native)
                 std::cerr << "Received engine key=" << static_cast<int>(received->key) << '\n';
             }
 #ifndef _WIN32
-            // Имя из реальной карты помогает отличить ошибку преобразования
-            // от выбора другой физической позиции через XKeysymToKeycode.
             XkbDescPtr keyboard = XkbGetKeyboard(native.display, XkbAllComponentsMask, XkbUseCoreKbd);
             const KeyCode code = XKeysymToKeycode(native.display, item.second);
             if (keyboard && keyboard->names && keyboard->names->keys
@@ -770,7 +755,6 @@ void lockStates(NativeInput& native)
     require(Platform::getInput().modifiers().numLock, "Mouse state overwrote XKB lock state.");
     notify(0);
     require(!Platform::getInput().modifiers().numLock, "NumLock release notification was lost.");
-    // Возвращаем тестовую модель к реальному состоянию, не меняя состояние сервера.
     XkbStateRec actual = {};
     require(XkbGetState(native.display, XkbUseCoreKbd, &actual) == Success, "Could not read keyboard locks.");
     notify(actual.locked_mods);
@@ -784,15 +768,11 @@ void windowEvents(NativeInput& native)
     constexpr auto ResizeTimeout = std::chrono::milliseconds(500);
     constexpr auto ResizePollInterval = std::chrono::milliseconds(10);
 #ifdef _WIN32
-    // Синхронные сообщения не должны пропасть при начале следующего кадра.
     SendMessageW(native.window, WM_SIZE, SIZE_RESTORED, MAKELPARAM(ResizedWidth, ResizedHeight));
 #else
     XResizeWindow(native.display, native.window, ResizedWidth, ResizedHeight);
 #endif
-    // XSync подтверждает обработку запроса сервером, но оконный менеджер
-    // выполняет перенаправленный запрос размера через собственное соединение.
-    // Проверяем события каждого кадра до срока, включая промежуточные размеры.
-    // Снимок состояния не заменяет проверку полезных данных самого события.
+    // Изменение размера оконным менеджером асинхронно относительно соединения теста.
     const auto deadline = std::chrono::steady_clock::now() + ResizeTimeout;
     bool resized = false;
     int lastWidth = 0;
@@ -904,15 +884,12 @@ int main(int argc, char** argv)
         {
             NativeInput native;
 #ifndef _WIN32
-            // Детерминированно воспроизводим исчезновение окна до чтения свойств.
             // XDestroyWindow завершится на сервере до следующих запросов этого соединения.
             const Window disappeared = XCreateSimpleWindow(native.display, DefaultRootWindow(native.display),
                 0, 0, 1, 1, 0, 0, 0);
             XDestroyWindow(native.display, disappeared);
             require(native.findWindow(disappeared, options.title.c_str()) == None,
                 "Destroyed window was not skipped during lookup.");
-            // Проверяем поиск настоящего окна с UTF-8, без подмены Xlib.
-            // Исходный ASCII-заголовок уже проверен конструктором NativeInput.
             const std::string unicodeTitle = u8"Engine input test — Проверка";
             Platform::Error titleError;
             require(PlatformTest::checkOperation(Platform::setWindowTitle(unicodeTitle, titleError), titleError),

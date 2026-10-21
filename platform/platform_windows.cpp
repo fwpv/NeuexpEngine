@@ -4,9 +4,6 @@
 #include "detail/platform_input.h"
 #include "detail/unicode.h"
 
-// windows.h предоставляет окна, сообщения, устройства ввода и WGL;
-// mmsystem.h объявляет функции точности системного таймера;
-// gl.h содержит используемые приложением команды OpenGL.
 #include <windows.h>
 #include <mmsystem.h>
 #include <GL/gl.h>
@@ -18,13 +15,11 @@ namespace Platform
 {
 namespace
 {
-// HWND — дескриптор окна Win32; HDC — дескриптор его графической поверхности;
-// HGLRC — дескриптор контекста OpenGL, привязанного к этой поверхности.
 HWND window = nullptr;
 HDC deviceContext = nullptr;
 HGLRC openGLContext = nullptr;
 
-// Флаг нужен, чтобы завершить только успешно начатый запрос точности таймера.
+// Успешный запрос timeBeginPeriod(1).
 bool timerResolutionEnabled = false;
 
 HINSTANCE applicationInstance = nullptr;
@@ -47,14 +42,12 @@ Error windowsError(const char* operation, const char* message, DWORD code = ERRO
     Error error = { operation, message, std::nullopt };
     if (code != ERROR_SUCCESS) {
         error.nativeCode = static_cast<int>(code);
-        // ALLOCATE_BUFFER просит Windows выделить память нужного размера. API требует
-        // передать адрес указателя через LPWSTR; освобождать память нужно только LocalFree.
+        // Буфер FormatMessageW освобождается через LocalFree.
         wchar_t* description = nullptr;
         const DWORD descriptionLength = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER
             | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
             nullptr, code, 0, reinterpret_cast<LPWSTR>(&description), 0, nullptr);
         if (descriptionLength != 0) {
-            // Первый вызов определяет число UTF-8 байт, второй заполняет строку точно этого размера.
             const int length = WideCharToMultiByte(CP_UTF8, 0, description,
                 static_cast<int>(descriptionLength), nullptr, 0, nullptr, nullptr);
             if (length > 0) {
@@ -79,7 +72,6 @@ bool convertTitle(const std::string& title, std::wstring& wideTitle, Error& erro
         wideTitle.clear();
         return true;
     }
-    // Сначала определяем размер UTF-16, затем выполняем преобразование в выделенную строку.
     const int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, title.data(),
         static_cast<int>(title.size()), nullptr, 0);
     if (length == 0) {
@@ -239,7 +231,7 @@ bool handleInput(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
             Detail::queueEvent(event);
         }
         if (inside) {
-            // TME_LEAVE просит единственное уведомление о выходе; после входа запрос повторяется.
+            // Уведомление TME_LEAVE одноразовое; запрос повторяется после входа.
             TRACKMOUSEEVENT tracking = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, handle, 0 };
             TrackMouseEvent(&tracking);
         }
@@ -289,8 +281,6 @@ bool handleInput(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
     return true;
 }
 
-// LRESULT — результат обработки сообщения; CALLBACK задаёт соглашение вызова Win32.
-// HWND — окно-получатель; UINT — код сообщения; WPARAM и LPARAM — его дополнительные данные.
 LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
 {
     if (message == WM_UNICHAR && wParam == UNICODE_NOCHAR) {
@@ -316,7 +306,6 @@ LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARA
         return result;
     }
 
-    // Эти сообщения уже содержат новое состояние: опрос ОС на каждом кадре не требуется.
     if (message == WM_SIZE) {
         const int width = static_cast<int>(LOWORD(lParam));
         const int height = static_cast<int>(HIWORD(lParam));
@@ -352,8 +341,6 @@ LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARA
         return 0;
     }
 
-    // WM_DESTROY означает, что окно уничтожено; PostQuitMessage кладёт WM_QUIT в очередь потока.
-    // processEvents извлечёт WM_QUIT и завершит игровой цикл.
     if (message == WM_DESTROY) {
         if (handle == window) {
             changeFocus(false);
@@ -373,7 +360,6 @@ LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARA
         return 0;
     }
 
-    // DefWindowProc выполняет стандартное поведение Windows для необработанных сообщений.
     return DefWindowProcW(handle, message, wParam, lParam);
 }
 
@@ -395,7 +381,6 @@ bool initializeWindows(const WindowOptions& options, Error& error)
     windowOptions = options;
     Detail::resetInput();
     windowState = {};
-    // AdjustWindowRectEx добавляет рамку и заголовок к запрошенной клиентской области.
     const DWORD style = options.resizable ? WS_OVERLAPPEDWINDOW
         : WS_OVERLAPPEDWINDOW & ~static_cast<DWORD>(WS_THICKFRAME | WS_MAXIMIZEBOX);
     RECT bounds = { 0, 0, options.width, options.height };
@@ -412,8 +397,6 @@ bool initializeWindows(const WindowOptions& options, Error& error)
     MSG oldQuit;
     while (PeekMessageW(&oldQuit, nullptr, WM_QUIT, WM_QUIT, PM_REMOVE)) {
     }
-    // HINSTANCE — дескриптор текущего приложения; GetModuleHandle(nullptr) возвращает
-    // экземпляр исполняемого файла, уже загруженный Windows.
     closeRequested = false;
     applicationInstance = GetModuleHandle(nullptr);
     if (!applicationInstance) {
@@ -421,16 +404,13 @@ bool initializeWindows(const WindowOptions& options, Error& error)
         return false;
     }
 
-    // WNDCLASS описывает класс будущих окон: обработчик, курсор и имя класса.
     WNDCLASSW windowClass = {};
-    // CS_OWNDC просит Windows выделить окну постоянный собственный HDC для OpenGL.
+    // CS_OWNDC закрепляет постоянный HDC за окном.
     windowClass.style = CS_OWNDC;
-    windowClass.lpfnWndProc = windowProcedure; // Функция обратного вызова для сообщений окна.
-    windowClass.hInstance = applicationInstance;          // экземпляр программы-владельца класса.
-    // LoadCursor загружает системный курсор; IDC_ARROW выбирает стандартную стрелку.
-    windowClass.hCursor = LoadCursor(nullptr, IDC_ARROW); // nullptr выбирает системный ресурс.
-    windowClass.lpszClassName = WindowClassName;       // имя для CreateWindow.
-    // RegisterClass публикует описание WNDCLASS в системе; без регистрации CreateWindow не найдёт класс.
+    windowClass.lpfnWndProc = windowProcedure;
+    windowClass.hInstance = applicationInstance;
+    windowClass.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    windowClass.lpszClassName = WindowClassName;
     if (!RegisterClassW(&windowClass)) {
         error = windowsError("RegisterClass", "Could not register the window class.", GetLastError());
         return false;
@@ -438,10 +418,7 @@ bool initializeWindows(const WindowOptions& options, Error& error)
 
     windowClassRegistered = true;
 
-    // CreateWindow создаёт окно по зарегистрированному имени.
-    // Для фиксированного размера исключены растягиваемая рамка и кнопка разворачивания.
-    // Координаты 100, 100 задают начальное положение; bounds включает рамку и заголовок.
-    // nullptr для родителя и меню создаёт самостоятельное окно без меню приложения.
+    // Фиксированное окно не имеет растягиваемой рамки и кнопки разворачивания.
     window = CreateWindowW(windowClass.lpszClassName, title.c_str(),
         style, 100, 100, bounds.right - bounds.left, bounds.bottom - bounds.top,
         nullptr, nullptr, applicationInstance, nullptr);
@@ -450,7 +427,6 @@ bool initializeWindows(const WindowOptions& options, Error& error)
         return false;
     }
 
-    // GetDC получает HDC клиентской области — поверхности, куда OpenGL будет выводить кадры.
     deviceContext = GetDC(window);
     if (!deviceContext) {
         // GetDC не документирует расширенную ошибку через GetLastError.
@@ -458,26 +434,19 @@ bool initializeWindows(const WindowOptions& options, Error& error)
         return false;
     }
 
-    // PIXELFORMATDESCRIPTOR описывает требования к пикселям поверхности.
-    // PFD_DRAW_TO_WINDOW разрешает вывод в окно; PFD_SUPPORT_OPENGL — использование OpenGL;
-    // PFD_DOUBLEBUFFER включает задний буфер; PFD_TYPE_RGBA задаёт компоненты RGBA.
     PIXELFORMATDESCRIPTOR format = {};
-    format.nSize = sizeof(format); // Размер структуры нужен Win32 для проверки версии описания.
-    format.nVersion = 1;           // Версия PIXELFORMATDESCRIPTOR.
+    format.nSize = sizeof(format);
+    format.nVersion = 1;
     format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER | PFD_DEPTH_DONTCARE;
-    format.iPixelType = PFD_TYPE_RGBA; // Тип пикселей RGBA; точность альфа-канала отдельно не запрашивается.
-    format.cColorBits = 32; // cColorBits задаёт число бит цветового буфера на пиксель.
-    format.cDepthBits = 0; // Для текущего 2D-вывода буфер глубины не требуется.
-    // ChoosePixelFormat выбирает поддерживаемый драйвером формат, ближайший к запросу.
+    format.iPixelType = PFD_TYPE_RGBA;
+    format.cColorBits = 32;
+    format.cDepthBits = 0;
     const int pixelFormat = ChoosePixelFormat(deviceContext, &format);
 
-    // SetPixelFormat закрепляет выбранный формат за HDC; формат поверхности после этого неизменяем.
     if (pixelFormat == 0) {
         error = windowsError("ChoosePixelFormat", "No compatible OpenGL pixel format was found.", GetLastError());
         return false;
     }
-    // ChoosePixelFormat возвращает ближайший формат, а не гарантию всех свойств.
-    // DescribePixelFormat читает фактические возможности выбранного формата.
     PIXELFORMATDESCRIPTOR actualFormat = {};
     if (!DescribePixelFormat(deviceContext, pixelFormat, sizeof(actualFormat), &actualFormat)) {
         error = windowsError("DescribePixelFormat", "Could not inspect the selected pixel format.", GetLastError());
@@ -495,8 +464,6 @@ bool initializeWindows(const WindowOptions& options, Error& error)
         return false;
     }
 
-    // wglCreateContext создаёт контекст WGL для HDC; wglMakeCurrent назначает его текущим потоку.
-    // Все последующие вызовы OpenGL из этого потока будут рисовать в эту поверхность.
     openGLContext = wglCreateContext(deviceContext);
     if (!openGLContext) {
         error = windowsError("wglCreateContext", "Could not create the OpenGL context.", GetLastError());
@@ -507,11 +474,8 @@ bool initializeWindows(const WindowOptions& options, Error& error)
         return false;
     }
 
-    // timeBeginPeriod(1) просит Multimedia Timer использовать точность 1 мс.
-    // TIMERR_NOERROR означает успех; timeEndPeriod(1) парно отменит запрос в shutdown.
     timerResolutionEnabled = timeBeginPeriod(1) == TIMERR_NOERROR;
 
-    // ShowWindow показывает готовое окно; SW_SHOW означает обычный показ.
     ShowWindow(window, SW_SHOW);
     // Начальный снимок запрашивается один раз; дальнейшие изменения приходят в оконную процедуру.
     RECT clientBounds = {};
@@ -527,7 +491,6 @@ bool initializeWindows(const WindowOptions& options, Error& error)
 }
 }
 
-// Диагностика отделена от обнаружения ошибок системных операций.
 void reportError(const Error& error, bool showDialog)
 {
     std::string text = "OpenGLDemo: " + error.operation + ": " + error.message;
@@ -541,7 +504,7 @@ void reportError(const Error& error, bool showDialog)
         if (length > 0) {
             std::wstring wideText(static_cast<std::size_t>(length), L'\0');
             if (MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, wideText.data(), length) != 0) {
-                // nullptr не требует существующего окна демо или OpenGL-контекста.
+                // Диалог не требует созданного окна или контекста OpenGL.
                 if (MessageBoxW(nullptr, wideText.c_str(), L"OpenGLDemo - Error",
                     MB_OK | MB_ICONERROR | MB_TASKMODAL) == 0) {
                     const DWORD code = GetLastError();
@@ -567,7 +530,7 @@ bool initialize(const WindowOptions& options, std::vector<Error>& errors)
     if (initializeWindows(options, error)) {
         return true;
     }
-    // Сохраняем исходную причину перед очисткой: shutdown заменяет переданный список.
+    // shutdown заменяет переданный список ошибок.
     shutdown(errors);
     errors.insert(errors.begin(), error);
     return false;
@@ -608,12 +571,8 @@ bool processEvents(Error& error)
     if (!requireWindow("processEvents", error)) {
         return false;
     }
-    // MSG — структура одного сообщения Win32: код, окно и параметры события.
     MSG message;
-    // Забираем все накопившиеся сообщения, чтобы окно отвечало на ввод и перерисовку.
-    // PeekMessage не блокирует поток; PM_REMOVE извлекает найденное сообщение из очереди.
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
-        // WM_QUIT — специальное сообщение завершения потока сообщений.
         if (message.message == WM_QUIT) {
             if (!closeRequested) {
                 Detail::queueEvent(Engine::EventType::CloseRequested);
@@ -622,8 +581,6 @@ bool processEvents(Error& error)
             continue;
         }
 
-        // TranslateMessage создаёт символьные сообщения из клавиатурных кодов,
-        // а DispatchMessage передаёт сообщение оконной процедуре.
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }
@@ -650,7 +607,6 @@ bool present(Error& error)
     if (windowState.minimized) {
         return true;
     }
-    // SwapBuffers сообщает об отказе синхронно; уведомление выполняет вызывающий код.
     if (!SwapBuffers(deviceContext)) {
         error = windowsError("SwapBuffers", "Could not present the frame.", GetLastError());
         return false;
@@ -670,7 +626,7 @@ void shutdown(std::vector<Error>& errors)
         timerResolutionEnabled = false;
     }
     if (openGLContext) {
-        // После отказа активации контекст может не быть текущим: отсоединять тогда нечего.
+        // После отказа активации контекст может не быть текущим.
         if (wglGetCurrentContext() == openGLContext && !wglMakeCurrent(nullptr, nullptr)) {
             errors.push_back(windowsError("wglMakeCurrent (detach)", "Could not detach the OpenGL context.", GetLastError()));
         }

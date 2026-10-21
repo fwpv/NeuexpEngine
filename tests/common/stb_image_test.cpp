@@ -22,8 +22,6 @@ bool checkPixels(const char* path)
     int width = 0;
     int height = 0;
     int channels = 0;
-    // Последний аргумент запрашивает RGBA; channels сообщает число каналов исходного файла.
-    // stbi_load возвращает nullptr при ошибке, иначе выделяет память для пикселей.
     unsigned char* pixels = stbi_load(path, &width, &height, &channels, ImageChannels);
     if (!pixels) {
         std::cerr << "Cannot load PNG: " << path << "\n";
@@ -41,14 +39,12 @@ bool checkPixels(const char* path)
         }
     }
 
-    // Память библиотеки освобождается через stbi_image_free, в том числе при провале проверки.
     stbi_image_free(pixels);
     return passed;
 }
 
 bool checkLoadFailure(const char* path, bool shouldExist)
 {
-    // Проверяем наличие ресурса отдельно, чтобы пропавший повреждённый PNG не дал ложный успех.
     std::error_code error;
     const bool exists = std::filesystem::exists(path, error);
     if (error || exists != shouldExist) {
@@ -88,6 +84,5 @@ int main(int argumentCount, char* arguments[])
         std::cerr << "Unknown scenario: " << arguments[1] << "\n";
     }
 
-    // Явный код возврата сохраняет проверки в Release, где assert может быть отключён.
     return passed ? 0 : 1;
 }

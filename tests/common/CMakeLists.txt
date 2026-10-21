@@ -28,7 +28,6 @@ add_executable(stb_image_test stb_image_test.cpp)
 target_link_libraries(stb_image_test PRIVATE stb_image)
 target_include_directories(stb_image_test SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/third_party/stb")
 
-# Абсолютные пути позволяют запускать CTest из каталога сборки на обеих ОС.
 add_test(NAME stb_image_pixels COMMAND stb_image_test pixels
     "${TEST_ASSETS_DIR}/rgba_2x2.png")
 add_test(NAME stb_image_missing COMMAND stb_image_test missing
@@ -47,8 +46,6 @@ add_test(NAME miniaudio_missing COMMAND miniaudio_test missing
 add_test(NAME miniaudio_corrupt COMMAND miniaudio_test corrupt
     "${TEST_ASSETS_DIR}/truncated.wav")
 
-# Проверки подключают настоящую платформенную библиотеку без подмены системных вызовов.
-# Графическая сессия для этих сценариев не требуется.
 add_executable(platform_cleanup_test platform_cleanup_test.cpp)
 target_link_libraries(platform_cleanup_test PRIVATE platform)
 add_test(NAME platform_cleanup COMMAND platform_cleanup_test)
@@ -60,7 +57,6 @@ add_test(NAME platform_validation COMMAND platform_validation_test)
 add_executable(platform_window_test platform_window_test.cpp)
 target_include_directories(platform_window_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 if(WIN32)
-    # Отдельная копия платформы получает тестовые подмены клавиатуры и обмена буферов.
     set(WINDOW_PLATFORM_SOURCE "${PROJECT_SOURCE_DIR}/platform/platform_windows.cpp")
     set(PLATFORM_OVERRIDE "${PROJECT_SOURCE_DIR}/tests/windows/windows_platform_override.h")
     if(MSVC)
@@ -92,7 +88,6 @@ set_tests_properties(platform_viewport PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30
 
 set(TEST_TARGETS stb_image_test miniaudio_test platform_cleanup_test platform_validation_test platform_window_test platform_viewport_test)
 
-# Одинаковый уровень предупреждений для тестовых программ.
 foreach(testTarget IN LISTS TEST_TARGETS)
     target_link_libraries(${testTarget} PRIVATE project_warnings)
 endforeach()

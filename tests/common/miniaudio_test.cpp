@@ -17,7 +17,6 @@ constexpr std::array<ma_int16, FrameCount * ChannelCount> ExpectedSamples = {
 
 ma_decoder_config decoderConfig()
 {
-    // Нули сохраняют исходную частоту и число каналов; s16 сохраняет целочисленные отсчёты.
     ma_decoder_config config = ma_decoder_config_init(ma_format_s16, 0, 0);
     config.encodingFormat = ma_encoding_format_wav;
     return config;
@@ -27,7 +26,6 @@ bool checkSamples(const char* path)
 {
     const ma_decoder_config config = decoderConfig();
     ma_decoder decoder;
-    // Декодер читает файл без открытия аудиоустройства. Освобождаем только после успешной инициализации.
     const ma_result initialized = ma_decoder_init_file(path, &config, &decoder);
     if (initialized != MA_SUCCESS) {
         std::cerr << "Cannot decode WAV: " << path << " (error " << initialized << ")\n";
@@ -44,7 +42,6 @@ bool checkSamples(const char* path)
     if (!passed) {
         std::cerr << "Expected 48000 Hz stereo s16 WAV with 4 PCM frames\n";
     } else {
-        // Один PCM-кадр содержит отсчёт каждого канала: четыре стереокадра дают восемь отсчётов.
         std::array<ma_int16, ExpectedSamples.size()> samples = {};
         ma_uint64 framesRead = 0;
         const ma_result result = ma_decoder_read_pcm_frames(&decoder, samples.data(), FrameCount, &framesRead);
@@ -70,7 +67,6 @@ bool checkSamples(const char* path)
 
 bool checkLoadFailure(const char* path, bool shouldExist)
 {
-    // Пропавший повреждённый ресурс не должен давать ложный успех теста.
     std::error_code error;
     if (std::filesystem::exists(path, error) != shouldExist || error) {
         std::cerr << "Unexpected test file availability: " << path << "\n";
@@ -107,6 +103,5 @@ int main(int argumentCount, char* arguments[])
         std::cerr << "Unknown scenario: " << arguments[1] << "\n";
     }
 
-    // Явный код возврата сохраняет проверки в Release, где assert может быть отключён.
     return passed ? 0 : 1;
 }
