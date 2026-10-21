@@ -40,8 +40,17 @@ bool Application::run(const ApplicationOptions& options, std::vector<Platform::E
 
     // При исключении обработчика onStop() вызывается до уничтожения контекста.
     Platform::Error error;
+    bool startAttempted = false;
     try {
-        if (!onStart(error)) {
+        bool ready = true;
+        if (options.verticalSync.has_value()) {
+            ready = setVSync(*options.verticalSync, error);
+        }
+        if (ready) {
+            startAttempted = true;
+            ready = onStart(error);
+        }
+        if (!ready) {
             errors.push_back(error);
         } else {
             const auto start = Clock::now();
@@ -54,11 +63,8 @@ bool Application::run(const ApplicationOptions& options, std::vector<Platform::E
             while (!exitRequested && errors.empty()) {
                 const auto frameStart = Clock::now();
                 FrameTimings timings;
-                if (!Platform::processEvents(error)) {
+                if (!Platform::isCloseRequested() && !Platform::processEvents(error)) {
                     errors.push_back(error);
-                    break;
-                }
-                if (Platform::isCloseRequested()) {
                     break;
                 }
                 if (!Platform::getWindowState(frame.window, error)) {
@@ -71,7 +77,7 @@ bool Application::run(const ApplicationOptions& options, std::vector<Platform::E
                     errors.push_back(error);
                     break;
                 }
-                if (exitRequested) {
+                if (exitRequested || Platform::isCloseRequested()) {
                     break;
                 }
                 auto stageEnd = Clock::now();
@@ -150,7 +156,7 @@ bool Application::run(const ApplicationOptions& options, std::vector<Platform::E
 
                 // Ожидание учитывает все стадии кадра, включая present().
                 const double targetFps = frame.window.minimized ?
-                    MinimizedFramesPerSecond : options.targetFramesPerSecond;
+                    MinimizedFramesPerSecond : (verticalSyncEnabled ? 0.0 : options.targetFramesPerSecond);
                 const auto waitStart = Clock::now();
                 if (targetFps > 0) {
                     const auto targetDuration = std::chrono::duration_cast<Clock::duration>(
@@ -171,7 +177,9 @@ bool Application::run(const ApplicationOptions& options, std::vector<Platform::E
 
     std::vector<Platform::Error> cleanupErrors;
     try {
-        onStop(cleanupErrors);
+        if (startAttempted) {
+            onStop(cleanupErrors);
+        }
     } catch (const std::exception& exception) {
         cleanupErrors.push_back({ "Application::onStop", exception.what(), {} });
     } catch (...) {
@@ -193,6 +201,15 @@ void Application::setPaused(bool value)
 bool Application::isPaused() const
 {
     return paused;
+}
+
+bool Application::setVSync(bool enabled, Platform::Error& error)
+{
+    if (!Platform::setVSync(enabled, error)) {
+        return false;
+    }
+    verticalSyncEnabled = enabled;
+    return true;
 }
 
 void Application::requestExit()

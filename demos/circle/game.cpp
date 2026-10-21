@@ -9,6 +9,7 @@
 #include <GL/gl.h>
 #include <array>
 #include <cmath>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -1104,6 +1105,8 @@ private:
     bool portalsOpen = false;
     bool locked = false;
     bool titleDirty = true;
+    std::optional<bool> verticalSync;
+    bool verticalSyncFailed = false;
 
     bool onStart(Platform::Error&) override
     {
@@ -1128,6 +1131,17 @@ private:
         }
         if (Platform::isKeyPressed(Platform::Key::P)) {
             setPaused(!isPaused());
+            titleDirty = true;
+        }
+        if (Platform::isKeyPressed(Platform::Key::V)) {
+            const bool enabled = !verticalSync.value_or(false);
+            Platform::Error error;
+            verticalSyncFailed = !setVSync(enabled, error);
+            if (verticalSyncFailed) {
+                Platform::reportError(error, false);
+            } else {
+                verticalSync = enabled;
+            }
             titleDirty = true;
         }
         return true;
@@ -1156,8 +1170,10 @@ private:
             Game::StationSettings.position, Game::StationSettings.lockRadius);
         if (frame.fpsUpdated || titleDirty) {
             const int fps = static_cast<int>(frame.framesPerSecond + 0.5);
+            const std::string syncStatus = verticalSyncFailed ? "error" :
+                (verticalSync.has_value() ? (*verticalSync ? "on" : "off") : "driver");
             const std::string title = "ORBITAL // SECTOR 09 | FPS: " + std::to_string(fps) +
-                (frame.paused ? " | PAUSED" : "") + " | P: pause";
+                (frame.paused ? " | PAUSED" : "") + " | VSync: " + syncStatus + " | P: pause | V: VSync";
             Platform::Error error;
             if (!Platform::setWindowTitle(title, error)) {
                 Platform::reportError(error, false);

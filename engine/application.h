@@ -2,6 +2,7 @@
 
 #include "platform.h"
 
+#include <optional>
 #include <vector>
 
 namespace Engine
@@ -10,9 +11,10 @@ struct ApplicationOptions
 {
     Platform::WindowOptions window;
     float maxDeltaTime = 0.08F;
-    // Ноль отключает программное ограничение FPS. Вертикальная синхронизация
-    // определяется текущими настройками платформы и драйвера.
+    // Ноль отключает программное ограничение FPS.
     double targetFramesPerSecond = 120.0;
+    // nullopt сохраняет режим драйвера. Явное включение VSync отключает программное ожидание.
+    std::optional<bool> verticalSync;
 };
 
 // Длительности частей предыдущего завершённого кадра в секундах.
@@ -56,6 +58,8 @@ public:
     // Изменения из onInput() применяются к обновлению текущего кадра.
     void setPaused(bool paused);
     bool isPaused() const;
+    // Применяет VSync к текущему окну и согласует его с программным ограничителем.
+    bool setVSync(bool enabled, Platform::Error& error);
     // Завершение после текущего обработчика, без следующих стадий кадра.
     void requestExit();
 
@@ -74,5 +78,6 @@ private:
     bool paused = false;
     bool exitRequested = false;
     bool started = false;
+    bool verticalSyncEnabled = false;
 };
 }

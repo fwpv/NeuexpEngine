@@ -27,7 +27,10 @@ enum class Key
     Count
 };
 
-enum class MouseButton { Unknown, Left, Right, Middle, Back, Forward, Count };
+enum class MouseButton
+{
+    Unknown, Left, Right, Middle, Back, Forward, Count
+};
 
 struct Modifiers
 {

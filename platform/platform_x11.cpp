@@ -1,6 +1,7 @@
 #include "platform.h"
 #include "window_validation.h"
 #include "key_codes.h"
+#include "extension_names.h"
 #include "detail/platform_input.h"
 
 #include <X11/Xlib.h>
@@ -180,10 +181,18 @@ void handleInput(XEvent& native, bool filtered)
         event.modifiers = readModifiers(native.xkey.state);
         // state содержит модификаторы до события; переход применяется отдельно.
         const bool down = native.type == KeyPress;
-        if (event.key == Key::LeftShift || event.key == Key::RightShift) { event.modifiers.shift = down; }
-        if (event.key == Key::LeftControl || event.key == Key::RightControl) { event.modifiers.control = down; }
-        if (event.key == Key::LeftAlt || event.key == Key::RightAlt) { event.modifiers.alt = down; }
-        if (event.key == Key::LeftSuper || event.key == Key::RightSuper) { event.modifiers.super = down; }
+        if (event.key == Key::LeftShift || event.key == Key::RightShift) {
+            event.modifiers.shift = down;
+        }
+        if (event.key == Key::LeftControl || event.key == Key::RightControl) {
+            event.modifiers.control = down;
+        }
+        if (event.key == Key::LeftAlt || event.key == Key::RightAlt) {
+            event.modifiers.alt = down;
+        }
+        if (event.key == Key::LeftSuper || event.key == Key::RightSuper) {
+            event.modifiers.super = down;
+        }
         Detail::queueEvent(event);
         if (down && !filtered) {
             readText(native.xkey);
@@ -595,6 +604,67 @@ bool setWindowTitle(const std::string& title, Error& error)
     return requireWindow("setWindowTitle", error)
         && validateWindowTitle(title, "setWindowTitle", error)
         && applyWindowTitle(title, error);
+}
+
+bool setVSync(bool enabled, Error& error)
+{
+    if (!requireWindow("setVSync", error) || !takeError("before setVSync", error)) {
+        return false;
+    }
+    const char* extensions = glXQueryExtensionsString(display, DefaultScreen(display));
+    if (!synchronize("glXQueryExtensionsString", error)) {
+        return false;
+    }
+    if (Detail::hasExtension(extensions, "GLX_EXT_swap_control")) {
+        using SwapInterval = void (*)(Display*, GLXDrawable, int);
+        const auto swapInterval = reinterpret_cast<SwapInterval>(
+            glXGetProcAddressARB(reinterpret_cast<const GLubyte*>("glXSwapIntervalEXT")));
+        if (swapInterval) {
+            swapInterval(display, window, enabled ? 1 : 0);
+            return synchronize("glXSwapIntervalEXT", error);
+        }
+    }
+    if (Detail::hasExtension(extensions, "GLX_MESA_swap_control")) {
+        const Bool direct = glXIsDirect(display, openGLContext);
+        if (!synchronize("glXIsDirect", error)) {
+            return false;
+        }
+        if (direct) {
+            using SwapInterval = int (*)(unsigned int);
+            const auto swapInterval = reinterpret_cast<SwapInterval>(
+                glXGetProcAddressARB(reinterpret_cast<const GLubyte*>("glXSwapIntervalMESA")));
+            if (swapInterval) {
+                const int result = swapInterval(enabled ? 1U : 0U);
+                if (!synchronize("glXSwapIntervalMESA", error)) {
+                    return false;
+                }
+                if (result != 0) {
+                    error = { "glXSwapIntervalMESA", "Could not change VSync.", result };
+                    return false;
+                }
+                return true;
+            }
+        }
+    }
+    if (enabled && Detail::hasExtension(extensions, "GLX_SGI_swap_control")) {
+        using SwapInterval = int (*)(int);
+        const auto swapInterval = reinterpret_cast<SwapInterval>(
+            glXGetProcAddressARB(reinterpret_cast<const GLubyte*>("glXSwapIntervalSGI")));
+        if (swapInterval) {
+            const int result = swapInterval(1);
+            if (!synchronize("glXSwapIntervalSGI", error)) {
+                return false;
+            }
+            if (result != 0) {
+                error = { "glXSwapIntervalSGI", "Could not enable VSync.", result };
+                return false;
+            }
+            return true;
+        }
+    }
+    error = { "setVSync", enabled ? "VSync control is unavailable." :
+        "Disabling VSync requires GLX_EXT_swap_control or GLX_MESA_swap_control.", std::nullopt };
+    return false;
 }
 
 bool processEvents(Error& error)

@@ -1,6 +1,7 @@
 #include "platform.h"
 #include "window_validation.h"
 #include "key_codes.h"
+#include "extension_names.h"
 #include "detail/platform_input.h"
 #include "detail/unicode.h"
 
@@ -36,6 +37,17 @@ std::uint32_t highSurrogate = 0;
 WindowOptions windowOptions;
 LONG minimumTrackWidth = 0;
 LONG minimumTrackHeight = 0;
+
+template<class Function>
+Function loadWglFunction(const char* name)
+{
+    const PROC address = wglGetProcAddress(name);
+    const auto value = reinterpret_cast<std::intptr_t>(address);
+    if (!address || value == 1 || value == 2 || value == 3 || value == -1) {
+        return nullptr;
+    }
+    return reinterpret_cast<Function>(reinterpret_cast<void (WINAPI*)()>(address));
+}
 
 Error windowsError(const char* operation, const char* message, DWORD code = ERROR_SUCCESS)
 {
@@ -557,6 +569,32 @@ bool setWindowTitle(const std::string& title, Error& error)
     }
     if (!SetWindowTextW(window, wideTitle.c_str())) {
         error = windowsError("SetWindowTextW", "Could not update the window title.", GetLastError());
+        return false;
+    }
+    return true;
+}
+
+bool setVSync(bool enabled, Error& error)
+{
+    if (!requireWindow("setVSync", error)) {
+        return false;
+    }
+    using GetExtensionsARB = const char* (WINAPI*)(HDC);
+    using GetExtensionsEXT = const char* (WINAPI*)();
+    using SwapInterval = BOOL (WINAPI*)(int);
+    const auto getExtensionsARB = loadWglFunction<GetExtensionsARB>("wglGetExtensionsStringARB");
+    const char* extensions = getExtensionsARB ? getExtensionsARB(deviceContext) : nullptr;
+    if (!extensions) {
+        const auto getExtensionsEXT = loadWglFunction<GetExtensionsEXT>("wglGetExtensionsStringEXT");
+        extensions = getExtensionsEXT ? getExtensionsEXT() : nullptr;
+    }
+    const auto swapInterval = loadWglFunction<SwapInterval>("wglSwapIntervalEXT");
+    if (!Detail::hasExtension(extensions, "WGL_EXT_swap_control") || !swapInterval) {
+        error = { "setVSync", "VSync control is unavailable: WGL_EXT_swap_control is not supported.", std::nullopt };
+        return false;
+    }
+    if (!swapInterval(enabled ? 1 : 0)) {
+        error = windowsError("wglSwapIntervalEXT", "Could not change VSync.", GetLastError());
         return false;
     }
     return true;
