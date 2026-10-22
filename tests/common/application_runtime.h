@@ -9,7 +9,13 @@
 
 namespace ApplicationTest
 {
-using Clock = std::chrono::steady_clock;
+struct Clock
+{
+    using duration = std::chrono::steady_clock::duration;
+    using time_point = std::chrono::steady_clock::time_point;
+
+    static time_point now() noexcept;
+};
 
 struct Runtime
 {
@@ -36,8 +42,8 @@ struct Runtime
 extern Runtime runtime;
 void reset();
 void advance(std::chrono::milliseconds duration);
+void sleepUntil(Clock::time_point deadline);
 void addEvent(Engine::EventType type);
 void require(bool condition, const char* message);
 void requireNear(double actual, double expected);
-bool virtualTime();
 }

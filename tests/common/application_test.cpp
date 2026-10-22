@@ -249,7 +249,7 @@ void testPause()
             current.setPaused(true);
         }
         if (runtime.polls == 3) {
-            advance(milliseconds(ApplicationTest::virtualTime() ? 1000 : 20));
+            advance(milliseconds(1000));
         }
         if (runtime.polls == 5) {
             require(current.isPaused(), "Restoring the window canceled explicit pause.");
@@ -400,7 +400,6 @@ void testVSync()
 
 void testLimiter()
 {
-    require(ApplicationTest::virtualTime(), "Virtual time is unavailable.");
     ApplicationTest::reset();
     ProbeApplication application;
     application.inputAction = [](auto& current, const auto&) {
@@ -472,7 +471,6 @@ void testLimiter()
 
 void testStatistics()
 {
-    require(ApplicationTest::virtualTime(), "Virtual time is unavailable.");
     ApplicationTest::reset();
     runtime.events = [] { runtime.window.minimized = runtime.polls >= 13 && runtime.polls <= 15; };
     ProbeApplication application;
@@ -523,10 +521,6 @@ int main(int argumentCount, char** arguments)
     try {
         require(argumentCount == 2, "Expected an application test group.");
         const std::string group = arguments[1];
-        if ((group == "limiter" || group == "statistics") && !ApplicationTest::virtualTime()) {
-            std::cout << "Virtual time requires libstdc++ and GNU-compatible linker wrapping.\n";
-            return 77;
-        }
         if (group == "lifecycle") {
             testLifecycle();
             testClosingEvents();

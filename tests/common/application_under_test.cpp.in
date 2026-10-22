@@ -1,0 +1,3 @@
+#include "application_runtime.h"
+
+@APPLICATION_TEST_SOURCE@

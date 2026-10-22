@@ -2,7 +2,6 @@
 
 #include <cmath>
 #include <stdexcept>
-#include <thread>
 
 namespace ApplicationTest
 {
@@ -13,13 +12,22 @@ void reset()
     runtime = {};
 }
 
+Clock::time_point Clock::now() noexcept
+{
+    return Clock::time_point(runtime.time);
+}
+
 void advance(std::chrono::milliseconds duration)
 {
-#ifdef APPLICATION_VIRTUAL_TIME
     runtime.time += duration;
-#else
-    std::this_thread::sleep_for(duration);
-#endif
+}
+
+void sleepUntil(Clock::time_point deadline)
+{
+    if (deadline > Clock::now()) {
+        ++runtime.waits;
+        runtime.time = deadline.time_since_epoch();
+    }
 }
 
 void addEvent(Engine::EventType type)
@@ -41,40 +49,7 @@ void requireNear(double actual, double expected)
     constexpr double Tolerance = 0.000001;
     require(std::isfinite(actual) && std::abs(actual - expected) <= Tolerance, "Unexpected time value.");
 }
-
-bool virtualTime()
-{
-#ifdef APPLICATION_VIRTUAL_TIME
-    return true;
-#else
-    return false;
-#endif
 }
-}
-
-#ifdef APPLICATION_VIRTUAL_TIME
-extern "C" std::chrono::steady_clock::time_point __wrap__ZNSt6chrono3_V212steady_clock3nowEv() noexcept
-{
-    return std::chrono::steady_clock::time_point(ApplicationTest::runtime.time);
-}
-
-#ifdef _WIN32
-extern "C" void __wrap__ZNSt11this_thread11__sleep_forENSt6chrono8durationIxSt5ratioILx1ELx1EEEENS1_IxS2_ILx1ELx1000000000EEEE(
-    std::chrono::seconds seconds, std::chrono::nanoseconds nanoseconds)
-{
-    ++ApplicationTest::runtime.waits;
-    ApplicationTest::runtime.time += seconds + nanoseconds;
-}
-#else
-extern "C" int __wrap_nanosleep(const timespec* duration, timespec*)
-{
-    ++ApplicationTest::runtime.waits;
-    ApplicationTest::runtime.time += std::chrono::seconds(duration->tv_sec)
-        + std::chrono::nanoseconds(duration->tv_nsec);
-    return 0;
-}
-#endif
-#endif
 
 namespace Platform
 {
