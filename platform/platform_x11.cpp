@@ -523,8 +523,7 @@ bool initializeLinux(const WindowOptions& options, Error& error)
         return false;
     }
     XSelectInput(display, window, settings.event_mask | filterMask);
-    XMapWindow(display, window);
-    if (!synchronize("XMapWindow", error)) {
+    if (!synchronize("XSelectInput", error)) {
         XFree(visual);
         return false;
     }
@@ -545,6 +544,11 @@ bool initializeLinux(const WindowOptions& options, Error& error)
         if (activationSucceeded) {
             error = { "glXMakeCurrent", "Could not activate the OpenGL context.", std::nullopt };
         }
+        return false;
+    }
+    // Окно передаётся оконному менеджеру только после подготовки XIM и текущего GL-контекста.
+    XMapWindow(display, window);
+    if (!synchronize("XMapWindow", error)) {
         return false;
     }
     if (!readInitialWindowState(error)) {

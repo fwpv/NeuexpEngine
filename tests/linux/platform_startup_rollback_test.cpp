@@ -15,6 +15,14 @@ bool rejectDetach = false;
 bool rejectFilterMask = false;
 unsigned int destroyedContexts = 0;
 unsigned int closedMethods = 0;
+unsigned int mapRequests = 0;
+}
+
+extern "C" int __real_XMapWindow(Display*, Window);
+extern "C" int __wrap_XMapWindow(Display* display, Window window)
+{
+    ++mapRequests;
+    return __real_XMapWindow(display, window);
 }
 
 extern "C" char* __real_XGetICValues(XIC, ...);
@@ -83,7 +91,7 @@ int main()
     if (filterStarted || rejectFilterMask || errors.size() != 1
         || errors.front().operation != "XGetICValues"
         || errors.front().message.find(XNFilterEvents) == std::string::npos
-        || destroyedContexts != 1 || closedMethods != 1
+        || destroyedContexts != 1 || closedMethods != 1 || mapRequests != 0
         || Platform::getWindowState(filterState, filterError) || glXGetCurrentContext()) {
         std::cerr << "XGetICValues failure must release XIC/XIM and report the failed attribute.\n";
         PlatformTest::shutdownAfterFailure(errors);
@@ -100,6 +108,7 @@ int main()
         return 1;
     }
     for (const bool cleanupFailure : { false, true }) {
+        const unsigned int beforeFailure = mapRequests;
         rejectActivation = true;
         rejectDetach = cleanupFailure;
         const bool started = Platform::initialize(options, errors);
@@ -118,13 +127,19 @@ int main()
             PlatformTest::shutdownAfterFailure(errors);
             return 1;
         }
+        if (mapRequests != beforeFailure) {
+            std::cerr << "A failed context activation must not map the window.\n";
+            PlatformTest::shutdownAfterFailure(errors);
+            return 1;
+        }
         // Повторный запуск без shutdown после отказа инициализации.
         const bool restarted = Platform::initialize(options, errors);
         const bool stateRead = restarted && Platform::getWindowState(state, error);
         if (restarted && !stateRead) {
             Platform::reportError(error, false);
         }
-        if (!restarted || !errors.empty() || !stateRead || state.width != 320 || state.height != 240) {
+        if (!restarted || !errors.empty() || !stateRead || state.width != 320 || state.height != 240
+            || mapRequests != beforeFailure + 1) {
             std::cerr << "Initialization after automatic rollback must succeed and clear old errors.\n";
             PlatformTest::shutdownAfterFailure(errors);
             return 1;
