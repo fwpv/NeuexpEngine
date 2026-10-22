@@ -118,7 +118,8 @@ string(REPLACE "using Clock = FrameClock::Clock;" "using Clock = ApplicationTest
     APPLICATION_TEST_SOURCE "${APPLICATION_TEST_SOURCE}")
 string(REPLACE "std::this_thread::sleep_until(" "ApplicationTest::sleepUntil("
     APPLICATION_TEST_SOURCE "${APPLICATION_TEST_SOURCE}")
-configure_file(application_under_test.cpp.in application_under_test.cpp @ONLY)
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/application_under_test.cpp"
+    "#include \"application_runtime.h\"\n\n${APPLICATION_TEST_SOURCE}\n")
 
 add_executable(application_test application_test.cpp application_runtime.cpp
     "${CMAKE_CURRENT_BINARY_DIR}/application_under_test.cpp")
