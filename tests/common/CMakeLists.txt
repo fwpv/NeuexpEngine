@@ -104,25 +104,29 @@ add_executable(frame_clock_test frame_clock_test.cpp)
 target_link_libraries(frame_clock_test PRIVATE engine_time project_warnings)
 add_test(NAME frame_clock COMMAND frame_clock_test)
 
-add_executable(application_test application_test.cpp application_runtime.cpp)
-target_link_libraries(application_test PRIVATE engine_application engine_events project_warnings)
-
-include(CheckCXXSourceCompiles)
-check_cxx_source_compiles("#include <chrono>
-#ifndef __GLIBCXX__
-#error libstdc++ is required
-#endif
-int main() { return 0; }" APPLICATION_TEST_LIBSTDCXX)
-if(APPLICATION_TEST_LIBSTDCXX AND NOT MSVC)
-    target_compile_definitions(application_test PRIVATE APPLICATION_VIRTUAL_TIME)
-    target_link_options(application_test PRIVATE "-Wl,--wrap=_ZNSt6chrono3_V212steady_clock3nowEv")
-    if(WIN32)
-        target_link_options(application_test PRIVATE "-Wl,--wrap=_ZNSt11this_thread11__sleep_forENSt6chrono8durationIxSt5ratioILx1ELx1EEEENS1_IxS2_ILx1ELx1000000000EEEE")
-    else()
-        target_link_options(application_test PRIVATE "-Wl,--wrap=nanosleep")
+# Тестовая копия исходника заменяет только часы и ожидание, без привязки к ABI стандартной библиотеки.
+set(APPLICATION_SOURCE "${PROJECT_SOURCE_DIR}/engine/application.cpp")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${APPLICATION_SOURCE}")
+file(READ "${APPLICATION_SOURCE}" APPLICATION_TEST_SOURCE)
+foreach(dependency "using Clock = FrameClock::Clock;" "std::this_thread::sleep_until(")
+    string(FIND "${APPLICATION_TEST_SOURCE}" "${dependency}" dependencyPosition)
+    if(dependencyPosition EQUAL -1)
+        message(FATAL_ERROR "Application test timing substitution no longer matches engine/application.cpp: ${dependency}")
     endif()
-endif()
+endforeach()
+string(REPLACE "using Clock = FrameClock::Clock;" "using Clock = ApplicationTest::Clock;"
+    APPLICATION_TEST_SOURCE "${APPLICATION_TEST_SOURCE}")
+string(REPLACE "std::this_thread::sleep_until(" "ApplicationTest::sleepUntil("
+    APPLICATION_TEST_SOURCE "${APPLICATION_TEST_SOURCE}")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/application_under_test.cpp"
+    "#include \"application_runtime.h\"\n\n${APPLICATION_TEST_SOURCE}\n")
+
+add_executable(application_test application_test.cpp application_runtime.cpp
+    "${CMAKE_CURRENT_BINARY_DIR}/application_under_test.cpp")
+target_include_directories(application_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(application_test PRIVATE engine_time engine_events engine_input project_warnings)
+
 foreach(group lifecycle pause failures vsync limiter statistics)
     add_test(NAME application_${group} COMMAND application_test ${group})
-    set_tests_properties(application_${group} PROPERTIES TIMEOUT 15 SKIP_RETURN_CODE 77)
+    set_tests_properties(application_${group} PROPERTIES TIMEOUT 15)
 endforeach()
