@@ -53,8 +53,6 @@ sudo apt install build-essential cmake libx11-dev libgl1-mesa-dev
 
 ## Управление
 
-Подсистема событий, клавиатуры и мыши описана в [docs/INPUT.md](docs/INPUT.md).
-Общий цикл приложения, игровое время, FPS и пауза описаны в [docs/APPLICATION.md](docs/APPLICATION.md).
 Демо ввода запускается как `build/input_demo.exe` в Windows или `build/input_demo` в Linux.
 Оно показывает состояния клавиш и мыши, переходы, колесо, фокус и ввод Unicode.
 Для обновления последней клавиши и текста используются необязательные подписки
@@ -74,7 +72,6 @@ sudo apt install build-essential cmake libx11-dev libgl1-mesa-dev
 ## Исходники
 
 - `engine/` — общие интерфейсы и платформонезависимый код движка.
-- `docs/` — документация движка.
 - `platform/` — реализации для Windows и Linux.
 - `demos/circle/` — точка входа, игровая логика и отрисовка демо.
 - `tests/` — автоматические тесты и их ресурсы.
