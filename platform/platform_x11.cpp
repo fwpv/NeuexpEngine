@@ -217,8 +217,8 @@ void handleInput(XEvent& native, bool filtered)
         event.x = native.xcrossing.x;
         event.y = native.xcrossing.y;
         event.modifiers = readModifiers(native.xcrossing.state);
-        // NotifyGrab/NotifyUngrab не являются физическим пересечением границы окна.
-        if (native.xcrossing.mode != NotifyNormal) {
+        // NotifyUngrab возвращает указатель в фактическое окно, в том числе после его открытия под курсором.
+        if (native.xcrossing.mode != NotifyNormal && native.xcrossing.mode != NotifyUngrab) {
             return;
         }
     } else if (native.type == ButtonPress || native.type == ButtonRelease) {
