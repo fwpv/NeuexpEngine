@@ -24,6 +24,15 @@ int main()
         require(contains(rectangle, { 0, 0 }), "Rectangle does not contain an interior point.");
         require(contains(rectangle, { -2, -3 }) && contains(rectangle, { 6, 3 }), "Rectangle boundary excluded.");
         require(!contains(rectangle, { -2.01F, 0 }) && !contains(rectangle, { 0, 3.01F }), "Exterior point included.");
+        require(closestPoint(rectangle, { 1, 2 }) == Vector2{ 1, 2 }, "Interior closest point changed.");
+        require(closestPoint(rectangle, { -4, 0 }) == Vector2{ -2, 0 }, "Left closest point failed.");
+        require(closestPoint(rectangle, { 8, 0 }) == Vector2{ 6, 0 }, "Right closest point failed.");
+        require(closestPoint(rectangle, { 0, -5 }) == Vector2{ 0, -3 }, "Lower closest point failed.");
+        require(closestPoint(rectangle, { 0, 5 }) == Vector2{ 0, 3 }, "Upper closest point failed.");
+        require(closestPoint(rectangle, { 9, -8 }) == Vector2{ 6, -3 }, "Corner closest point failed.");
+        require(closestPoint(rectangle, { 6, 3 }) == Vector2{ 6, 3 }, "Boundary closest point changed.");
+        require(closestPoint(Rect{}, { 2, -3 }) == Vector2{}, "Zero rectangle closest point failed.");
+        require(closestPoint({ 1, 2, 0, 4 }, { -3, 9 }) == Vector2{ 1, 6 }, "Line rectangle closest point failed.");
 
         const Rect overlap = { { 4, 1 }, { 5, 4 } };
         require(intersects(rectangle, overlap) && intersects(overlap, rectangle), "Rectangle overlap failed.");

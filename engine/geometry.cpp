@@ -18,6 +18,14 @@ bool contains(const Circle& circle, Vector2 point)
         static_cast<double>(point.y) - circle.center.y) <= circle.radius;
 }
 
+Vector2 closestPoint(const Rect& rectangle, Vector2 point)
+{
+    return {
+        std::clamp(point.x, rectangle.position.x, rectangle.position.x + rectangle.size.width),
+        std::clamp(point.y, rectangle.position.y, rectangle.position.y + rectangle.size.height)
+    };
+}
+
 bool intersects(const Rect& first, const Rect& second)
 {
     return first.position.x <= second.position.x + second.size.width
@@ -35,11 +43,7 @@ bool intersects(const Circle& first, const Circle& second)
 
 bool intersects(const Rect& rectangle, const Circle& circle)
 {
-    const Vector2 closest = {
-        std::clamp(circle.center.x, rectangle.position.x, rectangle.position.x + rectangle.size.width),
-        std::clamp(circle.center.y, rectangle.position.y, rectangle.position.y + rectangle.size.height)
-    };
-    return contains(circle, closest);
+    return contains(circle, closestPoint(rectangle, circle.center));
 }
 
 bool intersects(const Circle& circle, const Rect& rectangle)

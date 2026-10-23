@@ -66,6 +66,8 @@ constexpr bool operator!=(const Circle& first, const Circle& second)
 
 bool contains(const Rect& rectangle, Vector2 point);
 bool contains(const Circle& circle, Vector2 point);
+// Ближайшая точка замкнутого прямоугольника; внутренняя точка возвращается без изменения.
+Vector2 closestPoint(const Rect& rectangle, Vector2 point);
 // Касание считается пересечением, в том числе для вырожденных фигур.
 bool intersects(const Rect& first, const Rect& second);
 bool intersects(const Circle& first, const Circle& second);
