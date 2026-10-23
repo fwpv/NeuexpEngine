@@ -41,10 +41,11 @@ Function loadFunction(const std::string& name)
     if (value == 0 || value == 1 || value == 2 || value == 3 || value == -1) {
         return nullptr;
     }
+    return reinterpret_cast<Function>(reinterpret_cast<void (WINAPI*)()>(address));
 #else
     const auto address = glXGetProcAddressARB(reinterpret_cast<const GLubyte*>(name.c_str()));
-#endif
     return reinterpret_cast<Function>(address);
+#endif
 }
 
 struct FramebufferApi
