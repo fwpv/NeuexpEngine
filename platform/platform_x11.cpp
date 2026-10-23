@@ -50,6 +50,8 @@ std::string previousLocale;
 std::string previousLocaleModifiers;
 Atom stateMessage = None;
 
+bool takeError(const char* operation, Error& error);
+
 Engine::Modifiers readModifiers(unsigned int state)
 {
     return { (state & ShiftMask) != 0, (state & ControlMask) != 0,
@@ -92,11 +94,14 @@ void changeFocus(bool focused)
 bool readPhysicalKeys(Error& error)
 {
     XkbDescPtr keyboard = XkbGetKeyboard(display, XkbAllComponentsMask, XkbUseCoreKbd);
-    if (!keyboard || !keyboard->names || !keyboard->names->keys) {
+    const bool keyboardSucceeded = takeError("XkbGetKeyboard", error);
+    if (!keyboard || !keyboard->names || !keyboard->names->keys || !keyboardSucceeded) {
         if (keyboard) {
             XkbFreeKeyboard(keyboard, XkbAllComponentsMask, True);
         }
-        error = { "XkbGetKeyboard", "Physical keyboard names are unavailable.", std::nullopt };
+        if (keyboardSucceeded) {
+            error = { "XkbGetKeyboard", "Physical keyboard names are unavailable.", std::nullopt };
+        }
         return false;
     }
     physicalKeys.fill(Key::Unknown);
@@ -478,16 +483,28 @@ bool initializeLinux(const WindowOptions& options, Error& error)
     int keyboardErrorBase = 0;
     int keyboardMajor = XkbMajorVersion;
     int keyboardMinor = XkbMinorVersion;
-    // XKB доставляет изменения locked_mods отдельными уведомлениями.
-    if (!XkbQueryExtension(display, &keyboardOpcode, &keyboardEventBase, &keyboardErrorBase,
-        &keyboardMajor, &keyboardMinor)
-        || !XkbSelectEventDetails(display, XkbUseCoreKbd, XkbStateNotify,
-            XkbModifierLockMask, XkbModifierLockMask)) {
-        error = { "XkbSelectEventDetails", "Could not subscribe to keyboard lock state changes.", std::nullopt };
+    const Bool keyboardAvailable = XkbQueryExtension(display, &keyboardOpcode, &keyboardEventBase,
+        &keyboardErrorBase, &keyboardMajor, &keyboardMinor);
+    const bool querySucceeded = takeError("XkbQueryExtension", error);
+    if (!keyboardAvailable || !querySucceeded) {
+        if (querySucceeded) {
+            error = { "XkbQueryExtension", "A compatible XKB extension is unavailable.", std::nullopt };
+        }
         XFree(visual);
         return false;
     }
-    if (!synchronize("XkbSelectEventDetails", error) || !readPhysicalKeys(error)) {
+    // XKB доставляет изменения locked_mods отдельными уведомлениями.
+    const Bool eventsSelected = XkbSelectEventDetails(display, XkbUseCoreKbd, XkbStateNotify,
+        XkbModifierLockMask, XkbModifierLockMask);
+    const bool selectionSucceeded = synchronize("XkbSelectEventDetails", error);
+    if (!eventsSelected || !selectionSucceeded) {
+        if (selectionSucceeded) {
+            error = { "XkbSelectEventDetails", "Could not subscribe to keyboard lock state changes.", std::nullopt };
+        }
+        XFree(visual);
+        return false;
+    }
+    if (!readPhysicalKeys(error)) {
         XFree(visual);
         return false;
     }
@@ -821,17 +838,25 @@ void shutdown(std::vector<Error>& errors)
     errors.clear();
     if (display) {
         Error error;
-        if (inputContext) {
-            XDestroyIC(inputContext);
-            inputContext = nullptr;
-        }
-        if (inputMethod) {
-            XCloseIM(inputMethod);
-            inputMethod = nullptr;
-        }
         // Отложенная ошибка работы сохраняется отдельно от ошибок очистки.
         if (!synchronize("pending X11 requests before shutdown", error)) {
             errors.push_back(error);
+        }
+        if (inputContext) {
+            XDestroyIC(inputContext);
+            inputContext = nullptr;
+            if (!synchronize("XDestroyIC", error)) {
+                errors.push_back(error);
+            }
+        }
+        if (inputMethod) {
+            const Status closed = XCloseIM(inputMethod);
+            inputMethod = nullptr;
+            if (!synchronize("XCloseIM", error)) {
+                errors.push_back(error);
+            } else if (!closed) {
+                errors.push_back({ "XCloseIM", "Could not close the input method.", std::nullopt });
+            }
         }
         if (openGLContext) {
             const Bool detached = glXMakeCurrent(display, None, nullptr);
