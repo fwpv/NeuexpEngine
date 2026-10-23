@@ -12,3 +12,10 @@ target_include_directories(platform_startup_rollback_test PRIVATE "${PROJECT_SOU
 target_link_libraries(platform_startup_rollback_test PRIVATE engine_input project_warnings opengl32 gdi32 user32 winmm)
 add_test(NAME platform_startup_rollback COMMAND platform_startup_rollback_test)
 set_tests_properties(platform_startup_rollback PROPERTIES TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
+
+add_executable(platform_input_errors_test platform_input_errors_test.cpp)
+target_compile_definitions(platform_input_errors_test PRIVATE NOMINMAX)
+target_include_directories(platform_input_errors_test PRIVATE "${PROJECT_SOURCE_DIR}/engine")
+target_link_libraries(platform_input_errors_test PRIVATE engine_input project_warnings opengl32 gdi32 user32 winmm)
+add_test(NAME platform_input_errors COMMAND platform_input_errors_test)
+set_tests_properties(platform_input_errors PROPERTIES TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)

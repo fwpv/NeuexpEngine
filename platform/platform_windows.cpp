@@ -11,6 +11,7 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <utility>
 
 namespace Platform
 {
@@ -37,6 +38,7 @@ std::uint32_t highSurrogate = 0;
 WindowOptions windowOptions;
 LONG minimumTrackWidth = 0;
 LONG minimumTrackHeight = 0;
+std::optional<Error> pendingInputError;
 
 template<class Function>
 Function loadWglFunction(const char* name)
@@ -76,6 +78,24 @@ Error windowsError(const char* operation, const char* message, DWORD code = ERRO
         }
     }
     return error;
+}
+
+// Оконная процедура сохраняет первую ошибку до processEvents или shutdown.
+void recordInputError(const char* operation, const char* message, DWORD code = ERROR_SUCCESS)
+{
+    if (!pendingInputError) {
+        pendingInputError = windowsError(operation, message, code);
+    }
+}
+
+bool takeInputError(Error& error)
+{
+    if (!pendingInputError) {
+        return true;
+    }
+    error = std::move(*pendingInputError);
+    pendingInputError.reset();
+    return false;
 }
 
 bool convertTitle(const std::string& title, std::wstring& wideTitle, Error& error)
@@ -120,8 +140,8 @@ void changeFocus(bool focused)
         heldKeys = {};
         heldMouseButtons = 0;
         highSurrogate = 0;
-        if (window && GetCapture() == window) {
-            ReleaseCapture();
+        if (window && GetCapture() == window && !ReleaseCapture()) {
+            recordInputError("ReleaseCapture", "Could not release mouse capture.", GetLastError());
         }
     }
     event.modifiers = readModifiers();
@@ -218,8 +238,8 @@ bool handleInput(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
             heldMouseButtons = 0;
             Detail::queueEvent(EventType::MouseCaptureLost);
         }
-        if (message == WM_CANCELMODE && GetCapture() == handle) {
-            ReleaseCapture();
+        if (message == WM_CANCELMODE && GetCapture() == handle && !ReleaseCapture()) {
+            recordInputError("ReleaseCapture", "Could not release mouse capture.", GetLastError());
         }
         return false;
     }
@@ -245,12 +265,18 @@ bool handleInput(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
         if (inside) {
             // Уведомление TME_LEAVE одноразовое; запрос повторяется после входа.
             TRACKMOUSEEVENT tracking = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, handle, 0 };
-            TrackMouseEvent(&tracking);
+            if (!TrackMouseEvent(&tracking)) {
+                recordInputError("TrackMouseEvent", "Could not track the mouse leaving the window.", GetLastError());
+            }
         }
         event.type = EventType::MouseMoved;
     } else if (message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL) {
         POINT position = { event.x, event.y };
-        ScreenToClient(handle, &position); // Колесо, в отличие от кнопок, использует экранные координаты.
+        // Колесо, в отличие от кнопок, использует экранные координаты.
+        if (!ScreenToClient(handle, &position)) {
+            recordInputError("ScreenToClient", "Could not convert the mouse wheel position to client coordinates.");
+            return true;
+        }
         event.x = position.x;
         event.y = position.y;
         event.type = EventType::MouseWheel;
@@ -284,8 +310,8 @@ bool handleInput(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
         }
         event.type = down ? EventType::MousePressed : EventType::MouseReleased;
         Detail::queueEvent(event);
-        if (!down && heldMouseButtons == 0 && GetCapture() == handle) {
-            ReleaseCapture();
+        if (!down && heldMouseButtons == 0 && GetCapture() == handle && !ReleaseCapture()) {
+            recordInputError("ReleaseCapture", "Could not release mouse capture.", GetLastError());
         }
         return true;
     }
@@ -604,7 +630,7 @@ bool processEvents(Error& error)
 {
     if (initialized && !window && closeRequested) {
         Detail::finishInputFrame();
-        return true;
+        return takeInputError(error);
     }
     if (!requireWindow("processEvents", error)) {
         return false;
@@ -629,7 +655,7 @@ bool processEvents(Error& error)
         viewportNeedsUpdate = false;
     }
     Detail::finishInputFrame();
-    return true;
+    return takeInputError(error);
 }
 
 bool isCloseRequested()
@@ -655,6 +681,10 @@ bool present(Error& error)
 void shutdown(std::vector<Error>& errors)
 {
     errors.clear();
+    Error inputError;
+    if (!takeInputError(inputError)) {
+        errors.push_back(std::move(inputError));
+    }
     if (timerResolutionEnabled) {
         // Multimedia API возвращает собственный код, а не GetLastError.
         const MMRESULT result = timeEndPeriod(1);
@@ -681,8 +711,13 @@ void shutdown(std::vector<Error>& errors)
         deviceContext = nullptr;
     }
     if (window) {
-        if (!DestroyWindow(window)) {
-            errors.push_back(windowsError("DestroyWindow", "Could not destroy the application window.", GetLastError()));
+        const BOOL destroyed = DestroyWindow(window);
+        const DWORD code = destroyed ? ERROR_SUCCESS : GetLastError();
+        if (!takeInputError(inputError)) {
+            errors.push_back(std::move(inputError));
+        }
+        if (!destroyed) {
+            errors.push_back(windowsError("DestroyWindow", "Could not destroy the application window.", code));
         }
         window = nullptr;
     }
