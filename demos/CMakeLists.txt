@@ -24,7 +24,7 @@ endif()
 target_link_libraries(math_demo PRIVATE engine_application engine_math project_warnings)
 set_target_properties(math_demo PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 
-add_executable(cleanup_demo cleanup/main.cpp)
+add_executable(cleanup_demo cleanup/main.cpp cleanup/game.cpp)
 if(WIN32)
     set_target_properties(cleanup_demo PROPERTIES WIN32_EXECUTABLE TRUE)
     target_compile_definitions(cleanup_demo PRIVATE NOMINMAX)
