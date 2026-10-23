@@ -18,6 +18,11 @@ constexpr Engine::Color IdleColor = { 0.15F, 0.45F, 0.8F };
 constexpr Engine::Color HitColor = { 0.2F, 0.85F, 0.35F };
 constexpr Engine::Color BoundsColor = { 1, 0.6F, 0.2F };
 constexpr Engine::Color CursorColor = { 1, 1, 1 };
+constexpr Engine::Color CursorBoundsColor = { 1, 1, 0 };
+constexpr Engine::Color CursorHitColor = { 1, 0, 0 };
+constexpr Engine::Color DirectionColor = { 1, 1, 1 };
+constexpr Engine::Rect DirectionShaft = { 28, 44, 80, 12 };
+constexpr std::array<Engine::Vector2, 3> DirectionHead = {{ { 132, 50 }, { 108, 34 }, { 108, 66 } }};
 constexpr float MovementSpeed = 200;
 constexpr float RotationSpeed = Engine::Pi / 2;
 constexpr float CursorRadius = 12;
@@ -102,9 +107,12 @@ private:
         }
         const auto& mouse = Platform::getInput().mouse();
         const Engine::Vector2 cursor = { static_cast<float>(mouse.x), static_cast<float>(mouse.y) };
-        const bool inside = mouse.inside && Engine::contains(LocalBounds, inverse.transformPoint(cursor));
+        // В демо масштаб равномерный по модулю: обратное преобразование сохраняет форму круга.
+        const Engine::Circle localCursorCircle = {
+            inverse.transformPoint(cursor), CursorRadius / std::abs(object.scale.x)
+        };
+        const bool inside = mouse.inside && Engine::contains(LocalBounds, localCursorCircle.center);
         const Engine::Rect bounds = forward.transformBounds(LocalBounds);
-        const Engine::Circle cursorCircle = { cursor, CursorRadius };
 
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
@@ -116,11 +124,26 @@ private:
 
         setColor(inside ? HitColor : IdleColor);
         drawRectangle(LocalBounds, forward, GL_QUADS);
+        setColor(DirectionColor);
+        drawRectangle(DirectionShaft, forward, GL_QUADS);
+        glBegin(GL_TRIANGLES);
+        for (Engine::Vector2 vertex : DirectionHead) {
+            const Engine::Vector2 point = forward.transformPoint(vertex);
+            glVertex2f(point.x, point.y);
+        }
+        glEnd();
         setColor(BoundsColor);
         drawRectangle(bounds, {}, GL_LINE_LOOP);
 
         if (mouse.inside) {
-            setColor(Engine::intersects(bounds, cursorCircle) ? BoundsColor : CursorColor);
+            Engine::Color cursorColor = CursorColor;
+            if (Engine::intersects(bounds, Engine::Circle{ cursor, CursorRadius })) {
+                cursorColor = CursorBoundsColor;
+            }
+            if (Engine::intersects(LocalBounds, localCursorCircle)) {
+                cursorColor = CursorHitColor;
+            }
+            setColor(cursorColor);
             glBegin(GL_LINE_LOOP);
             for (int index = 0; index < CircleSegments; ++index) {
                 const float angle = 2 * Engine::Pi * static_cast<float>(index) / CircleSegments;
