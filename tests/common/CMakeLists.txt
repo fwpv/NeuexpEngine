@@ -1,3 +1,7 @@
+add_executable(camera_test camera_test.cpp)
+target_link_libraries(camera_test PRIVATE engine_camera project_warnings)
+add_test(NAME camera COMMAND camera_test)
+
 foreach(group math geometry transform)
     add_executable(${group}_test ${group}_test.cpp)
     target_link_libraries(${group}_test PRIVATE engine_math project_warnings)
