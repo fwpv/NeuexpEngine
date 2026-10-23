@@ -9,6 +9,7 @@
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
 #include <X11/XKBlib.h>
+#include <X11/Xresource.h>
 #include <GL/gl.h>
 #include <GL/glx.h>
 #include <cerrno>
@@ -19,6 +20,9 @@
 #include <cstring>
 #include <string>
 #include <utility>
+#include <cmath>
+#include <locale>
+#include <sstream>
 
 namespace Platform
 {
@@ -312,6 +316,52 @@ bool synchronize(const char* operation, Error& error)
     return takeError(operation, error);
 }
 
+bool updateSystemScale(Error& error)
+{
+    // Xft.dpi — масштаб рабочего стола X11; при отсутствии корректной настройки используется 96 DPI.
+    float scale = 1;
+    XTextProperty resources = {};
+    const Status found = XGetTextProperty(display, DefaultRootWindow(display), &resources, XA_RESOURCE_MANAGER);
+    if (found && resources.value && resources.encoding == XA_STRING && resources.format == 8) {
+        XrmDatabase database = XrmGetStringDatabase(reinterpret_cast<const char*>(resources.value));
+        if (database) {
+            char* type = nullptr;
+            XrmValue value = {};
+            if (XrmGetResource(database, "Xft.dpi", "Xft.Dpi", &type, &value) && value.addr) {
+                std::string text(value.addr, value.size);
+                if (!text.empty() && text.back() == '\0') {
+                    text.pop_back();
+                }
+                std::istringstream input(text);
+                input.imbue(std::locale::classic());
+                float dpi = 0;
+                if (input >> dpi) {
+                    input >> std::ws;
+                    const float candidate = dpi / 96;
+                    if (input.eof() && std::isfinite(candidate) && candidate > 0) {
+                        scale = candidate;
+                    }
+                }
+            }
+            XrmDestroyDatabase(database);
+        }
+    }
+    if (resources.value) {
+        XFree(resources.value);
+    }
+    if (!takeError("XGetTextProperty (RESOURCE_MANAGER)", error)) {
+        return false;
+    }
+    if (windowState.systemScale != scale) {
+        windowState.systemScale = scale;
+        Engine::Event event;
+        event.type = Engine::EventType::WindowDpiChanged;
+        event.systemScale = scale;
+        Detail::queueEvent(event);
+    }
+    return true;
+}
+
 bool requireWindow(const char* operation, Error& error)
 {
     if (!initialized || !window) {
@@ -403,6 +453,12 @@ bool initializeLinux(const WindowOptions& options, Error& error)
     previousIOErrorHandler = XSetIOErrorHandler(connectionLost);
     handlersInstalled = true;
     pendingError = {};
+
+    XrmInitialize();
+    XSelectInput(display, DefaultRootWindow(display), PropertyChangeMask);
+    if (!synchronize("XSelectInput (RESOURCE_MANAGER)", error)) {
+        return false;
+    }
 
     int attributes[] = { GLX_RGBA, GLX_DOUBLEBUFFER, None };
     XVisualInfo* visual = glXChooseVisual(display, DefaultScreen(display), attributes);
@@ -568,7 +624,7 @@ bool initializeLinux(const WindowOptions& options, Error& error)
     if (!synchronize("XMapWindow", error)) {
         return false;
     }
-    if (!readInitialWindowState(error)) {
+    if (!readInitialWindowState(error) || !updateSystemScale(error)) {
         return false;
     }
     if (windowState.focused) {
@@ -736,6 +792,13 @@ bool processEvents(Error& error)
             }
         }
         const bool filtered = XFilterEvent(&event, None) != False;
+        if (window && event.type == PropertyNotify && event.xproperty.window == DefaultRootWindow(display)
+            && event.xproperty.atom == XA_RESOURCE_MANAGER) {
+            if (!updateSystemScale(error)) {
+                return false;
+            }
+            continue;
+        }
         if (event.type == MappingNotify) {
             XRefreshKeyboardMapping(&event.xmapping);
             if (!readPhysicalKeys(error)) {
@@ -782,10 +845,7 @@ bool processEvents(Error& error)
         if (event.type == DestroyNotify && event.xdestroywindow.window == window) {
             changeFocus(false);
             Detail::queueEvent(Engine::EventType::WindowDestroyed);
-            windowState.width = 0;
-            windowState.height = 0;
-            windowState.focused = false;
-            windowState.minimized = false;
+            windowState = {};
             window = 0; // Не уничтожаем уже удалённое сервером окно второй раз.
             if (!closeRequested) {
                 Detail::queueEvent(Engine::EventType::CloseRequested);

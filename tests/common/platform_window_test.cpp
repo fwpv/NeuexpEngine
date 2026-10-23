@@ -5,6 +5,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include "../windows/keyboard_input.h"
+#include "../windows/window_frame.h"
 #else
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -97,7 +98,7 @@ struct NativeWindow
             require((style & (WS_THICKFRAME | WS_MAXIMIZEBOX)) == 0,
                 "A fixed window must not have resizing or maximize controls.");
             RECT fixedBounds = { 0, 0, options.width, options.height };
-            require(AdjustWindowRectEx(&fixedBounds, style, FALSE, 0) != FALSE,
+            require(PlatformTest::adjustWindowFrame(handle, fixedBounds, style),
                 "Could not calculate the fixed frame size.");
             require(limits.ptMinTrackSize.x == fixedBounds.right - fixedBounds.left
                 && limits.ptMinTrackSize.y == fixedBounds.bottom - fixedBounds.top
@@ -107,7 +108,7 @@ struct NativeWindow
             return;
         }
         RECT bounds = { 0, 0, options.minimumWidth, options.minimumHeight };
-        require(AdjustWindowRectEx(&bounds, WS_OVERLAPPEDWINDOW, FALSE, 0) != FALSE,
+        require(PlatformTest::adjustWindowFrame(handle, bounds, WS_OVERLAPPEDWINDOW),
             "Could not calculate expected frame size.");
         require(options.minimumWidth == 0 || limits.ptMinTrackSize.x == bounds.right - bounds.left,
             "Minimum client width was not converted to the frame width.");
@@ -118,7 +119,7 @@ struct NativeWindow
     void resize()
     {
         RECT bounds = { 0, 0, 400, 300 };
-        require(AdjustWindowRectEx(&bounds, WS_OVERLAPPEDWINDOW, FALSE, 0) != FALSE,
+        require(PlatformTest::adjustWindowFrame(handle, bounds, WS_OVERLAPPEDWINDOW),
             "Could not calculate resized frame.");
         require(SetWindowPos(handle, nullptr, 0, 0, bounds.right - bounds.left,
             bounds.bottom - bounds.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE) != FALSE,

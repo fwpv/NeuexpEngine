@@ -6,6 +6,10 @@ add_library(engine_camera STATIC camera.cpp)
 target_include_directories(engine_camera PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(engine_camera PUBLIC engine_math PRIVATE project_warnings)
 
+add_library(engine_ui STATIC ui.cpp)
+target_include_directories(engine_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(engine_ui PUBLIC engine_camera PRIVATE project_warnings)
+
 add_library(engine_events STATIC events.cpp)
 target_include_directories(engine_events PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(engine_events PRIVATE project_warnings)

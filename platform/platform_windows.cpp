@@ -13,6 +13,10 @@
 #include <iostream>
 #include <utility>
 
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
+
 namespace Platform
 {
 namespace
@@ -39,6 +43,22 @@ WindowOptions windowOptions;
 LONG minimumTrackWidth = 0;
 LONG minimumTrackHeight = 0;
 std::optional<Error> pendingInputError;
+using SetDpiContext = HANDLE (WINAPI*)(HANDLE);
+using GetWindowDpi = UINT (WINAPI*)(HWND);
+using AdjustDpiFrame = BOOL (WINAPI*)(LPRECT, DWORD, BOOL, DWORD, UINT);
+using EnableDpiFrame = BOOL (WINAPI*)(HWND);
+SetDpiContext setDpiContext = nullptr;
+GetWindowDpi getWindowDpi = nullptr;
+AdjustDpiFrame adjustDpiFrame = nullptr;
+EnableDpiFrame enableDpiFrame = nullptr;
+HANDLE previousDpiContext = nullptr;
+
+template<class Function>
+Function loadUserFunction(const char* name)
+{
+    const auto address = GetProcAddress(GetModuleHandleW(L"user32.dll"), name);
+    return reinterpret_cast<Function>(reinterpret_cast<void (WINAPI*)()>(address));
+}
 
 template<class Function>
 Function loadWglFunction(const char* name)
@@ -78,6 +98,52 @@ Error windowsError(const char* operation, const char* message, DWORD code = ERRO
         }
     }
     return error;
+}
+
+bool enableDpiAwareness(Error& error)
+{
+    enableDpiFrame = nullptr;
+    setDpiContext = loadUserFunction<SetDpiContext>("SetThreadDpiAwarenessContext");
+    getWindowDpi = loadUserFunction<GetWindowDpi>("GetDpiForWindow");
+    adjustDpiFrame = loadUserFunction<AdjustDpiFrame>("AdjustWindowRectExForDpi");
+    if (!setDpiContext || !getWindowDpi || !adjustDpiFrame) {
+        error = windowsError("DPI awareness", "Per-monitor DPI support requires Windows 10 version 1607 or later.");
+        return false;
+    }
+    // PMv2 доступен с Windows 10 1703, PMv1 — с 1607. Контекст потока восстанавливается в shutdown().
+    previousDpiContext = setDpiContext(reinterpret_cast<HANDLE>(static_cast<std::intptr_t>(-4)));
+    if (!previousDpiContext && GetLastError() == ERROR_INVALID_PARAMETER) {
+        enableDpiFrame = loadUserFunction<EnableDpiFrame>("EnableNonClientDpiScaling");
+        if (!enableDpiFrame) {
+            error = windowsError("EnableNonClientDpiScaling", "Per-monitor window frame scaling is unavailable.");
+            return false;
+        }
+        previousDpiContext = setDpiContext(reinterpret_cast<HANDLE>(static_cast<std::intptr_t>(-3)));
+    }
+    if (!previousDpiContext) {
+        error = windowsError("SetThreadDpiAwarenessContext", "Could not enable per-monitor DPI awareness.", GetLastError());
+        return false;
+    }
+    return true;
+}
+
+DWORD windowStyle()
+{
+    return windowOptions.resizable ? WS_OVERLAPPEDWINDOW
+        : WS_OVERLAPPEDWINDOW & ~static_cast<DWORD>(WS_THICKFRAME | WS_MAXIMIZEBOX);
+}
+
+bool updateMinimumTrackSize(UINT dpi, Error& error)
+{
+    RECT bounds = { 0, 0, windowOptions.resizable ? windowOptions.minimumWidth : windowOptions.width,
+        windowOptions.resizable ? windowOptions.minimumHeight : windowOptions.height };
+    if (!adjustDpiFrame(&bounds, windowStyle(), FALSE, 0, dpi)) {
+        error = windowsError("AdjustWindowRectExForDpi", "Could not calculate the minimum frame size.", GetLastError());
+        return false;
+    }
+    minimumTrackWidth = bounds.right - bounds.left;
+    minimumTrackHeight = bounds.bottom - bounds.top;
+    return true;
 }
 
 // Оконная процедура сохраняет первую ошибку до processEvents или shutdown.
@@ -321,6 +387,11 @@ bool handleInput(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
 
 LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    // Для PMv1 рамка включается явно, в PMv2 Windows масштабирует её автоматически.
+    if (message == WM_NCCREATE && enableDpiFrame && !enableDpiFrame(handle)) {
+        recordInputError("EnableNonClientDpiScaling", "Could not enable per-monitor window frame scaling.", GetLastError());
+        return FALSE;
+    }
     if (message == WM_UNICHAR && wParam == UNICODE_NOCHAR) {
         return TRUE; // Проверка поддержки UTF-32 отправителем.
     }
@@ -342,6 +413,41 @@ LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARA
             limits->ptMaxTrackSize.y = minimumTrackHeight;
         }
         return result;
+    }
+
+    if (message == WM_DPICHANGED) {
+        const UINT dpi = LOWORD(wParam);
+        const auto& suggested = *reinterpret_cast<const RECT*>(lParam);
+        if (!windowOptions.resizable) {
+            RECT frame = {};
+            if (!adjustDpiFrame(&frame, windowStyle(), FALSE, 0, dpi)) {
+                recordInputError("AdjustWindowRectExForDpi", "Could not calculate the fixed window frame.", GetLastError());
+                return 0;
+            }
+            // Запрет ручного изменения размера сохраняется и после системного изменения DPI.
+            windowOptions.width = suggested.right - suggested.left - (frame.right - frame.left);
+            windowOptions.height = suggested.bottom - suggested.top - (frame.bottom - frame.top);
+        }
+        Error error;
+        if (!updateMinimumTrackSize(dpi, error)) {
+            if (!pendingInputError) {
+                pendingInputError = std::move(error);
+            }
+            return 0;
+        }
+        const float scale = static_cast<float>(dpi) / 96;
+        if (windowState.systemScale != scale) {
+            windowState.systemScale = scale;
+            Engine::Event event;
+            event.type = Engine::EventType::WindowDpiChanged;
+            event.systemScale = scale;
+            Detail::queueEvent(event);
+        }
+        if (!SetWindowPos(handle, nullptr, suggested.left, suggested.top,
+            suggested.right - suggested.left, suggested.bottom - suggested.top, SWP_NOZORDER | SWP_NOACTIVATE)) {
+            recordInputError("SetWindowPos (WM_DPICHANGED)", "Could not apply the DPI window rectangle.", GetLastError());
+        }
+        return 0;
     }
 
     if (message == WM_SIZE) {
@@ -389,10 +495,7 @@ LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARA
             window = nullptr;
             deviceContext = nullptr; // При внешнем уничтожении окна его частный DC уже недоступен.
             closeRequested = true;
-            windowState.width = 0;
-            windowState.height = 0;
-            windowState.focused = false;
-            windowState.minimized = false;
+            windowState = {};
         }
         PostQuitMessage(0);
         return 0;
@@ -419,18 +522,18 @@ bool initializeWindows(const WindowOptions& options, Error& error)
     windowOptions = options;
     Detail::resetInput();
     windowState = {};
-    const DWORD style = options.resizable ? WS_OVERLAPPEDWINDOW
-        : WS_OVERLAPPEDWINDOW & ~static_cast<DWORD>(WS_THICKFRAME | WS_MAXIMIZEBOX);
-    RECT bounds = { 0, 0, options.width, options.height };
-    RECT minimumBounds = { 0, 0, options.resizable ? options.minimumWidth : options.width,
-        options.resizable ? options.minimumHeight : options.height };
-    if (!AdjustWindowRectEx(&bounds, style, FALSE, 0)
-        || !AdjustWindowRectEx(&minimumBounds, style, FALSE, 0)) {
-        error = windowsError("AdjustWindowRectEx", "Could not calculate the window frame size.", GetLastError());
+    if (!enableDpiAwareness(error)) {
         return false;
     }
-    minimumTrackWidth = minimumBounds.right - minimumBounds.left;
-    minimumTrackHeight = minimumBounds.bottom - minimumBounds.top;
+    const DWORD style = windowStyle();
+    RECT bounds = { 0, 0, options.width, options.height };
+    if (!adjustDpiFrame(&bounds, style, FALSE, 0, 96)) {
+        error = windowsError("AdjustWindowRectExForDpi", "Could not calculate the window frame size.", GetLastError());
+        return false;
+    }
+    if (!updateMinimumTrackSize(96, error)) {
+        return false;
+    }
     // shutdown может оставить WM_QUIT от уничтоженного окна в очереди текущего потока.
     MSG oldQuit;
     while (PeekMessageW(&oldQuit, nullptr, WM_QUIT, WM_QUIT, PM_REMOVE)) {
@@ -463,6 +566,27 @@ bool initializeWindows(const WindowOptions& options, Error& error)
     if (!window) {
         error = windowsError("CreateWindow", "Could not create the application window.", GetLastError());
         return false;
+    }
+
+    const UINT dpi = getWindowDpi(window);
+    if (dpi == 0) {
+        error = windowsError("GetDpiForWindow", "Could not read the initial window DPI.");
+        return false;
+    }
+    if (!updateMinimumTrackSize(dpi, error)) {
+        return false;
+    }
+    if (dpi != 96) {
+        bounds = { 0, 0, options.width, options.height };
+        if (!adjustDpiFrame(&bounds, style, FALSE, 0, dpi)) {
+            error = windowsError("AdjustWindowRectExForDpi", "Could not calculate the initial DPI frame size.", GetLastError());
+            return false;
+        }
+        if (!SetWindowPos(window, nullptr, 0, 0, bounds.right - bounds.left, bounds.bottom - bounds.top,
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE)) {
+            error = windowsError("SetWindowPos", "Could not set the physical client size.", GetLastError());
+            return false;
+        }
     }
 
     deviceContext = GetDC(window);
@@ -522,7 +646,8 @@ bool initializeWindows(const WindowOptions& options, Error& error)
         return false;
     }
     windowState = { static_cast<int>(clientBounds.right - clientBounds.left),
-        static_cast<int>(clientBounds.bottom - clientBounds.top), GetFocus() == window, IsIconic(window) != FALSE };
+        static_cast<int>(clientBounds.bottom - clientBounds.top), GetFocus() == window, IsIconic(window) != FALSE,
+        static_cast<float>(dpi) / 96 };
     viewportNeedsUpdate = true;
     initialized = true;
     return processEvents(error);
@@ -726,6 +851,12 @@ void shutdown(std::vector<Error>& errors)
             errors.push_back(windowsError("UnregisterClass", "Could not unregister the window class.", GetLastError()));
         }
         windowClassRegistered = false;
+    }
+    if (previousDpiContext) {
+        if (!setDpiContext(previousDpiContext)) {
+            errors.push_back(windowsError("SetThreadDpiAwarenessContext", "Could not restore the thread DPI context.", GetLastError()));
+        }
+        previousDpiContext = nullptr;
     }
     applicationInstance = nullptr;
     closeRequested = false;
