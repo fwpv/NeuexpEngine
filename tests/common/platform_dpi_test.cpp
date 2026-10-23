@@ -33,7 +33,7 @@ void require(bool condition, const char* message)
     }
 }
 
-bool near(float a, float b)
+bool nearlyEqual(float a, float b)
 {
     return std::abs(a - b) < 0.001F;
 }
@@ -144,7 +144,7 @@ void checkDpiEvent(float scale, bool expected = true)
     require(count == (expected ? 1 : 0), "Incorrect DPI event count.");
     for (const Engine::Event& event : events) {
         if (event.type == Engine::EventType::WindowDpiChanged) {
-            require(near(event.systemScale, scale), "Incorrect DPI event scale.");
+            require(nearlyEqual(event.systemScale, scale), "Incorrect DPI event scale.");
         }
     }
 }
@@ -186,15 +186,15 @@ void run()
 #ifdef _WIN32
     using GetAwareness = int (WINAPI*)(HANDLE);
     require(userFunction<GetAwareness>("GetAwarenessFromDpiAwarenessContext")(getContext()) == 2, "Thread is not per-monitor DPI aware.");
-    require(near(state.systemScale, static_cast<float>(userFunction<GetDpi>("GetDpiForWindow")(
+    require(nearlyEqual(state.systemScale, static_cast<float>(userFunction<GetDpi>("GetDpiForWindow")(
         WindowFromDC(wglGetCurrentDC()))) / 96), "Initial DPI differs from native DPI.");
 #else
-    require(near(state.systemScale, 1.5F), "Initial Xft.dpi was ignored.");
+    require(nearlyEqual(state.systemScale, 1.5F), "Initial Xft.dpi was ignored.");
     const int reads = resourceReads;
     Platform::WindowState cached;
     Platform::Error error;
     resources = "Xft.dpi: 192\n";
-    require(Platform::getWindowState(cached, error) && near(cached.systemScale, 1.5F)
+    require(Platform::getWindowState(cached, error) && nearlyEqual(cached.systemScale, 1.5F)
         && resourceReads == reads, "Window snapshot queried DPI or changed without an event.");
 #endif
 
@@ -210,7 +210,7 @@ void run()
     for (float scale : { 2.0F, 1.25F, 1.0F, 1.5F }) {
         requestDpi(scale);
         state = process();
-        require(near(state.systemScale, scale), "DPI snapshot did not update.");
+        require(nearlyEqual(state.systemScale, scale), "DPI snapshot did not update.");
         checkDpiEvent(scale);
         checkViewport(state);
 #ifdef _WIN32
@@ -223,13 +223,13 @@ void run()
             && limits.ptMinTrackSize.y == minimum.bottom - minimum.top, "DPI minimum client size is incorrect.");
 #endif
         require(canvas.createView({ 0, 0, state.width, state.height }, ui, uiError)
-            && near(ui.uiToScreen({ 100, 60 }).x, 125) && near(ui.uiToScreen({ 100, 60 }).y, 75)
+            && nearlyEqual(ui.uiToScreen({ 100, 60 }).x, 125) && nearlyEqual(ui.uiToScreen({ 100, 60 }).y, 75)
             && canvas.scale == 1.25F, "DPI change replaced chosen UI scale.");
         require(camera.createView({ 0, 0, state.width, state.height }, world, cameraError)
             && camera.zoom == 1.5F, "DPI change replaced world zoom.");
         Vector2 point;
         require(world.screenToWorld({ static_cast<float>(state.width) / 2, static_cast<float>(state.height) / 2 }, point)
-            && near(point.x, 500) && near(point.y, 300), "World mouse mapping after DPI failed.");
+            && nearlyEqual(point.x, 500) && nearlyEqual(point.y, 300), "World mouse mapping after DPI failed.");
     }
     requestDpi(1.5F);
     state = process();
@@ -245,7 +245,7 @@ void run()
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     } while (std::chrono::steady_clock::now() < deadline);
-    require(state.width == 480 && state.height == 360 && near(state.systemScale, 1.5F), "Resize lost DPI or used logical pixels.");
+    require(state.width == 480 && state.height == 360 && nearlyEqual(state.systemScale, 1.5F), "Resize lost DPI or used logical pixels.");
     checkViewport(state);
     moveMouse();
     process();
@@ -256,7 +256,7 @@ void run()
     });
     Vector2 logical;
     require(mouse != events.end() && ui.screenToUi({ static_cast<float>(mouse->x), static_cast<float>(mouse->y) }, logical)
-        && near(logical.x, 100) && near(logical.y, 60), "Mouse coordinates after DPI and resize are incorrect.");
+        && nearlyEqual(logical.x, 100) && nearlyEqual(logical.y, 60), "Mouse coordinates after DPI and resize are incorrect.");
 
 #ifndef _WIN32
     for (const std::string invalid : { "", "Xft.dpi: -96\n", "Xft.dpi: 0\n", "Xft.dpi: nan\n",
@@ -264,15 +264,15 @@ void run()
         resources = invalid;
         notifyDpi();
         state = process();
-        require(near(state.systemScale, 1), "Invalid desktop DPI did not use the default.");
+        require(nearlyEqual(state.systemScale, 1), "Invalid desktop DPI did not use the default.");
     }
     failResourceRead = true;
     notifyDpi();
     require(!Platform::processEvents(error) && error.operation == "XGetTextProperty (RESOURCE_MANAGER)", "Native DPI read failure was ignored.");
-    require(Platform::getWindowState(cached, error) && near(cached.systemScale, 1), "DPI read failure changed snapshot.");
+    require(Platform::getWindowState(cached, error) && nearlyEqual(cached.systemScale, 1), "DPI read failure changed snapshot.");
     failResourceRead = false;
     requestDpi(1.5F);
-    require(near(process().systemScale, 1.5F), "DPI failed to recover.");
+    require(nearlyEqual(process().systemScale, 1.5F), "DPI failed to recover.");
 #endif
     Platform::shutdown(errors);
     PlatformTest::reportErrors(errors);
