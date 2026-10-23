@@ -1,6 +1,7 @@
 #include "platform.h"
 #include "events.h"
 #include "application.h"
+#include "math2d.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -14,12 +15,7 @@
 
 namespace
 {
-struct Color
-{
-    float red;
-    float green;
-    float blue;
-};
+using Engine::Color;
 
 constexpr int WindowWidth = 900;
 constexpr int WindowHeight = 500;

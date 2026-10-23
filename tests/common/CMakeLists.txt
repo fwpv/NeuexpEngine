@@ -1,3 +1,9 @@
+foreach(group math geometry transform)
+    add_executable(${group}_test ${group}_test.cpp)
+    target_link_libraries(${group}_test PRIVATE engine_math project_warnings)
+    add_test(NAME ${group} COMMAND ${group}_test)
+endforeach()
+
 add_executable(event_dispatcher_test event_dispatcher_test.cpp)
 target_link_libraries(event_dispatcher_test PRIVATE engine_events engine_input project_warnings)
 add_test(NAME event_dispatcher COMMAND event_dispatcher_test)

@@ -1,6 +1,7 @@
 #include "platform.h"
 #include "game.h"
 #include "application.h"
+#include "math2d.h"
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -15,21 +16,8 @@
 
 namespace Game
 {
-// Координата на игровом поле. Экранные координаты считаются в пикселях.
-struct Point
-{
-    float x;
-    float y;
-};
-
-struct Color
-{
-    // Компоненты цвета OpenGL задаются числами от 0 до 1.
-    float red;
-    float green;
-    float blue;
-    float alpha;
-};
+using Point = Engine::Vector2;
+using Engine::Color;
 
 namespace Palette
 {
