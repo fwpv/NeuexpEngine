@@ -3,6 +3,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include "../windows/window_frame.h"
 #else
 #include <GL/glx.h>
 #endif
@@ -42,8 +43,8 @@ bool resizeWindow(int width, int height, Platform::Error& error)
     const auto style = static_cast<DWORD>(GetWindowLongPtrW(window, GWL_STYLE));
     const auto extendedStyle = static_cast<DWORD>(GetWindowLongPtrW(window, GWL_EXSTYLE));
     RECT bounds = { 0, 0, width, height };
-    if (!AdjustWindowRectEx(&bounds, style, FALSE, extendedStyle)) {
-        error = { "AdjustWindowRectEx", "Could not calculate the resized frame.", static_cast<int>(GetLastError()) };
+    if (!PlatformTest::adjustWindowFrame(window, bounds, style, extendedStyle)) {
+        error = { "AdjustWindowRectExForDpi", "Could not calculate the resized frame.", static_cast<int>(GetLastError()) };
         return false;
     }
     if (!SetWindowPos(window, nullptr, 0, 0, bounds.right - bounds.left, bounds.bottom - bounds.top,

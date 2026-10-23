@@ -1,0 +1,53 @@
+#include "ui.h"
+
+#include <cmath>
+#include <limits>
+
+namespace Engine
+{
+Vector2 UiView::uiToScreen(Vector2 point) const
+{
+    return uiToScreenTransform.transformPoint(point);
+}
+
+bool UiView::screenToUi(Vector2 point, Vector2& result) const
+{
+    const Rect screen = viewport.bounds();
+    if (!std::isfinite(point.x) || !std::isfinite(point.y)
+        || point.x < screen.position.x || point.y < screen.position.y
+        || point.x >= screen.position.x + screen.size.width
+        || point.y >= screen.position.y + screen.size.height) {
+        return false;
+    }
+    result = screenToUiTransform.transformPoint(point);
+    return true;
+}
+
+bool UiCanvas::createView(const Viewport& area, UiView& result, UiError& error) const
+{
+    if (area.width <= 0 || area.height <= 0
+        || area.x > std::numeric_limits<int>::max() - area.width
+        || area.y > std::numeric_limits<int>::max() - area.height) {
+        error = UiError::InvalidViewport;
+        return false;
+    }
+    if (!std::isfinite(scale) || scale <= 0) {
+        error = UiError::InvalidScale;
+        return false;
+    }
+    UiView candidate;
+    candidate.viewport = area;
+    candidate.size = { static_cast<float>(area.width) / scale, static_cast<float>(area.height) / scale };
+    candidate.uiToScreenTransform = { scale, 0, static_cast<float>(area.x), 0, scale, static_cast<float>(area.y) };
+    TransformError transformError;
+    if (!std::isfinite(candidate.size.width) || !std::isfinite(candidate.size.height)
+        || candidate.size.width <= 0 || candidate.size.height <= 0
+        || !candidate.uiToScreenTransform.inverse(candidate.screenToUiTransform, transformError)) {
+        error = UiError::NonInvertible;
+        return false;
+    }
+    result = candidate;
+    error = UiError::None;
+    return true;
+}
+}

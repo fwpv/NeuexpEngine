@@ -634,6 +634,34 @@ void mouse(NativeInput& native)
 #endif
     native.frame();
     require(!mouse.inside && findEvent(EventType::MouseLeft), "Mouse leave was lost.");
+#ifndef _WIN32
+    crossing.xcrossing.type = EnterNotify;
+    crossing.xcrossing.mode = NotifyGrab;
+    crossing.xcrossing.x = 15;
+    crossing.xcrossing.y = 20;
+    native.send(crossing, EnterWindowMask);
+    native.frame();
+    require(!mouse.inside && !findEvent(EventType::MouseEntered), "Pointer grab caused a false mouse entry.");
+
+    // При открытии окна под неподвижным курсором вход может прийти лишь после захвата оконного менеджера.
+    crossing.xcrossing.mode = NotifyUngrab;
+    native.send(crossing, EnterWindowMask);
+    native.frame();
+    require(mouse.inside && mouse.x == 15 && mouse.y == 20 && findEvent(EventType::MouseEntered),
+        "Mouse entry after the window manager released the pointer was lost.");
+    native.frame();
+    require(mouse.inside && !findEvent(EventType::MouseEntered), "Mouse entry did not persist without motion.");
+
+    crossing.xcrossing.type = LeaveNotify;
+    crossing.xcrossing.mode = NotifyGrab;
+    native.send(crossing, LeaveWindowMask);
+    native.frame();
+    require(mouse.inside && !findEvent(EventType::MouseLeft), "Pointer grab caused a false mouse leave.");
+    crossing.xcrossing.mode = NotifyUngrab;
+    native.send(crossing, LeaveWindowMask);
+    native.frame();
+    require(!mouse.inside && findEvent(EventType::MouseLeft), "Mouse leave after pointer release was lost.");
+#endif
 }
 
 void text(NativeInput& native)

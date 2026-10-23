@@ -48,11 +48,12 @@ enum class EventType
     MouseMoved, MousePressed, MouseReleased, MouseWheel, MouseEntered, MouseLeft,
     MouseCaptureLost, FocusGained, FocusLost, WindowResized, WindowMinimized,
     WindowRestored, CloseRequested, WindowDestroyed,
-    LockStateChanged // Изменились capsLock/numLock; остальные поля modifiers не используются.
+    LockStateChanged, // Изменились capsLock/numLock; остальные поля modifiers не используются.
+    WindowDpiChanged
 };
 
 // Поля читаются согласно type; остальные имеют нулевое значение.
-// x/y — пиксели от левого верхнего угла клиентской области, +y вниз.
+// x/y — фактические пиксели от левого верхнего угла клиентской области, +y вниз.
 // При перетаскивании координаты могут выходить за границы окна; они не ограничиваются.
 struct Event
 {
@@ -70,6 +71,7 @@ struct Event
     double wheelY = 0;
     int width = 0;
     int height = 0;
+    float systemScale = 0; // Только WindowDpiChanged: новый системный DPI / 96.
     std::string text; // Подтверждённый текст UTF-8, отдельно от управляющих клавиш.
     double time = 0; // Монотонное время получения события движком, в секундах.
 };
