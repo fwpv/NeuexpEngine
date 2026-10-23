@@ -45,6 +45,8 @@ constexpr Color GoalColor = { 0.35F, 0.95F, 0.55F };
 constexpr Color WarningColor = { 1, 0.25F, 0.20F };
 constexpr Color ExhaustedColor = { 0.40F, 0.44F, 0.49F };
 constexpr Color HouseColor = { 0.58F, 0.44F, 0.28F };
+constexpr Color ObstacleColor = { 0.26F, 0.31F, 0.34F };
+constexpr Color ObstacleBorderColor = { 0.49F, 0.54F, 0.56F };
 constexpr std::array<Color, 3> TrashColors = {{
     { 0.94F, 0.84F, 0.43F }, { 0.75F, 0.55F, 0.85F }, { 0.67F, 0.78F, 0.81F }
 }};
@@ -148,9 +150,8 @@ void drawHome(const Game& game)
 {
     const bool ready = game.washed >= HomeGoal;
     const float progress = std::min(1.0F, static_cast<float>(game.washed) / HomeGoal);
-    const Rect lot = { 2500, 1570, 400, 380 };
-    rectangle(lot, { 0.14F + 0.03F * progress, 0.16F + 0.16F * progress, 0.14F });
-    rectangle(lot, ready ? GoalColor : BorderColor, false);
+    rectangle(HomeLotBounds, { 0.14F + 0.03F * progress, 0.16F + 0.16F * progress, 0.14F });
+    rectangle(HomeLotBounds, ready ? GoalColor : BorderColor, false);
     rectangle(HomeBounds, BorderColor, false);
     if (game.washed >= HomeGoal / 4) {
         rectangle({ 2570, 1810, 260, 24 }, HouseColor);
@@ -186,6 +187,10 @@ void drawWorld(const Game& game, float time)
     glEnd();
     rectangle(WorldBounds, BorderColor, false);
     drawHome(game);
+    for (const Rect& obstacle : Obstacles) {
+        rectangle(obstacle, ObstacleColor);
+        rectangle(obstacle, ObstacleBorderColor, false);
+    }
     for (const Puddle& puddle : Puddles) {
         circle(puddle.shape, puddle.sticky ? OrangePoolColor : BluePoolColor);
         circle({ puddle.shape.center, puddle.shape.radius - 12 }, puddle.sticky ? StickyPlayerColor : CleanPlayerColor, false);
@@ -415,6 +420,8 @@ private:
         const Color moodColor = game.motivation <= 20 ? WarningColor : GoalColor;
         rectangle({ 16, 16, 235, 78 }, PanelColor);
         text("MOTIVATION", { 28, 25 }, WhiteColor);
+        text("-1/" + std::to_string(static_cast<int>(MotivationDecayInterval)) + "S TO " + std::to_string(PassiveMotivationFloor),
+            { 28, 45 }, BorderColor);
         number(game.motivation, { 170, 44 }, moodColor);
         rectangle({ 28, 65, 130, 9 }, GridColor);
         rectangle({ 28, 65, 130 * static_cast<float>(game.motivation) / MaximumMotivation, 9 }, moodColor);

@@ -5,27 +5,66 @@
 
 namespace Cleanup
 {
+namespace
+{
+bool blocked(Vector2 point, float radius, bool homeLocked)
+{
+    const Circle body = { point, radius };
+    if (homeLocked && Engine::intersects(HomeBounds, body)) {
+        return true;
+    }
+    return std::any_of(Obstacles.begin(), Obstacles.end(), [&](const Rect& obstacle) {
+        return Engine::intersects(obstacle, body);
+    });
+}
+
+bool canPlaceTrash(Vector2 point)
+{
+    const float clearance = TrashRadius + PlayerRadius;
+    return !blocked(point, clearance, true)
+        && std::none_of(Puddles.begin(), Puddles.end(), [&](const Puddle& puddle) {
+            return Engine::intersects(puddle.shape, Circle{ point, clearance });
+        });
+}
+
+Vector2 movePlayer(Vector2 position, Vector2 movement, bool homeLocked)
+{
+    const Rect playerBounds = { PlayerRadius, PlayerRadius,
+        WorldBounds.size.width - 2 * PlayerRadius, WorldBounds.size.height - 2 * PlayerRadius };
+    // Короткие шаги исключают проход сквозь препятствие; раздельные оси дают скольжение вдоль стен.
+    const int steps = std::max(1, static_cast<int>(std::ceil(Engine::length(movement) / (PlayerRadius / 4))));
+    const Vector2 step = movement / static_cast<float>(steps);
+    for (int index = 0; index < steps; ++index) {
+        Vector2 next = Engine::closestPoint(playerBounds, position + Vector2{ step.x, 0 });
+        if (!blocked(next, PlayerRadius, homeLocked)) {
+            position = next;
+        }
+        next = Engine::closestPoint(playerBounds, position + Vector2{ 0, step.y });
+        if (!blocked(next, PlayerRadius, homeLocked)) {
+            position = next;
+        }
+    }
+    return position;
+}
+}
+
 Game::Game()
 {
     // Первые предметы расположены рядом с начальной оранжевой лужей.
     trash[0].position = { 1410, 1050 };
     trash[1].position = { 1450, 1100 };
     trash[2].position = { 1370, 1150 };
+    int candidate = 3;
     for (int index = 3; index < TrashCount; ++index) {
-        Vector2 point = {
-            160.0F + static_cast<float>((index * 463) % 2680),
-            150.0F + static_cast<float>((index * 347) % 1800)
-        };
-        for (const Puddle& puddle : Puddles) {
-            if (Engine::intersects(puddle.shape, Circle{ point, TrashRadius + 20 })) {
-                point.x += 190;
-            }
-        }
-        // Предметы доступны до открытия дома.
-        if (Engine::intersects(HomeBounds, Circle{ point, TrashRadius + PlayerRadius })) {
-            point.y = HomeBounds.position.y - 80;
-        }
-        trash[static_cast<std::size_t>(index)].position = Engine::closestPoint({ 100, 100, 2800, 1900 }, point);
+        Vector2 point;
+        do {
+            point = {
+                160.0F + static_cast<float>((candidate * 463) % 2680),
+                150.0F + static_cast<float>((candidate * 347) % 1800)
+            };
+            ++candidate;
+        } while (!canPlaceTrash(point));
+        trash[static_cast<std::size_t>(index)].position = point;
     }
 }
 
@@ -35,32 +74,42 @@ void Game::update(Vector2 direction, float deltaTime)
         return;
     }
     feedbackTime = std::max(0.0F, feedbackTime - deltaTime);
+    motivationDecayTime += deltaTime;
+    while (motivation > PassiveMotivationFloor && motivationDecayTime >= MotivationDecayInterval) {
+        --motivation;
+        motivationDecayTime -= MotivationDecayInterval;
+    }
+    if (motivation <= PassiveMotivationFloor) {
+        // Потеря груза может опустить мотивацию ниже порога; время её не восстанавливает.
+        motivationDecayTime = 0;
+    }
     for (Trash& item : trash) {
         item.pickupDelay = std::max(0.0F, item.pickupDelay - deltaTime);
     }
 
     const float speed = PlayerSpeed * (1 - MaximumSlowdown * static_cast<float>(carried) / GlueCapacity);
     const Vector2 previousPosition = player;
+    Vector2 movement;
     if (direction != Vector2{}) {
         target.reset();
         direction = Engine::normalized(direction);
     } else if (target) {
         const Vector2 offset = *target - player;
         if (Engine::length(offset) <= speed * deltaTime) {
-            player = *target;
+            movement = offset;
             target.reset();
         } else {
             direction = Engine::normalized(offset);
         }
     }
     if (direction != Vector2{}) {
-        player += direction * speed * deltaTime;
-        heading = std::atan2(direction.y, direction.x);
+        movement = direction * speed * deltaTime;
     }
-    player = Engine::closestPoint({ PlayerRadius, PlayerRadius,
-        WorldBounds.size.width - 2 * PlayerRadius, WorldBounds.size.height - 2 * PlayerRadius }, player);
-    if (washed < HomeGoal && Engine::intersects(HomeBounds, Circle{ player, PlayerRadius })) {
-        player = previousPosition;
+    player = movePlayer(player, movement, washed < HomeGoal);
+    if (movement != Vector2{}) {
+        heading = std::atan2(movement.y, movement.x);
+    }
+    if (player == previousPosition && movement != Vector2{}) {
         target.reset();
     }
 
@@ -126,8 +175,8 @@ void Game::update(Vector2 direction, float deltaTime)
                     item.position = Engine::closestPoint({ TrashRadius, TrashRadius,
                         WorldBounds.size.width - 2 * TrashRadius, WorldBounds.size.height - 2 * TrashRadius },
                         player + Engine::rotated(item.attachment, heading));
-                    // Упавшие предметы остаются доступны до открытия дома и вне моющей лужи.
-                    if (washed < HomeGoal && Engine::intersects(HomeBounds, Circle{ item.position, TrashRadius })) {
+                    // Упавший предмет остаётся доступен для повторного сбора.
+                    if (blocked(item.position, TrashRadius + PlayerRadius, washed < HomeGoal)) {
                         item.position = player;
                     }
                     for (const Puddle& puddle : Puddles) {
