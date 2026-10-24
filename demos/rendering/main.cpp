@@ -1,10 +1,7 @@
+#include "entry_point.h"
 #include "application.h"
 #include "renderer.h"
 #include "../common/renderer_text.h"
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 #include <algorithm>
 #include <array>
@@ -364,11 +361,7 @@ class RenderingApplication final : public Application
 };
 }
 
-#ifdef _WIN32
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
-#else
-int main()
-#endif
+int Engine::applicationMain()
 {
     RenderingApplication application;
     ApplicationOptions options;

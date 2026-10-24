@@ -62,6 +62,7 @@ void configureState()
     for (int index = 0; index < 6; ++index) {
         glDisable(GL_CLIP_PLANE0 + static_cast<GLenum>(index));
     }
+    glShadeModel(GL_SMOOTH);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
@@ -245,12 +246,12 @@ bool Renderer2D::submit(Primitive primitive, const Vector2* vertices, std::size_
     }
     DrawOptions screenOptions = options;
     screenOptions.transform = viewTransform * options.transform;
-    commands.push_back({ primitive, std::vector<Vector2>(vertices, vertices + count), screenOptions, clip });
+    commands.push_back({ primitive, std::vector<Vector2>(vertices, vertices + count), screenOptions, clip, std::nullopt });
     return true;
 }
 
 void Renderer2D::execute(Primitive primitive, const Vector2* vertices, std::size_t count,
-    const DrawOptions& options) const
+    const DrawOptions& options, const std::optional<std::array<Color, 2>>& gradient) const
 {
     GLenum mode = GL_POINTS;
     switch (primitive) {
@@ -266,6 +267,11 @@ void Renderer2D::execute(Primitive primitive, const Vector2* vertices, std::size
     glPointSize(options.pointSize);
     glBegin(mode);
     for (std::size_t index = 0; index < count; ++index) {
+        if (gradient) {
+            const Color color = (*gradient)[index < 2 ? 0 : 1];
+            glColor4f(color.red * options.color.red, color.green * options.color.green,
+                color.blue * options.color.blue, color.alpha * options.color.alpha);
+        }
         const Vector2 screen = options.transform.transformPoint(vertices[index]);
         glVertex2f(screen.x, screen.y);
     }
@@ -285,7 +291,7 @@ void Renderer2D::flush()
     });
     for (const Command& command : commands) {
         applyClip(command.clip);
-        execute(command.primitive, command.vertices.data(), command.vertices.size(), command.options);
+        execute(command.primitive, command.vertices.data(), command.vertices.size(), command.options, command.gradient);
     }
     commands.clear();
     applyClip(clip);
@@ -325,6 +331,23 @@ bool Renderer2D::drawRectangle(const Rect& rectangle, ShapeFill fill, const Draw
     };
     return submit(fill == ShapeFill::Filled ? Primitive::Quads : Primitive::LineLoop,
         vertices.data(), vertices.size(), options, error);
+}
+
+bool Renderer2D::drawGradientRectangle(const Rect& rectangle, Color top, Color bottom,
+    const DrawOptions& options, RenderError& error)
+{
+    if (!valid(top) || !valid(bottom)) {
+        error = RenderError::InvalidOptions;
+        return false;
+    }
+    const auto previousSize = commands.size();
+    if (!drawRectangle(rectangle, ShapeFill::Filled, options, error)) {
+        return false;
+    }
+    if (commands.size() > previousSize) {
+        commands.back().gradient = std::array<Color, 2>{ top, bottom };
+    }
+    return true;
 }
 
 bool Renderer2D::drawCircle(const Circle& circle, ShapeFill fill, const DrawOptions& options,

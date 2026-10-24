@@ -3,6 +3,7 @@
 #include "camera.h"
 #include "ui.h"
 
+#include <array>
 #include <cstddef>
 #include <optional>
 #include <vector>
@@ -84,6 +85,9 @@ public:
     bool drawPoint(Vector2 point, const DrawOptions& options, RenderError& error);
     bool drawLine(Vector2 start, Vector2 end, const DrawOptions& options, RenderError& error);
     bool drawRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options, RenderError& error);
+    // Вертикальный градиент в локальных координатах. Цвета умножаются на options.color.
+    bool drawGradientRectangle(const Rect& rectangle, Color top, Color bottom,
+        const DrawOptions& options, RenderError& error);
     // Нулевые размеры прямоугольника/радиус окружности допустимы, заливка не рисуется.
     // segments >= 3; аппроксимация окружности задаётся в локальных координатах.
     bool drawCircle(const Circle& circle, ShapeFill fill, const DrawOptions& options,
@@ -119,6 +123,7 @@ private:
         std::vector<Vector2> vertices;
         DrawOptions options;
         std::optional<Viewport> clip;
+        std::optional<std::array<Color, 2>> gradient;
     };
 
     bool initialized = false;
@@ -134,7 +139,8 @@ private:
     bool prepareDraw(const DrawOptions& options, RenderError& error) const;
     bool submit(Primitive primitive, const Vector2* vertices, std::size_t count,
         const DrawOptions& options, RenderError& error);
-    void execute(Primitive primitive, const Vector2* vertices, std::size_t count, const DrawOptions& options) const;
+    void execute(Primitive primitive, const Vector2* vertices, std::size_t count, const DrawOptions& options,
+        const std::optional<std::array<Color, 2>>& gradient) const;
     void flush();
     void applyClip(const std::optional<Viewport>& area) const;
 };

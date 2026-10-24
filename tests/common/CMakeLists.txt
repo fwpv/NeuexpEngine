@@ -3,7 +3,7 @@ target_link_libraries(renderer_test PRIVATE engine_renderer platform project_war
 if(WIN32)
     target_compile_definitions(renderer_test PRIVATE NOMINMAX)
 endif()
-foreach(mode primitives transforms views errors state sorting)
+foreach(mode primitives transforms views errors state sorting gradient)
     add_test(NAME renderer_${mode} COMMAND renderer_test ${mode})
     set_tests_properties(renderer_${mode} PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)

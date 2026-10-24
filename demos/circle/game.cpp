@@ -1,15 +1,12 @@
+#include "entry_point.h"
 #include "platform.h"
 #include "game.h"
 #include "application.h"
 #include "math2d.h"
 #include "geometry.h"
 #include "transform.h"
+#include "../common/painter.h"
 
-#if defined(_WIN32)
-#include <windows.h>
-#endif
-
-#include <GL/gl.h>
 #include <array>
 #include <cmath>
 #include <optional>
@@ -120,33 +117,6 @@ const std::array<Vector2, 4> Window = {{
 }};
 }
 
-void setColor(const Color& color)
-{
-    glColor4f(color.red, color.green, color.blue, color.alpha);
-}
-
-void setColor(const Color& color, float alpha)
-{
-    glColor4f(color.red, color.green, color.blue, alpha);
-}
-
-void vertex(Vector2 point)
-{
-    glVertex2f(point.x, point.y);
-}
-
-void applyTransform(const Affine2& transform)
-{
-    // OpenGL хранит матрицу по столбцам; математические коэффициенты остаются в Affine2.
-    const std::array<GLfloat, 16> matrix = {
-        transform.m00, transform.m10, 0, 0,
-        transform.m01, transform.m11, 0, 0,
-        0, 0, 1, 0,
-        transform.m02, transform.m12, 0, 1
-    };
-    glMultMatrixf(matrix.data());
-}
-
 const int PortalCount = 2;
 const int DefaultDiscSides = 32;
 const int DefaultRingSides = 48;
@@ -157,8 +127,6 @@ const float HudFrameCornerLength = 50.0f;
 const float InactiveHudAlpha = 0.18f;
 const float InactiveTargetAlpha = 0.45f;
 const float DefaultLineWidth = 1.0f;
-const float NearDepth = -1.0f;
-const float FarDepth = 1.0f;
 
 struct ShuttleConfig
 {
@@ -559,378 +527,335 @@ Vector2 beaconPosition(const Station& station, float time)
     return orbit.toAffine().transformPoint(Engine::rotated({ 1, 0 }, time * station.beaconSpeed));
 }
 
-void disc(Vector2 center, Vector2 radii, int sides = DefaultDiscSides)
+class ScenePainter final : public Demo::Painter
 {
-    const Affine2 transform = Transform2{ center, 0, radii, {} }.toAffine();
-    glBegin(GL_TRIANGLE_FAN);
-    vertex(center);
-    for (int side = 0; side <= sides; ++side) {
-        const float angle = 2 * Pi * static_cast<float>(side) / static_cast<float>(sides);
-        vertex(transform.transformPoint(Engine::rotated({ 1, 0 }, angle)));
-    }
-    glEnd();
-}
+public:
+    using Demo::Painter::Painter;
 
-void disc(const Circle& circle, int sides = DefaultDiscSides)
-{
-    disc(circle.center, { circle.radius, circle.radius }, sides);
-}
-
-void ring(Vector2 center, Vector2 radii, int sides = DefaultRingSides)
-{
-    const Affine2 transform = Transform2{ center, 0, radii, {} }.toAffine();
-    glBegin(GL_LINE_LOOP);
-    for (int side = 0; side < sides; ++side) {
-        const float angle = 2 * Pi * static_cast<float>(side) / static_cast<float>(sides);
-        vertex(transform.transformPoint(Engine::rotated({ 1, 0 }, angle)));
-    }
-    glEnd();
-}
-
-void ring(const Circle& circle, int sides = DefaultRingSides)
-{
-    ring(circle.center, { circle.radius, circle.radius }, sides);
-}
-
-void rectangle(const Rect& rectangle)
-{
-    glBegin(GL_QUADS);
-    vertex(rectangle.position);
-    vertex(rectangle.position + Vector2{ rectangle.size.width, 0 });
-    vertex(rectangle.position + Vector2{ rectangle.size.width, rectangle.size.height });
-    vertex(rectangle.position + Vector2{ 0, rectangle.size.height });
-    glEnd();
-}
-
-void drawPortal(const Portal& portal, float time, bool open)
-{
-    const float brightness = open ? PortalSettings.openBrightness : PortalSettings.closedBrightness;
-    const float pulse = PortalSettings.pulseBase + PortalSettings.pulseSize * std::sin(time * PortalSettings.pulseSpeed);
-
-    setColor(Palette::PortalGlow, Palette::PortalGlow.alpha * brightness);
-    disc(portal.position, { PortalSettings.glowRadiusX * pulse, PortalSettings.glowRadiusY * pulse });
-    setColor(Palette::PortalOuterRing, Palette::PortalOuterRing.alpha * brightness);
-    ring(portal.position, { PortalSettings.outerRadiusX, PortalSettings.outerRadiusY });
-    setColor(Palette::PortalInnerRing, Palette::PortalInnerRing.alpha * brightness);
-    ring(portal.position, { PortalSettings.innerRadiusX, PortalSettings.innerRadiusY });
-    setColor(Palette::PortalCore);
-    disc(portal.position, { PortalSettings.coreRadiusX, PortalSettings.coreRadiusY });
-}
-
-void drawStars(float time, const StarField& stars)
-{
-    const unsigned int SeedMultiplier = 7919u;
-    const unsigned int SeedOffset = 17u;
-    const unsigned int XMultiplier = 37u;
-    const unsigned int XOffset = 91u;
-    const unsigned int YMultiplier = 53u;
-    const unsigned int YOffset = 29u;
-    const unsigned int screenWidth = static_cast<unsigned int>(WorldSettings.size.width);
-    const unsigned int screenHeight = static_cast<unsigned int>(WorldSettings.size.height);
-
-    glPointSize(stars.pointSize);
-    glBegin(GL_POINTS);
-    for (unsigned int star = 0; star < stars.count; ++star) {
-        const unsigned int seed = star * SeedMultiplier + SeedOffset;
-        const double x = (seed * XMultiplier + XOffset) % screenWidth;
-        const double y = (seed * YMultiplier + YOffset) % screenHeight;
-        const float glow = stars.glowBase + stars.glowRange * std::sin(time + static_cast<float>(star));
-        setColor(Palette::Star, glow);
-        glVertex2d(x, y);
-    }
-    glEnd();
-}
-
-void drawNebula(float time, const Nebula& nebula)
-{
-    float x = nebula.startX;
-    float phase = time * nebula.swaySpeed;
-    for (int cloud = 0; cloud < nebula.cloudCount; ++cloud) {
-        const float y = nebula.startY + nebula.sway * std::sin(phase);
-        setColor(Palette::Nebula);
-        disc({ x, y }, { nebula.radiusX, nebula.radiusY });
-        x += nebula.spacing;
-        phase += 1.0f;
-    }
-}
-
-void drawPlanet(float time, const Planet& planet)
-{
-    setColor(Palette::PlanetAtmosphere);
-    disc(Circle{ planet.position, planet.atmosphereRadius });
-    setColor(Palette::PlanetSurface);
-    disc(Circle{ planet.position, planet.radius });
-
-    const int firstBand = -planet.bandCount / 2;
-    const float firstBandOffset = static_cast<float>(firstBand);
-    float bandY = planet.position.y + firstBandOffset * planet.bandSpacing;
-    float bandPhase = time + firstBandOffset;
-    glLineWidth(planet.bandLineWidth);
-    for (int band = 0; band < planet.bandCount; ++band) {
-        setColor(Palette::PlanetBand,
-                 Palette::PlanetBand.alpha + planet.bandPulseAlpha * std::sin(bandPhase));
-        glBegin(GL_LINES);
-        glVertex2f(planet.position.x - planet.bandHalfWidth, bandY);
-        glVertex2f(planet.position.x + planet.bandHalfWidth, bandY);
-        glEnd();
-        bandY += planet.bandSpacing;
-        bandPhase += 1.0f;
+    void setColor(Color color)
+    {
+        options.color = color;
     }
 
-    glLineWidth(planet.innerRingLineWidth);
-    setColor(Palette::PlanetRing);
-    ring(planet.position, { planet.innerRingRadiusX, planet.innerRingRadiusY });
-    glLineWidth(planet.outerRingLineWidth);
-    setColor(Palette::PlanetRingHighlight);
-    ring(planet.position, { planet.outerRingRadiusX, planet.outerRingRadiusY });
-}
+    void setColor(Color color, float alpha)
+    {
+        color.alpha = alpha;
+        setColor(color);
+    }
 
-void drawStation(float time, const Station& station)
-{
-    const float x = station.position.x;
-    const float y = station.position.y;
-    const float glow = station.reactorGlowBase +
-        station.reactorGlowRange * std::sin(time * station.reactorGlowSpeed);
-    setColor(Palette::StationOuterRing);
-    ring(station.position, { station.outerRadiusX, station.outerRadiusY });
-    setColor(Palette::StationBody);
-    disc(Circle{ station.position, station.reactorRadius });
-    setColor(Palette::StationRing);
-    ring(Circle{ station.position, station.reactorRingRadius });
-    setColor(Palette::StationReactor, glow);
-    disc(Circle{ station.position, station.reactorGlowRadius }, station.reactorSides);
+    void disc(Vector2 center, Vector2 radii, int sides = DefaultDiscSides)
+    {
+        const Affine2 parent = options.transform;
+        options.transform = parent * Transform2{ center, 0, radii, {} }.toAffine();
+        circle({ {}, 1 }, true, static_cast<unsigned int>(sides));
+        options.transform = parent;
+    }
 
-    const int moduleRows = station.moduleCount / station.moduleColumns;
-    const float firstModuleX = x - static_cast<float>(station.moduleColumns - 1) * 0.5f * station.moduleSpacingX;
-    float moduleY = y - static_cast<float>(moduleRows - 1) * 0.5f * station.moduleSpacingY;
-    int module = 0;
-    while (module < station.moduleCount) {
-        float moduleX = firstModuleX;
-        for (int column = 0; column < station.moduleColumns && module < station.moduleCount; ++column) {
-            setColor(Palette::StationModule);
-            disc({ moduleX, moduleY }, { station.moduleRadiusX, station.moduleRadiusY }, station.moduleSides);
-            setColor(Palette::StationModuleRing);
-            ring({ moduleX, moduleY }, { station.moduleRadiusX, station.moduleRadiusY }, station.moduleSides);
-            setColor(Palette::StationModuleLight);
-            disc(Circle{ { moduleX, moduleY }, station.moduleLightRadius }, station.moduleSides);
-            moduleX += station.moduleSpacingX;
-            ++module;
+    void disc(const Circle& circle, int sides = DefaultDiscSides)
+    {
+        disc(circle.center, { circle.radius, circle.radius }, sides);
+    }
+
+    void ring(Vector2 center, Vector2 radii, int sides = DefaultRingSides)
+    {
+        const Affine2 parent = options.transform;
+        options.transform = parent * Transform2{ center, 0, radii, {} }.toAffine();
+        circle({ {}, 1 }, false, static_cast<unsigned int>(sides));
+        options.transform = parent;
+    }
+
+    void ring(const Circle& circle, int sides = DefaultRingSides)
+    {
+        ring(circle.center, { circle.radius, circle.radius }, sides);
+    }
+
+    void drawPortal(const Portal& portal, float time, bool open)
+    {
+        const float brightness = open ? PortalSettings.openBrightness : PortalSettings.closedBrightness;
+        const float pulse = PortalSettings.pulseBase + PortalSettings.pulseSize * std::sin(time * PortalSettings.pulseSpeed);
+
+        setColor(Palette::PortalGlow, Palette::PortalGlow.alpha * brightness);
+        disc(portal.position, { PortalSettings.glowRadiusX * pulse, PortalSettings.glowRadiusY * pulse });
+        setColor(Palette::PortalOuterRing, Palette::PortalOuterRing.alpha * brightness);
+        ring(portal.position, { PortalSettings.outerRadiusX, PortalSettings.outerRadiusY });
+        setColor(Palette::PortalInnerRing, Palette::PortalInnerRing.alpha * brightness);
+        ring(portal.position, { PortalSettings.innerRadiusX, PortalSettings.innerRadiusY });
+        setColor(Palette::PortalCore);
+        disc(portal.position, { PortalSettings.coreRadiusX, PortalSettings.coreRadiusY });
+    }
+
+    void drawStars(float time, const StarField& stars)
+    {
+        const unsigned int SeedMultiplier = 7919u;
+        const unsigned int SeedOffset = 17u;
+        const unsigned int XMultiplier = 37u;
+        const unsigned int XOffset = 91u;
+        const unsigned int YMultiplier = 53u;
+        const unsigned int YOffset = 29u;
+        const unsigned int screenWidth = static_cast<unsigned int>(WorldSettings.size.width);
+        const unsigned int screenHeight = static_cast<unsigned int>(WorldSettings.size.height);
+
+        options.pointSize = stars.pointSize;
+        for (unsigned int star = 0; star < stars.count; ++star) {
+            const unsigned int seed = star * SeedMultiplier + SeedOffset;
+            const float x = static_cast<float>( (seed * XMultiplier + XOffset) % screenWidth);
+            const float y = static_cast<float>( (seed * YMultiplier + YOffset) % screenHeight);
+            const float glow = stars.glowBase + stars.glowRange * std::sin(time + static_cast<float>(star));
+            setColor(Palette::Star, glow);
+            point({ x, y });
         }
-        moduleY += station.moduleSpacingY;
     }
 
-    const Vector2 beacon = beaconPosition(station, time);
-    setColor(Palette::BeaconGlow);
-    disc(Circle{ beacon, station.beaconGlowRadius });
-    setColor(Palette::Beacon);
-    disc(Circle{ beacon, station.beaconRadius }, DodecagonSides);
-}
-
-void drawDrone(const Drone& drone, float time)
-{
-    if (!drone.active) {
-        return;
+    void drawNebula(float time, const Nebula& nebula)
+    {
+        float x = nebula.startX;
+        float phase = time * nebula.swaySpeed;
+        for (int cloud = 0; cloud < nebula.cloudCount; ++cloud) {
+            const float y = nebula.startY + nebula.sway * std::sin(phase);
+            setColor(Palette::Nebula);
+            disc({ x, y }, { nebula.radiusX, nebula.radiusY });
+            x += nebula.spacing;
+            phase += 1.0f;
+        }
     }
 
-    const Vector2 position = dronePosition(drone, time);
-    setColor(Palette::DroneGlow);
-    disc(Circle{ position, DroneSettings.glowRadius });
-    setColor(Palette::DroneBody);
-    disc(Circle{ position, DroneSettings.bodyRadius }, OctagonSides);
-    setColor(Palette::DroneRing);
-    ring(Circle{ position, DroneSettings.outlineRadius }, OctagonSides);
-    setColor(Palette::DroneCore);
-    disc(Circle{ position, DroneSettings.coreRadius }, OctagonSides);
-}
+    void drawPlanet(float time, const Planet& planet)
+    {
+        setColor(Palette::PlanetAtmosphere);
+        disc(Circle{ planet.position, planet.atmosphereRadius });
+        setColor(Palette::PlanetSurface);
+        disc(Circle{ planet.position, planet.radius });
 
-void drawBolts(const std::vector<Bolt>& bolts)
-{
-    for (const Bolt& bolt : bolts) {
-        glLineWidth(BoltSettings.lineWidth);
-        setColor(Palette::BoltGlow);
-        ring(Circle{ bolt.position, BoltSettings.glowRadius }, BoltSettings.glowSides);
-        setColor(Palette::Bolt);
-        glBegin(GL_LINES);
-        vertex(bolt.position - bolt.velocity * BoltSettings.trailLength);
-        vertex(bolt.position);
-        glEnd();
-    }
-    glLineWidth(DefaultLineWidth);
-}
+        const int firstBand = -planet.bandCount / 2;
+        const float firstBandOffset = static_cast<float>(firstBand);
+        float bandY = planet.position.y + firstBandOffset * planet.bandSpacing;
+        float bandPhase = time + firstBandOffset;
+        options.lineWidth = planet.bandLineWidth;
+        for (int band = 0; band < planet.bandCount; ++band) {
+            setColor(Palette::PlanetBand,
+                     Palette::PlanetBand.alpha + planet.bandPulseAlpha * std::sin(bandPhase));
+            line({ planet.position.x - planet.bandHalfWidth, bandY },
+                { planet.position.x + planet.bandHalfWidth, bandY });
+            bandY += planet.bandSpacing;
+            bandPhase += 1.0f;
+        }
 
-void drawShuttle(const Shuttle& shuttle, float time)
-{
-    glPushMatrix();
-
-    applyTransform(shuttle.transform.toAffine());
-
-    if (shuttle.thrusting) {
-        const float flame = ShuttleSettings.flameBase + ShuttleSettings.flamePulse * std::sin(time * ShuttleSettings.flameSpeed);
-        setColor(Palette::ShuttleFlame);
-        glBegin(GL_TRIANGLES);
-        glVertex2f(ShuttleModel::FlameLeft.x, ShuttleModel::FlameLeft.y);
-        glVertex2f(0.0f, ShuttleModel::FlameLeft.y + flame);
-        glVertex2f(ShuttleModel::FlameRight.x, ShuttleModel::FlameRight.y);
-        glEnd();
+        options.lineWidth = planet.innerRingLineWidth;
+        setColor(Palette::PlanetRing);
+        ring(planet.position, { planet.innerRingRadiusX, planet.innerRingRadiusY });
+        options.lineWidth = planet.outerRingLineWidth;
+        setColor(Palette::PlanetRingHighlight);
+        ring(planet.position, { planet.outerRingRadiusX, planet.outerRingRadiusY });
     }
 
-    setColor(Palette::ShuttleHull);
-    glBegin(GL_POLYGON);
-    for (Vector2 point : ShuttleModel::Hull) {
-        vertex(point);
-    }
-    glEnd();
+    void drawStation(float time, const Station& station)
+    {
+        const float x = station.position.x;
+        const float y = station.position.y;
+        const float glow = station.reactorGlowBase +
+            station.reactorGlowRange * std::sin(time * station.reactorGlowSpeed);
+        setColor(Palette::StationOuterRing);
+        ring(station.position, { station.outerRadiusX, station.outerRadiusY });
+        setColor(Palette::StationBody);
+        disc(Circle{ station.position, station.reactorRadius });
+        setColor(Palette::StationRing);
+        ring(Circle{ station.position, station.reactorRingRadius });
+        setColor(Palette::StationReactor, glow);
+        disc(Circle{ station.position, station.reactorGlowRadius }, station.reactorSides);
 
-    setColor(Palette::ShuttleWindow);
-    glBegin(GL_QUADS);
-    for (Vector2 point : ShuttleModel::Window) {
-        vertex(point);
-    }
-    glEnd();
-    setColor(Palette::ShuttleShield);
-    ring(Circle{ {}, ShuttleSettings.shieldRadius });
+        const int moduleRows = station.moduleCount / station.moduleColumns;
+        const float firstModuleX = x - static_cast<float>(station.moduleColumns - 1) * 0.5f * station.moduleSpacingX;
+        float moduleY = y - static_cast<float>(moduleRows - 1) * 0.5f * station.moduleSpacingY;
+        int module = 0;
+        while (module < station.moduleCount) {
+            float moduleX = firstModuleX;
+            for (int column = 0; column < station.moduleColumns && module < station.moduleCount; ++column) {
+                setColor(Palette::StationModule);
+                disc({ moduleX, moduleY }, { station.moduleRadiusX, station.moduleRadiusY }, station.moduleSides);
+                setColor(Palette::StationModuleRing);
+                ring({ moduleX, moduleY }, { station.moduleRadiusX, station.moduleRadiusY }, station.moduleSides);
+                setColor(Palette::StationModuleLight);
+                disc(Circle{ { moduleX, moduleY }, station.moduleLightRadius }, station.moduleSides);
+                moduleX += station.moduleSpacingX;
+                ++module;
+            }
+            moduleY += station.moduleSpacingY;
+        }
 
-    glPopMatrix();
-}
-
-void drawHudFrame()
-{
-    const Vector2 start = HudLayout::Frame.position;
-    const Vector2 end = start + Vector2{ HudLayout::Frame.size.width, HudLayout::Frame.size.height };
-    setColor(Palette::HudFrame);
-    glBegin(GL_LINES);
-    vertex(start);
-    vertex({ end.x, start.y });
-    vertex({ start.x, end.y });
-    vertex(end);
-    vertex(start);
-    vertex(start + Vector2{ 0, HudFrameCornerLength });
-    vertex({ end.x, start.y });
-    vertex({ end.x, start.y + HudFrameCornerLength });
-    glEnd();
-}
-
-void drawRadar(const State& state, float time)
-{
-    setColor(Palette::Radar);
-    ring(HudLayout::RadarCenter, { HudLayout::RadarOuterRadiusX, HudLayout::RadarOuterRadiusY });
-    ring(HudLayout::RadarCenter, { HudLayout::RadarInnerRadiusX, HudLayout::RadarInnerRadiusY });
-    setColor(Palette::RadarSweep);
-    glBegin(GL_LINES);
-    const Transform2 sweep = { HudLayout::RadarCenter, 0,
-        { HudLayout::RadarSweepRadiusX, HudLayout::RadarSweepRadiusY }, {} };
-    vertex(HudLayout::RadarCenter);
-    vertex(sweep.toAffine().transformPoint(Engine::rotated({ 1, 0 }, time)));
-    glEnd();
-
-    // Положение шаттла показывается относительно станции, а не края всего уровня.
-    setColor(Palette::ShuttleBlip);
-    const Affine2 radar = Transform2{ HudLayout::RadarCenter, 0,
-        { HudLayout::RadarMapScale, HudLayout::RadarMapScale }, StationSettings.position }.toAffine();
-    const Vector2 shuttleBlip = radar.transformPoint(state.shuttle.transform.position);
-    disc(Circle{ shuttleBlip, HudLayout::BlipRadius }, HudLayout::FineCircleSides);
-    setColor(Palette::BeaconBlip);
-    const Vector2 beaconBlip = radar.transformPoint(beaconPosition(StationSettings, time));
-    disc(Circle{ beaconBlip, HudLayout::BlipRadius }, HudLayout::FineCircleSides);
-}
-
-void drawStatusBars()
-{
-    float cellX = HudLayout::BarStartX;
-    for (int cell = 0; cell < HudLayout::BarCellCount; ++cell) {
-        const float shieldAlpha = cell < HudLayout::ShieldCellCount
-            ? Palette::ShieldCell.alpha
-            : InactiveHudAlpha;
-        setColor(Palette::ShieldCell, shieldAlpha);
-        rectangle({ cellX, HudLayout::BarShieldY, HudLayout::BarCellSize, HudLayout::BarCellSize });
-        const float energyAlpha = cell < HudLayout::EnergyCellCount
-            ? Palette::EnergyCell.alpha
-            : InactiveHudAlpha;
-        setColor(Palette::EnergyCell, energyAlpha);
-        rectangle({ cellX, HudLayout::BarEnergyY, HudLayout::BarCellSize, HudLayout::BarCellSize });
-        cellX += HudLayout::BarCellSpacing;
-    }
-}
-
-void drawScore(const State& state)
-{
-    float lightX = HudLayout::ScoreStartX;
-    for (int point = 0; point < HudLayout::ScoreLightCount; ++point) {
-        const float alpha = point < state.world.score
-            ? Palette::Score.alpha
-            : InactiveHudAlpha;
-        setColor(Palette::Score, alpha);
-        disc(Circle{ { lightX, HudLayout::ScoreY }, HudLayout::ScoreLightRadius }, HudLayout::FineCircleSides);
-        lightX += HudLayout::ScoreSpacing;
-    }
-}
-
-void drawTarget(const State& state, bool locked)
-{
-    setColor(Palette::Target, locked ? Palette::Target.alpha : InactiveTargetAlpha);
-    ring(Circle{ state.shuttle.transform.position, HudLayout::TargetRadius });
-    if (locked) {
-        glBegin(GL_LINES);
-        const float x = state.shuttle.transform.position.x;
-        const float y = state.shuttle.transform.position.y;
-        glVertex2f(x - HudLayout::TargetMarkOuter, y);
-        glVertex2f(x - HudLayout::TargetMarkInner, y);
-        glVertex2f(x + HudLayout::TargetMarkInner, y);
-        glVertex2f(x + HudLayout::TargetMarkOuter, y);
-        glVertex2f(x, y - HudLayout::TargetMarkOuter);
-        glVertex2f(x, y - HudLayout::TargetMarkInner);
-        glVertex2f(x, y + HudLayout::TargetMarkInner);
-        glVertex2f(x, y + HudLayout::TargetMarkOuter);
-        glEnd();
-    }
-}
-
-void drawHud(const State& state, float time, bool locked)
-{
-    const Transform2 transform = { {}, 0,
-        { WorldSettings.size.width / ReferenceScreenSize.width, WorldSettings.size.height / ReferenceScreenSize.height }, {} };
-    glPushMatrix();
-    applyTransform(transform.toAffine());
-
-    drawHudFrame();
-    drawRadar(state, time);
-    drawStatusBars();
-    drawScore(state);
-    drawTarget(state, locked);
-
-    glPopMatrix();
-}
-
-void drawScene(const State& state, float time, bool portalsOpen, bool locked)
-{
-    glBegin(GL_QUADS);
-    setColor(Palette::BackgroundTop);
-    glVertex2f(0.0f, 0.0f);
-    glVertex2f(WorldSettings.size.width, 0.0f);
-    setColor(Palette::BackgroundBottom);
-    glVertex2f(WorldSettings.size.width, WorldSettings.size.height);
-    glVertex2f(0.0f, WorldSettings.size.height);
-    glEnd();
-
-    // Порядок важен: дальние фоновые объекты рисуются раньше ближайших.
-    drawNebula(time, NebulaSettings);
-    drawStars(time, StarFieldSettings);
-    drawPlanet(time, PlanetSettings);
-    drawStation(time, StationSettings);
-    float portalTime = time;
-    for (const Portal& portal : state.portals) {
-        drawPortal(portal, portalTime, portalsOpen);
-        portalTime += 1.0f;
+        const Vector2 beacon = beaconPosition(station, time);
+        setColor(Palette::BeaconGlow);
+        disc(Circle{ beacon, station.beaconGlowRadius });
+        setColor(Palette::Beacon);
+        disc(Circle{ beacon, station.beaconRadius }, DodecagonSides);
     }
 
-    for (const Drone& drone : state.drones) {
-        drawDrone(drone, time);
+    void drawDrone(const Drone& drone, float time)
+    {
+        if (!drone.active) {
+            return;
+        }
+
+        const Vector2 position = dronePosition(drone, time);
+        setColor(Palette::DroneGlow);
+        disc(Circle{ position, DroneSettings.glowRadius });
+        setColor(Palette::DroneBody);
+        disc(Circle{ position, DroneSettings.bodyRadius }, OctagonSides);
+        setColor(Palette::DroneRing);
+        ring(Circle{ position, DroneSettings.outlineRadius }, OctagonSides);
+        setColor(Palette::DroneCore);
+        disc(Circle{ position, DroneSettings.coreRadius }, OctagonSides);
     }
 
-    drawBolts(state.bolts);
-    drawShuttle(state.shuttle, time);
-    drawHud(state, time, locked);
-}
+    void drawBolts(const std::vector<Bolt>& bolts)
+    {
+        for (const Bolt& bolt : bolts) {
+            options.lineWidth = BoltSettings.lineWidth;
+            setColor(Palette::BoltGlow);
+            ring(Circle{ bolt.position, BoltSettings.glowRadius }, BoltSettings.glowSides);
+            setColor(Palette::Bolt);
+            line(bolt.position - bolt.velocity * BoltSettings.trailLength, bolt.position);
+        }
+        options.lineWidth = DefaultLineWidth;
+    }
+
+    void drawShuttle(const Shuttle& shuttle, float time)
+    {
+        const Affine2 parent = options.transform;
+        options.transform = parent * shuttle.transform.toAffine();
+
+        if (shuttle.thrusting) {
+            const float flame = ShuttleSettings.flameBase + ShuttleSettings.flamePulse * std::sin(time * ShuttleSettings.flameSpeed);
+            setColor(Palette::ShuttleFlame);
+            polygon({ ShuttleModel::FlameLeft, { 0, ShuttleModel::FlameLeft.y + flame }, ShuttleModel::FlameRight });
+        }
+
+        setColor(Palette::ShuttleHull);
+        polygon({ ShuttleModel::Hull.begin(), ShuttleModel::Hull.end() });
+
+        setColor(Palette::ShuttleWindow);
+        polygon({ ShuttleModel::Window.begin(), ShuttleModel::Window.end() });
+        setColor(Palette::ShuttleShield);
+        ring(Circle{ {}, ShuttleSettings.shieldRadius });
+
+        options.transform = parent;
+    }
+
+    void drawHudFrame()
+    {
+        const Vector2 start = HudLayout::Frame.position;
+        const Vector2 end = start + Vector2{ HudLayout::Frame.size.width, HudLayout::Frame.size.height };
+        setColor(Palette::HudFrame);
+        line(start, { end.x, start.y });
+        line({ start.x, end.y }, end);
+        line(start, start + Vector2{ 0, HudFrameCornerLength });
+        line({ end.x, start.y }, { end.x, start.y + HudFrameCornerLength });
+    }
+
+    void drawRadar(const State& state, float time)
+    {
+        setColor(Palette::Radar);
+        ring(HudLayout::RadarCenter, { HudLayout::RadarOuterRadiusX, HudLayout::RadarOuterRadiusY });
+        ring(HudLayout::RadarCenter, { HudLayout::RadarInnerRadiusX, HudLayout::RadarInnerRadiusY });
+        setColor(Palette::RadarSweep);
+        const Transform2 sweep = { HudLayout::RadarCenter, 0,
+            { HudLayout::RadarSweepRadiusX, HudLayout::RadarSweepRadiusY }, {} };
+        line(HudLayout::RadarCenter, sweep.toAffine().transformPoint(Engine::rotated({ 1, 0 }, time)));
+
+        // Положение шаттла показывается относительно станции, а не края всего уровня.
+        setColor(Palette::ShuttleBlip);
+        const Affine2 radar = Transform2{ HudLayout::RadarCenter, 0,
+            { HudLayout::RadarMapScale, HudLayout::RadarMapScale }, StationSettings.position }.toAffine();
+        const Vector2 shuttleBlip = radar.transformPoint(state.shuttle.transform.position);
+        disc(Circle{ shuttleBlip, HudLayout::BlipRadius }, HudLayout::FineCircleSides);
+        setColor(Palette::BeaconBlip);
+        const Vector2 beaconBlip = radar.transformPoint(beaconPosition(StationSettings, time));
+        disc(Circle{ beaconBlip, HudLayout::BlipRadius }, HudLayout::FineCircleSides);
+    }
+
+    void drawStatusBars()
+    {
+        float cellX = HudLayout::BarStartX;
+        for (int cell = 0; cell < HudLayout::BarCellCount; ++cell) {
+            const float shieldAlpha = cell < HudLayout::ShieldCellCount
+                ? Palette::ShieldCell.alpha
+                : InactiveHudAlpha;
+            setColor(Palette::ShieldCell, shieldAlpha);
+            rectangle({ cellX, HudLayout::BarShieldY, HudLayout::BarCellSize, HudLayout::BarCellSize });
+            const float energyAlpha = cell < HudLayout::EnergyCellCount
+                ? Palette::EnergyCell.alpha
+                : InactiveHudAlpha;
+            setColor(Palette::EnergyCell, energyAlpha);
+            rectangle({ cellX, HudLayout::BarEnergyY, HudLayout::BarCellSize, HudLayout::BarCellSize });
+            cellX += HudLayout::BarCellSpacing;
+        }
+    }
+
+    void drawScore(const State& state)
+    {
+        float lightX = HudLayout::ScoreStartX;
+        for (int point = 0; point < HudLayout::ScoreLightCount; ++point) {
+            const float alpha = point < state.world.score
+                ? Palette::Score.alpha
+                : InactiveHudAlpha;
+            setColor(Palette::Score, alpha);
+            disc(Circle{ { lightX, HudLayout::ScoreY }, HudLayout::ScoreLightRadius }, HudLayout::FineCircleSides);
+            lightX += HudLayout::ScoreSpacing;
+        }
+    }
+
+    void drawTarget(const State& state, bool locked)
+    {
+        setColor(Palette::Target, locked ? Palette::Target.alpha : InactiveTargetAlpha);
+        ring(Circle{ state.shuttle.transform.position, HudLayout::TargetRadius });
+        if (locked) {
+            const float x = state.shuttle.transform.position.x;
+            const float y = state.shuttle.transform.position.y;
+            line({ x - HudLayout::TargetMarkOuter, y }, { x - HudLayout::TargetMarkInner, y });
+            line({ x + HudLayout::TargetMarkInner, y }, { x + HudLayout::TargetMarkOuter, y });
+            line({ x, y - HudLayout::TargetMarkOuter }, { x, y - HudLayout::TargetMarkInner });
+            line({ x, y + HudLayout::TargetMarkInner }, { x, y + HudLayout::TargetMarkOuter });
+        }
+    }
+
+    void drawHud(const State& state, float time, bool locked)
+    {
+        const Transform2 transform = { {}, 0,
+            { WorldSettings.size.width / ReferenceScreenSize.width, WorldSettings.size.height / ReferenceScreenSize.height }, {} };
+        const Affine2 parent = options.transform;
+        options.transform = parent * transform.toAffine();
+
+        drawHudFrame();
+        drawRadar(state, time);
+        drawStatusBars();
+        drawScore(state);
+        drawTarget(state, locked);
+
+        options.transform = parent;
+    }
+
+    void drawScene(const State& state, float time, bool portalsOpen)
+    {
+        gradient({ {}, WorldSettings.size }, Palette::BackgroundTop, Palette::BackgroundBottom);
+
+        // Порядок важен: дальние фоновые объекты рисуются раньше ближайших.
+        drawNebula(time, NebulaSettings);
+        drawStars(time, StarFieldSettings);
+        drawPlanet(time, PlanetSettings);
+        drawStation(time, StationSettings);
+        float portalTime = time;
+        for (const Portal& portal : state.portals) {
+            drawPortal(portal, portalTime, portalsOpen);
+            portalTime += 1.0f;
+        }
+
+        for (const Drone& drone : state.drones) {
+            drawDrone(drone, time);
+        }
+
+        drawBolts(state.bolts);
+        drawShuttle(state.shuttle, time);
+    }
+};
 
 // Снимок игровых действий на текущий кадр; не содержит системных кодов клавиш.
 struct InputState
@@ -1059,6 +984,7 @@ namespace
 class CircleApplication final : public Engine::Application
 {
 private:
+    Game::ScenePainter drawing{ getRenderer() };
     Game::State state;
     bool portalsOpen = false;
     bool locked = false;
@@ -1066,20 +992,9 @@ private:
     std::optional<bool> verticalSync;
     bool verticalSyncFailed = false;
 
-    bool onStart(Platform::Error&) override
+    bool onStart(Platform::Error& error) override
     {
-        // Начало координат игрового поля — сверху слева.
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        glOrtho(0, Game::WorldSettings.size.width, Game::WorldSettings.size.height, 0,
-            Game::NearDepth, Game::FarDepth);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-        // Плоская сцена перекрывается в порядке рисования, без буфера глубины.
-        glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        return true;
+        return drawing.initialize(error);
     }
 
     bool onInput(const Engine::FrameInfo&, Platform::Error&) override
@@ -1141,14 +1056,26 @@ private:
         return true;
     }
 
-    bool onRender(const Engine::FrameInfo& frame, Platform::Error&) override
+    bool onRender(const Engine::FrameInfo& frame, Platform::Error& error) override
     {
-        glClearColor(Game::Palette::Clear.red, Game::Palette::Clear.green,
-            Game::Palette::Clear.blue, Game::Palette::Clear.alpha);
-        glClear(GL_COLOR_BUFFER_BIT);
-        glLoadIdentity();
-        Game::drawScene(state, static_cast<float>(frame.elapsedTime), portalsOpen, locked);
-        return true;
+        const Engine::Camera2 camera = { { Game::WorldSettings.size.width / 2, Game::WorldSettings.size.height / 2 },
+            1, Game::WorldSettings.size, Engine::ViewportMode::Fit };
+        Engine::CameraView world;
+        Engine::UiView hud;
+        Engine::CameraError cameraError;
+        Engine::UiError uiError;
+        if (!camera.createView({ 0, 0, frame.window.width, frame.window.height }, world, cameraError)
+            || !Engine::UiCanvas{ static_cast<float>(world.viewport.width) / Game::WorldSettings.size.width }
+                .createView(world.viewport, hud, uiError)) {
+            error = { "Circle views", "Could not calculate the world and interface views.", {} };
+            return false;
+        }
+        drawing.beginFrame(frame, Game::Palette::Clear);
+        drawing.beginWorld(world);
+        drawing.drawScene(state, static_cast<float>(frame.elapsedTime), portalsOpen);
+        drawing.beginUi(hud);
+        drawing.drawHud(state, static_cast<float>(frame.elapsedTime), locked);
+        return drawing.endFrame(error);
     }
 };
 }
@@ -1173,14 +1100,7 @@ int Game::run()
     return success ? 0 : 1;
 }
 
-#if defined(_WIN32)
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+int Engine::applicationMain()
 {
     return Game::run();
 }
-#else
-int main()
-{
-    return Game::run();
-}
-#endif

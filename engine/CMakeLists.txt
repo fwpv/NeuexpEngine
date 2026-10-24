@@ -19,6 +19,11 @@ target_include_directories(engine_time PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(engine_time PRIVATE project_warnings)
 
 if(BUILD_DEMOS OR BUILD_TESTING)
+    # Точка входа включается напрямую: MinGW запрашивает WinMain после просмотра архивов.
+    add_library(engine_entry_point OBJECT entry_point.cpp)
+    target_include_directories(engine_entry_point PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(engine_entry_point PRIVATE project_warnings)
+
     add_library(engine_renderer STATIC renderer.cpp detail/polygon.cpp)
     target_include_directories(engine_renderer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
     target_link_libraries(engine_renderer PUBLIC engine_ui PRIVATE project_warnings)

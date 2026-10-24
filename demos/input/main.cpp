@@ -1,12 +1,9 @@
+#include "entry_point.h"
 #include "platform.h"
 #include "events.h"
 #include "application.h"
 #include "math2d.h"
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include <GL/gl.h>
+#include "../common/painter.h"
 
 #include <array>
 #include <sstream>
@@ -39,23 +36,16 @@ constexpr Color CursorColor = { 1, 1, 1 };
 
 constexpr double FlashDurationSeconds = 0.2;
 
-void rectangle(float x, float y, float width, float height, const Color& color)
-{
-    glColor3f(color.red, color.green, color.blue);
-    glBegin(GL_QUADS);
-    glVertex2f(x, y);
-    glVertex2f(x + width, y);
-    glVertex2f(x + width, y + height);
-    glVertex2f(x, y + height);
-    glEnd();
-}
-}
-
-namespace
-{
 class InputApplication final : public Engine::Application
 {
 private:
+    Demo::Painter drawing{ getRenderer() };
+
+    bool onStart(Platform::Error& error) override
+    {
+        return drawing.initialize(error);
+    }
+
     std::array<double, static_cast<std::size_t>(Engine::Key::Count)> pressedUntil = {};
     std::array<double, static_cast<std::size_t>(Engine::Key::Count)> releasedUntil = {};
     std::string text;
@@ -111,30 +101,31 @@ private:
         return true;
     }
 
-    bool onRender(const Engine::FrameInfo& frame, Platform::Error&) override
+    bool onRender(const Engine::FrameInfo& frame, Platform::Error& error) override
     {
         const auto& window = frame.window;
         const auto& input = Platform::getInput();
         const auto& mouse = input.mouse();
         const double now = frame.realTime;
         if (window.width > 0 && window.height > 0) {
-            glMatrixMode(GL_PROJECTION);
-            glLoadIdentity();
-            glOrtho(0, window.width, window.height, 0, -1, 1);
-            glMatrixMode(GL_MODELVIEW);
-            glLoadIdentity();
-            glClearColor(BackgroundColor.red, BackgroundColor.green, BackgroundColor.blue, 1);
-            glClear(GL_COLOR_BUFFER_BIT);
+            Engine::UiView view;
+            Engine::UiError uiError;
+            if (!Engine::UiCanvas{}.createView({ 0, 0, window.width, window.height }, view, uiError)) {
+                error = { "UiCanvas::createView", "Could not calculate the input view.", {} };
+                return false;
+            }
+            drawing.beginFrame(frame, BackgroundColor);
+            drawing.beginUi(view);
             for (std::size_t index = 1; index < pressedUntil.size(); ++index) {
                 const auto state = input.key(static_cast<Engine::Key>(index));
                 const float x = GridLeft + static_cast<float>((index - 1) % Columns) * CellStep;
                 const float y = GridTop + static_cast<float>((index - 1) / Columns) * CellStep;
                 if (releasedUntil[index] > now) {
-                    rectangle(x, y, CellSize, CellSize, KeyReleasedColor);
+                    drawing.rectangle({ x, y, CellSize, CellSize }, KeyReleasedColor);
                 } else if (pressedUntil[index] > now) {
-                    rectangle(x, y, CellSize, CellSize, KeyPressedColor);
+                    drawing.rectangle({ x, y, CellSize, CellSize }, KeyPressedColor);
                 } else {
-                    rectangle(x, y, CellSize, CellSize, state.down ? KeyHeldColor : KeyIdleColor);
+                    drawing.rectangle({ x, y, CellSize, CellSize }, state.down ? KeyHeldColor : KeyIdleColor);
                 }
             }
             for (int index = 1; index < static_cast<int>(Engine::MouseButton::Count); ++index) {
@@ -142,21 +133,18 @@ private:
                 const Color color = { state.released ? MouseActiveColor.red : MouseIdleColor.red,
                     state.pressed ? MouseActiveColor.green : MouseIdleColor.green,
                     state.down ? MouseActiveColor.blue : MouseIdleColor.blue };
-                rectangle(GridLeft + static_cast<float>(index - 1) * CellStep, MouseRowTop, CellSize, CellSize, color);
+                drawing.rectangle({ GridLeft + static_cast<float>(index - 1) * CellStep, MouseRowTop, CellSize, CellSize }, color);
             }
-            rectangle(static_cast<float>(mouse.x) - CursorHalfSize, static_cast<float>(mouse.y) - CursorHalfSize,
-                CursorSize, CursorSize, CursorColor);
+            drawing.rectangle({ static_cast<float>(mouse.x) - CursorHalfSize, static_cast<float>(mouse.y) - CursorHalfSize,
+                CursorSize, CursorSize }, CursorColor);
+            return drawing.endFrame(error);
         }
         return true;
     }
 };
 }
 
-#ifdef _WIN32
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
-#else
-int main()
-#endif
+int Engine::applicationMain()
 {
     Engine::ApplicationOptions options;
     options.window.title = "Input demo";

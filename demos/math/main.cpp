@@ -1,10 +1,7 @@
+#include "entry_point.h"
 #include "application.h"
 #include "transform.h"
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include <GL/gl.h>
+#include "../common/painter.h"
 
 #include <algorithm>
 #include <array>
@@ -28,30 +25,16 @@ constexpr float RotationSpeed = Engine::Pi / 2;
 constexpr float CursorRadius = 12;
 constexpr int CircleSegments = 32;
 
-void setColor(Engine::Color color)
-{
-    glColor4f(color.red, color.green, color.blue, color.alpha);
-}
-
-void drawRectangle(const Engine::Rect& rectangle, const Engine::Affine2& transform, GLenum mode)
-{
-    const std::array<Engine::Vector2, 4> corners = {{
-        rectangle.position,
-        { rectangle.position.x + rectangle.size.width, rectangle.position.y },
-        { rectangle.position.x + rectangle.size.width, rectangle.position.y + rectangle.size.height },
-        { rectangle.position.x, rectangle.position.y + rectangle.size.height }
-    }};
-    glBegin(mode);
-    for (Engine::Vector2 corner : corners) {
-        const Engine::Vector2 point = transform.transformPoint(corner);
-        glVertex2f(point.x, point.y);
-    }
-    glEnd();
-}
-
 class MathApplication final : public Engine::Application
 {
 private:
+    Demo::Painter drawing{ getRenderer() };
+
+    bool onStart(Platform::Error& error) override
+    {
+        return drawing.initialize(error);
+    }
+
     Engine::Transform2 object = { { 400, 300 }, 0, { 1, 1 }, { 80, 50 } };
 
     bool onInput(const Engine::FrameInfo&, Platform::Error&) override
@@ -114,26 +97,20 @@ private:
         const bool inside = mouse.inside && Engine::contains(LocalBounds, localCursorCircle.center);
         const Engine::Rect bounds = forward.transformBounds(LocalBounds);
 
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        glOrtho(0, frame.window.width, frame.window.height, 0, -1, 1);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-        glClearColor(0.03F, 0.04F, 0.07F, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        setColor(inside ? HitColor : IdleColor);
-        drawRectangle(LocalBounds, forward, GL_QUADS);
-        setColor(DirectionColor);
-        drawRectangle(DirectionShaft, forward, GL_QUADS);
-        glBegin(GL_TRIANGLES);
-        for (Engine::Vector2 vertex : DirectionHead) {
-            const Engine::Vector2 point = forward.transformPoint(vertex);
-            glVertex2f(point.x, point.y);
+        Engine::UiView view;
+        Engine::UiError uiError;
+        if (!Engine::UiCanvas{}.createView({ 0, 0, frame.window.width, frame.window.height }, view, uiError)) {
+            error = { "UiCanvas::createView", "Could not calculate the math view.", {} };
+            return false;
         }
-        glEnd();
-        setColor(BoundsColor);
-        drawRectangle(bounds, {}, GL_LINE_LOOP);
+        drawing.beginFrame(frame, { 0.03F, 0.04F, 0.07F });
+        drawing.beginUi(view);
+        drawing.options.transform = forward;
+        drawing.rectangle(LocalBounds, inside ? HitColor : IdleColor);
+        drawing.rectangle(DirectionShaft, DirectionColor);
+        drawing.polygon({ DirectionHead.begin(), DirectionHead.end() });
+        drawing.options.transform = {};
+        drawing.rectangle(bounds, BoundsColor, false);
 
         if (mouse.inside) {
             Engine::Color cursorColor = CursorColor;
@@ -143,25 +120,14 @@ private:
             if (Engine::intersects(LocalBounds, localCursorCircle)) {
                 cursorColor = CursorHitColor;
             }
-            setColor(cursorColor);
-            glBegin(GL_LINE_LOOP);
-            for (int index = 0; index < CircleSegments; ++index) {
-                const float angle = 2 * Engine::Pi * static_cast<float>(index) / CircleSegments;
-                const Engine::Vector2 point = cursor + Engine::rotated({ CursorRadius, 0 }, angle);
-                glVertex2f(point.x, point.y);
-            }
-            glEnd();
+            drawing.circle({ cursor, CursorRadius }, cursorColor, false, CircleSegments);
         }
-        return true;
+        return drawing.endFrame(error);
     }
 };
 }
 
-#ifdef _WIN32
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
-#else
-int main()
-#endif
+int Engine::applicationMain()
 {
     Engine::ApplicationOptions options;
     options.window.title = "Math | arrows: move | Q/E: rotate | wheel: scale | X: reflect | R: reset | hover: local hit test";

@@ -248,6 +248,46 @@ void primitives()
     pixel(70, 200, Black);
 }
 
+void gradient()
+{
+    Renderer2D renderer;
+    RenderError error;
+    check(renderer.initialize(error), error);
+    glShadeModel(GL_FLAT);
+    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
+    check(renderer.beginUi(screen(), error), error);
+    check(renderer.drawGradientRectangle({ 10, 10, 80, 100 }, Red, Blue, style(White), error), error);
+    check(renderer.setClip(Viewport{ 130, 20, 30, 50 }, error), error);
+    DrawOptions rotated = style({ 0, 1, 0, 0.5F }, { { 160, 20 }, Pi / 2, { 1, 1 }, {} });
+    check(renderer.drawGradientRectangle({ 0, 0, 80, 40 }, White, Black, rotated, error), error);
+    check(renderer.setClip(std::nullopt, error), error);
+    DrawOptions foreground = style(Green);
+    foreground.layer = 2;
+    check(renderer.drawRectangle({ 10, 140, 80, 80 }, ShapeFill::Filled, foreground, error), error);
+    DrawOptions background = style(White);
+    background.layer = -1;
+    check(renderer.drawGradientRectangle({ 10, 140, 80, 80 }, Red, Blue, background, error), error);
+    // Обычная заливка не наследует цвета ранее выполненного градиента.
+    check(renderer.drawRectangle({ 180, 20, 30, 30 }, ShapeFill::Filled, style(Red), error), error);
+    require(!renderer.drawGradientRectangle({ 180, 70, 30, 30 }, { 2, 0, 0 }, White, style(White), error)
+        && error == RenderError::InvalidOptions, "Invalid gradient color was accepted.");
+    require(!renderer.drawGradientRectangle({ 180, 70, 30, 30 }, White,
+        { 0, 0, std::numeric_limits<float>::quiet_NaN() }, style(White), error)
+        && error == RenderError::InvalidOptions, "Nonfinite gradient color was accepted.");
+    check(renderer.endFrame(error), error);
+    pixel(50, 10, { 0.995F, 0, 0.005F });
+    pixel(50, 60, { 0.495F, 0, 0.505F });
+    pixel(50, 109, { 0.005F, 0, 0.995F });
+    pixel(50, 110, Black);
+    pixel(140, 40, { 0, 0.25625F, 0 });
+    pixel(125, 40, Black);
+    pixel(150, 80, Black);
+    pixel(50, 170, Green);
+    pixel(190, 30, Red);
+    pixel(190, 80, Black);
+    renderer.shutdown();
+}
+
 void transforms()
 {
     Renderer2D renderer;
@@ -592,6 +632,7 @@ int runTest(const std::string& mode)
     RenderTarget target(api);
     target.initialize();
     if (mode == "primitives") { primitives(); }
+    else if (mode == "gradient") { gradient(); }
     else if (mode == "transforms") { transforms(); }
     else if (mode == "views") { views(); }
     else if (mode == "errors") { errors(); }
