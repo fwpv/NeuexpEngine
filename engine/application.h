@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform.h"
+#include "renderer.h"
 
 #include <optional>
 #include <vector>
@@ -64,6 +65,9 @@ public:
     void requestExit();
 
 protected:
+    // Рендерер принадлежит приложению. initialize() вызывается из onStart(); после
+    // onStop() цикл автоматически вызывает shutdown(), пока контекст ещё существует.
+    Renderer2D& getRenderer();
     virtual bool onStart(Platform::Error& error);
     // Вызывается и на паузе, и при сворачивании. deltaTime и elapsedTime здесь
     // относятся к предыдущему обновлению; текущий dT вычисляется после onInput().
@@ -75,6 +79,7 @@ protected:
     virtual void onStop(std::vector<Platform::Error>& errors);
 
 private:
+    Renderer2D graphics;
     bool paused = false;
     bool exitRequested = false;
     bool started = false;

@@ -1,21 +1,15 @@
 #pragma once
 
-#include "math2d.h"
+#include "geometry.h"
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include <GL/gl.h>
 #include <array>
 #include <string_view>
 
 namespace Demo
 {
-using Engine::Color;
-using Engine::Vector2;
-
-// Надписи демо состоят из прямоугольных пикселей 3x5.
-inline void text(std::string_view message, Vector2 position, Color color, float pixel = 2)
+// Прямоугольные пиксели демонстрационного шрифта 3x5.
+template<class Draw>
+bool textPixels(std::string_view message, Engine::Vector2 position, float pixel, Draw draw)
 {
     constexpr std::array<unsigned int, 36> Glyphs = {
         0b010'101'111'101'101, 0b110'101'110'101'110, 0b011'100'100'100'011,
@@ -32,8 +26,6 @@ inline void text(std::string_view message, Vector2 position, Color color, float 
         0b011'100'111'101'111, 0b111'001'010'010'010, 0b111'101'111'101'111,
         0b111'101'111'001'110
     };
-    glColor4f(color.red, color.green, color.blue, color.alpha);
-    glBegin(GL_QUADS);
     for (char character : message) {
         unsigned int glyph = 0;
         if (character >= 'A' && character <= 'Z') {
@@ -52,15 +44,14 @@ inline void text(std::string_view message, Vector2 position, Color color, float 
                 if ((glyph & (1U << (14 - row * 3 - column))) != 0) {
                     const float x = position.x + static_cast<float>(column) * pixel;
                     const float y = position.y + static_cast<float>(row) * pixel;
-                    glVertex2f(x, y);
-                    glVertex2f(x + pixel, y);
-                    glVertex2f(x + pixel, y + pixel);
-                    glVertex2f(x, y + pixel);
+                    if (!draw(Engine::Rect{ x, y, pixel, pixel })) {
+                        return false;
+                    }
                 }
             }
         }
         position.x += 4 * pixel;
     }
-    glEnd();
+    return true;
 }
 }

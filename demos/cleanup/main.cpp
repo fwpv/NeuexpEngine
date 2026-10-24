@@ -1,12 +1,8 @@
+#include "entry_point.h"
 #include "application.h"
 #include "camera.h"
 #include "game.h"
-#include "../common/pixel_font.h"
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include <GL/gl.h>
+#include "../common/painter.h"
 
 #include <algorithm>
 #include <array>
@@ -51,41 +47,6 @@ constexpr std::array<Color, 3> TrashColors = {{
     { 0.94F, 0.84F, 0.43F }, { 0.75F, 0.55F, 0.85F }, { 0.67F, 0.78F, 0.81F }
 }};
 
-void setColor(Color color)
-{
-    glColor4f(color.red, color.green, color.blue, color.alpha);
-}
-
-void vertex(Vector2 point)
-{
-    glVertex2f(point.x, point.y);
-}
-
-void rectangle(const Rect& bounds, Color color, bool filled = true)
-{
-    setColor(color);
-    glBegin(filled ? GL_QUADS : GL_LINE_LOOP);
-    vertex(bounds.position);
-    vertex(bounds.position + Vector2{ bounds.size.width, 0 });
-    vertex(bounds.position + Vector2{ bounds.size.width, bounds.size.height });
-    vertex(bounds.position + Vector2{ 0, bounds.size.height });
-    glEnd();
-}
-
-void circle(const Circle& shape, Color color, bool filled = true)
-{
-    setColor(color);
-    glBegin(filled ? GL_TRIANGLE_FAN : GL_LINE_LOOP);
-    if (filled) {
-        vertex(shape.center);
-    }
-    for (int index = 0; index <= CircleSegments; ++index) {
-        const float angle = 2 * Engine::Pi * static_cast<float>(index) / CircleSegments;
-        vertex(shape.center + Engine::rotated({ shape.radius, 0 }, angle));
-    }
-    glEnd();
-}
-
 Color playerColor(Coat coat)
 {
     switch (coat) {
@@ -98,98 +59,112 @@ Color playerColor(Coat coat)
     }
 }
 
-using Demo::text;
-
-void number(int value, Vector2 position, Color color)
+class WorldPainter final : public Demo::Painter
 {
-    text(std::to_string(value), position, color, 6);
-}
+public:
+    using Demo::Painter::Painter;
 
-void drawHome(const Game& game)
-{
-    const bool ready = game.washed >= HomeGoal;
-    const float progress = std::min(1.0F, static_cast<float>(game.washed) / HomeGoal);
-    rectangle(HomeLotBounds, { 0.14F + 0.03F * progress, 0.16F + 0.16F * progress, 0.14F });
-    rectangle(HomeLotBounds, ready ? GoalColor : BorderColor, false);
-    rectangle(HomeBounds, BorderColor, false);
-    if (game.washed >= HomeGoal / 4) {
-        rectangle({ 2570, 1810, 260, 24 }, HouseColor);
-    }
-    if (game.washed >= HomeGoal / 2) {
-        rectangle(HomeBounds, HouseColor);
-        rectangle({ 2610, 1680, 45, 45 }, CleanPlayerColor);
-        rectangle({ 2745, 1680, 45, 45 }, CleanPlayerColor);
-    }
-    if (game.washed >= HomeGoal * 3 / 4) {
-        rectangle({ 2560, 1620, 280, 30 }, OrangePoolColor);
-        rectangle({ 2600, 1600, 200, 20 }, OrangePoolColor);
-    }
-    rectangle({ 2676, 1760, 48, 70 }, ready ? GoalColor : WarningColor);
-    text(ready ? "HOME OPEN" : "HOME LOCKED", { 2560, 1870 }, ready ? GoalColor : WhiteColor, 4);
-    rectangle({ 2580, 1910, HomeBounds.size.width, 9 }, PanelColor);
-    rectangle({ 2580, 1910, HomeBounds.size.width * progress, 9 }, GoalColor);
-}
-
-void drawWorld(const Game& game, float time)
-{
-    rectangle(WorldBounds, GroundColor);
-    setColor(GridColor);
-    glBegin(GL_LINES);
-    for (float x = GridStep; x < WorldBounds.size.width; x += GridStep) {
-        vertex({ x, 0 });
-        vertex({ x, WorldBounds.size.height });
-    }
-    for (float y = GridStep; y < WorldBounds.size.height; y += GridStep) {
-        vertex({ 0, y });
-        vertex({ WorldBounds.size.width, y });
-    }
-    glEnd();
-    rectangle(WorldBounds, BorderColor, false);
-    drawHome(game);
-    for (const Rect& obstacle : Obstacles) {
-        rectangle(obstacle, ObstacleColor);
-        rectangle(obstacle, ObstacleBorderColor, false);
-    }
-    for (const Puddle& puddle : Puddles) {
-        circle(puddle.shape, puddle.sticky ? OrangePoolColor : BluePoolColor);
-        circle({ puddle.shape.center, puddle.shape.radius - 12 }, puddle.sticky ? StickyPlayerColor : CleanPlayerColor, false);
-    }
-    if (game.target) {
-        circle({ *game.target, 14 }, WhiteColor, false);
-        circle({ *game.target, 4 }, WhiteColor);
+    void circle(const Circle& shape, Color color, bool filled = true)
+    {
+        Demo::Painter::circle(shape, color, filled, CircleSegments);
     }
 
-    const bool warning = game.carried > 0 && game.cargoAge >= GlueWarningTime && game.outcome == Outcome::Playing;
-    const bool blink = warning && std::sin(time * 12) > 0;
-    const Color bodyColor = game.outcome == Outcome::Lost ? ExhaustedColor : playerColor(game.coat);
-    circle({ game.player, PlayerRadius + 3 }, blink ? WarningColor : WhiteColor);
-    circle({ game.player, PlayerRadius }, bodyColor);
-    const Affine2 playerTransform = Engine::Transform2{ game.player, game.heading, { 1, 1 }, {} }.toAffine();
-    circle({ playerTransform.transformPoint({ 8, -6 }), 3 }, PanelColor);
-    circle({ playerTransform.transformPoint({ 8, 6 }), 3 }, PanelColor);
-    for (std::size_t index = 0; index < game.trash.size(); ++index) {
-        const Trash& item = game.trash[index];
-        if (item.state == TrashState::Washed) {
-            continue;
+    void number(int value, Vector2 position, Color color)
+    {
+        text(std::to_string(value), position, color, 6);
+    }
+
+    void drawHome(const Game& game)
+    {
+        const bool ready = game.washed >= HomeGoal;
+        const float progress = std::min(1.0F, static_cast<float>(game.washed) / HomeGoal);
+        rectangle(HomeLotBounds, { 0.14F + 0.03F * progress, 0.16F + 0.16F * progress, 0.14F });
+        rectangle(HomeLotBounds, ready ? GoalColor : BorderColor, false);
+        rectangle(HomeBounds, BorderColor, false);
+        if (game.washed >= HomeGoal / 4) {
+            rectangle({ 2570, 1810, 260, 24 }, HouseColor);
         }
-        Vector2 position = item.state == TrashState::Carried
-            ? playerTransform.transformPoint(item.attachment) : item.position;
-        if (warning && item.state == TrashState::Carried) {
-            position.x += std::sin(time * 25) * 2;
+        if (game.washed >= HomeGoal / 2) {
+            rectangle(HomeBounds, HouseColor);
+            rectangle({ 2610, 1680, 45, 45 }, CleanPlayerColor);
+            rectangle({ 2745, 1680, 45, 45 }, CleanPlayerColor);
         }
-        const Color color = TrashColors[index % TrashColors.size()];
-        if (index % 3 == 0) {
-            circle({ position, TrashRadius }, color);
-        } else {
-            const float width = index % 3 == 1 ? TrashRadius * 2 : TrashRadius;
-            rectangle({ position.x - width / 2, position.y - TrashRadius, width, TrashRadius * 2 }, color);
+        if (game.washed >= HomeGoal * 3 / 4) {
+            rectangle({ 2560, 1620, 280, 30 }, OrangePoolColor);
+            rectangle({ 2600, 1600, 200, 20 }, OrangePoolColor);
+        }
+        rectangle({ 2676, 1760, 48, 70 }, ready ? GoalColor : WarningColor);
+        text(ready ? "HOME OPEN" : "HOME LOCKED", { 2560, 1870 }, ready ? GoalColor : WhiteColor, 4);
+        rectangle({ 2580, 1910, HomeBounds.size.width, 9 }, PanelColor);
+        rectangle({ 2580, 1910, HomeBounds.size.width * progress, 9 }, GoalColor);
+    }
+
+    void drawWorld(const Game& game, float time)
+    {
+        rectangle(WorldBounds, GroundColor);
+        options.color = GridColor;
+        for (float x = GridStep; x < WorldBounds.size.width; x += GridStep) {
+            line({ x, 0 }, { x, WorldBounds.size.height });
+        }
+        for (float y = GridStep; y < WorldBounds.size.height; y += GridStep) {
+            line({ 0, y }, { WorldBounds.size.width, y });
+        }
+        rectangle(WorldBounds, BorderColor, false);
+        drawHome(game);
+        for (const Rect& obstacle : Obstacles) {
+            rectangle(obstacle, ObstacleColor);
+            rectangle(obstacle, ObstacleBorderColor, false);
+        }
+        for (const Puddle& puddle : Puddles) {
+            circle(puddle.shape, puddle.sticky ? OrangePoolColor : BluePoolColor);
+            circle({ puddle.shape.center, puddle.shape.radius - 12 }, puddle.sticky ? StickyPlayerColor : CleanPlayerColor, false);
+        }
+        if (game.target) {
+            circle({ *game.target, 14 }, WhiteColor, false);
+            circle({ *game.target, 4 }, WhiteColor);
+        }
+
+        const bool warning = game.carried > 0 && game.cargoAge >= GlueWarningTime && game.outcome == Outcome::Playing;
+        const bool blink = warning && std::sin(time * 12) > 0;
+        const Color bodyColor = game.outcome == Outcome::Lost ? ExhaustedColor : playerColor(game.coat);
+        circle({ game.player, PlayerRadius + 3 }, blink ? WarningColor : WhiteColor);
+        circle({ game.player, PlayerRadius }, bodyColor);
+        const Affine2 playerTransform = Engine::Transform2{ game.player, game.heading, { 1, 1 }, {} }.toAffine();
+        circle({ playerTransform.transformPoint({ 8, -6 }), 3 }, PanelColor);
+        circle({ playerTransform.transformPoint({ 8, 6 }), 3 }, PanelColor);
+        for (std::size_t index = 0; index < game.trash.size(); ++index) {
+            const Trash& item = game.trash[index];
+            if (item.state == TrashState::Washed) {
+                continue;
+            }
+            Vector2 position = item.state == TrashState::Carried
+                ? playerTransform.transformPoint(item.attachment) : item.position;
+            if (warning && item.state == TrashState::Carried) {
+                position.x += std::sin(time * 25) * 2;
+            }
+            const Color color = TrashColors[index % TrashColors.size()];
+            if (index % 3 == 0) {
+                circle({ position, TrashRadius }, color);
+            } else {
+                const float width = index % 3 == 1 ? TrashRadius * 2 : TrashRadius;
+                rectangle({ position.x - width / 2, position.y - TrashRadius, width, TrashRadius * 2 }, color);
+            }
         }
     }
-}
+};
 
 class CleanupApplication final : public Engine::Application
 {
 private:
+    WorldPainter drawing{ getRenderer() };
+    CameraView panelView;
+    Engine::UiView hudView;
+
+    bool onStart(Platform::Error& error) override
+    {
+        return drawing.initialize(error);
+    }
+
     Game game;
     Camera2 camera = { WorldBounds.center(), 1, { 960, 600 }, Engine::ViewportMode::Expand };
     Camera2 minimap = { WorldBounds.center(), 1, WorldBounds.size, Engine::ViewportMode::Fit };
@@ -213,8 +188,13 @@ private:
             static_cast<float>(mapWidth + 2 * MapPadding), static_cast<float>(mapHeight + 2 * MapPadding) };
         camera.position = game.player;
         Engine::CameraError cameraError;
+        Engine::UiError uiError;
+        const Engine::Size2 screenSize = { static_cast<float>(frame.window.width), static_cast<float>(frame.window.height) };
+        const Camera2 panelCamera = { { screenSize.width / 2, screenSize.height / 2 }, 1, screenSize, Engine::ViewportMode::Expand };
         if (!camera.createView({ 0, 0, frame.window.width, frame.window.height }, mainView, cameraError)
-            || !minimap.createView({ mapX, mapY, mapWidth, mapHeight }, mapView, cameraError)) {
+            || !minimap.createView({ mapX, mapY, mapWidth, mapHeight }, mapView, cameraError)
+            || !panelCamera.createView({ 0, 0, frame.window.width, frame.window.height }, panelView, cameraError)
+            || !Engine::UiCanvas{}.createView({ 0, 0, frame.window.width, frame.window.height }, hudView, uiError)) {
             error = { "Camera2::createView", "Could not calculate the camera viewport.", {} };
             return false;
         }
@@ -315,118 +295,96 @@ private:
         return true;
     }
 
-    void renderView(const CameraView& view, int windowHeight, bool map, float time)
+    void renderView(const CameraView& view, bool map, float time)
     {
         const auto& viewport = view.viewport;
-        glViewport(viewport.x, windowHeight - viewport.y - viewport.height, viewport.width, viewport.height);
-        glScissor(viewport.x, windowHeight - viewport.y - viewport.height, viewport.width, viewport.height);
-        glEnable(GL_SCISSOR_TEST);
-        glClearColor(OutsideColor.red, OutsideColor.green, OutsideColor.blue, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
+        drawing.beginWorld(view);
         const Rect& bounds = view.worldBounds;
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        glOrtho(bounds.position.x, bounds.position.x + bounds.size.width,
-            bounds.position.y + bounds.size.height, bounds.position.y, -1, 1);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-        drawWorld(game, time);
+        drawing.rectangle(bounds, OutsideColor);
+        drawing.drawWorld(game, time);
         if (map) {
             Rect visible;
             if (Engine::intersection(mainView.worldBounds, WorldBounds, visible)) {
-                rectangle(visible, WhiteColor, false);
+                drawing.rectangle(visible, WhiteColor, false);
             }
             // Метки остаются различимыми и на маленькой миникарте.
             const float unitsPerPixel = bounds.size.width / static_cast<float>(viewport.width);
             for (std::size_t index = 0; index < game.trash.size(); ++index) {
                 if (game.trash[index].state == TrashState::Ground) {
-                    circle({ game.trash[index].position, 2 * unitsPerPixel }, TrashColors[index % TrashColors.size()]);
+                    drawing.circle({ game.trash[index].position, 2 * unitsPerPixel }, TrashColors[index % TrashColors.size()]);
                 }
             }
-            circle({ game.player, 4 * unitsPerPixel }, WhiteColor);
-            circle({ game.player, 3 * unitsPerPixel }, game.outcome == Outcome::Lost ? ExhaustedColor : playerColor(game.coat));
+            drawing.circle({ game.player, 4 * unitsPerPixel }, WhiteColor);
+            drawing.circle({ game.player, 3 * unitsPerPixel }, game.outcome == Outcome::Lost ? ExhaustedColor : playerColor(game.coat));
         }
-        glDisable(GL_SCISSOR_TEST);
     }
 
-    void screenCoordinates(const Engine::FrameInfo& frame)
-    {
-        glViewport(0, 0, frame.window.width, frame.window.height);
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        glOrtho(0, frame.window.width, frame.window.height, 0, -1, 1);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-    }
-
-    bool onRender(const Engine::FrameInfo& frame, Platform::Error&) override
+    bool onRender(const Engine::FrameInfo& frame, Platform::Error& error) override
     {
         if (!viewsReady) {
             return true;
         }
-        glDisable(GL_DEPTH_TEST);
-        glClearColor(OutsideColor.red, OutsideColor.green, OutsideColor.blue, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
+        drawing.beginFrame(frame, OutsideColor);
         const float time = static_cast<float>(frame.elapsedTime);
-        renderView(mainView, frame.window.height, false, time);
-        screenCoordinates(frame);
-        rectangle(mapPanel, PanelColor);
-        rectangle(mapPanel, BorderColor, false);
-        renderView(mapView, frame.window.height, true, time);
-        screenCoordinates(frame);
+        renderView(mainView, false, time);
+        drawing.beginWorld(panelView);
+        drawing.rectangle(mapPanel, PanelColor);
+        drawing.rectangle(mapPanel, BorderColor, false);
+        renderView(mapView, true, time);
+        drawing.beginUi(hudView);
         const Vector2 homeMarker = mapView.worldToScreen(HomeBounds.center());
-        text("HOME", homeMarker + Vector2{ -12, 8 }, game.washed >= HomeGoal ? GoalColor : WhiteColor, 1.5F);
+        drawing.text("HOME", homeMarker + Vector2{ -12, 8 }, game.washed >= HomeGoal ? GoalColor : WhiteColor, 1.5F);
         const Color moodColor = game.motivation <= 20 ? WarningColor : GoalColor;
-        rectangle({ 16, 16, 235, 78 }, PanelColor);
-        text("MOTIVATION", { 28, 25 }, WhiteColor);
-        text("-1/" + std::to_string(static_cast<int>(MotivationDecayInterval)) + "S TO " + std::to_string(PassiveMotivationFloor),
+        drawing.rectangle({ 16, 16, 235, 78 }, PanelColor);
+        drawing.text("MOTIVATION", { 28, 25 }, WhiteColor);
+        drawing.text("-1/" + std::to_string(static_cast<int>(MotivationDecayInterval)) + "S TO " + std::to_string(PassiveMotivationFloor),
             { 28, 45 }, BorderColor);
-        number(game.motivation, { 170, 44 }, moodColor);
-        rectangle({ 28, 65, 130, 9 }, GridColor);
-        rectangle({ 28, 65, 130 * static_cast<float>(game.motivation) / MaximumMotivation, 9 }, moodColor);
+        drawing.number(game.motivation, { 170, 44 }, moodColor);
+        drawing.rectangle({ 28, 65, 130, 9 }, GridColor);
+        drawing.rectangle({ 28, 65, 130 * static_cast<float>(game.motivation) / MaximumMotivation, 9 }, moodColor);
 
-        rectangle({ 260, 16, 116, 78 }, PanelColor);
-        text("CARGO", { 272, 25 }, WhiteColor);
-        number(game.carried, { 272, 44 }, StickyPlayerColor);
-        circle({ { 349, 61 }, 13 }, game.outcome == Outcome::Lost ? ExhaustedColor : playerColor(game.coat));
+        drawing.rectangle({ 260, 16, 116, 78 }, PanelColor);
+        drawing.text("CARGO", { 272, 25 }, WhiteColor);
+        drawing.number(game.carried, { 272, 44 }, StickyPlayerColor);
+        drawing.circle({ { 349, 61 }, 13 }, game.outcome == Outcome::Lost ? ExhaustedColor : playerColor(game.coat));
 
         const bool homeReady = game.washed >= HomeGoal;
         const float homeProgress = std::min(1.0F, static_cast<float>(game.washed) / HomeGoal);
-        rectangle({ 385, 16, 235, 78 }, PanelColor);
-        text(homeReady ? "HOME OPEN" : "HOME MATERIAL", { 397, 25 }, homeReady ? GoalColor : WhiteColor);
-        number(game.washed, { 397, 44 }, CleanPlayerColor);
-        text("/", { 451, 49 }, WhiteColor, 4);
-        number(HomeGoal, { 475, 44 }, WhiteColor);
-        rectangle({ 397, 82, 211, 6 }, GridColor);
-        rectangle({ 397, 82, 211 * homeProgress, 6 }, GoalColor);
+        drawing.rectangle({ 385, 16, 235, 78 }, PanelColor);
+        drawing.text(homeReady ? "HOME OPEN" : "HOME MATERIAL", { 397, 25 }, homeReady ? GoalColor : WhiteColor);
+        drawing.number(game.washed, { 397, 44 }, CleanPlayerColor);
+        drawing.text("/", { 451, 49 }, WhiteColor, 4);
+        drawing.number(HomeGoal, { 475, 44 }, WhiteColor);
+        drawing.rectangle({ 397, 82, 211, 6 }, GridColor);
+        drawing.rectangle({ 397, 82, 211 * homeProgress, 6 }, GoalColor);
 
         const float bottom = static_cast<float>(frame.window.height);
-        rectangle({ 16, bottom - 118, 360, 102 }, PanelColor);
-        text("GLUE", { 28, bottom - 108 }, StickyPlayerColor);
+        drawing.rectangle({ 16, bottom - 118, 360, 102 }, PanelColor);
+        drawing.text("GLUE", { 28, bottom - 108 }, StickyPlayerColor);
         for (int index = 0; index < GlueCapacity; ++index) {
-            rectangle({ 86 + static_cast<float>(index) * 17, bottom - 108, 13, 10 },
+            drawing.rectangle({ 86 + static_cast<float>(index) * 17, bottom - 108, 13, 10 },
                 index < game.glue ? StickyPlayerColor : GridColor);
         }
         const bool aging = game.carried > 0 && game.cargoAge < GlueLifetime;
         if (aging) {
-            text("WASH IN " + std::to_string(static_cast<int>(std::ceil(GlueLifetime - game.cargoAge))) + " S",
+            drawing.text("WASH IN " + std::to_string(static_cast<int>(std::ceil(GlueLifetime - game.cargoAge))) + " S",
                 { 28, bottom - 86 }, game.cargoAge >= GlueWarningTime ? WarningColor : WhiteColor);
         } else {
-            text(game.coat != Coat::Sticky ? "VISIT ORANGE" : (game.glue == 0 || game.cargoAge >= GlueLifetime ? "WASH FIRST" : "COLLECT TRASH"),
+            drawing.text(game.coat != Coat::Sticky ? "VISIT ORANGE" : (game.glue == 0 || game.cargoAge >= GlueLifetime ? "WASH FIRST" : "COLLECT TRASH"),
                 { 28, bottom - 86 }, WhiteColor);
         }
-        text("LOST ITEM -" + std::to_string(DropPenalty) + "  DELIVERED ITEM +" + std::to_string(DeliveryReward),
+        drawing.text("LOST ITEM -" + std::to_string(DropPenalty) + "  DELIVERED ITEM +" + std::to_string(DeliveryReward),
             { 28, bottom - 64 }, BorderColor);
-        text("ORANGE - TRASH - BLUE - HOME", { 28, bottom - 42 }, WhiteColor);
+        drawing.text("ORANGE - TRASH - BLUE - HOME", { 28, bottom - 42 }, WhiteColor);
 
         if (game.feedbackTime > 0) {
-            rectangle({ 16, 104, 360, 28 }, PanelColor);
+            drawing.rectangle({ 16, 104, 360, 28 }, PanelColor);
             const std::string message = game.motivationChange < 0 ? "LOST CARGO " + std::to_string(game.motivationChange)
                 : "DELIVERED " + std::to_string(game.lastDelivery) + "  +" + std::to_string(game.motivationChange);
-            text(message, { 28, 113 }, game.motivationChange < 0 ? WarningColor : GoalColor);
+            drawing.text(message, { 28, 113 }, game.motivationChange < 0 ? WarningColor : GoalColor);
         } else if (homeReady) {
-            rectangle({ 16, 104, 360, 28 }, PanelColor);
-            text("HOME IS OPEN - GO TO GREEN DOOR", { 28, 113 }, GoalColor);
+            drawing.rectangle({ 16, 104, 360, 28 }, PanelColor);
+            drawing.text("HOME IS OPEN - GO TO GREEN DOOR", { 28, 113 }, GoalColor);
         }
 
         if (game.outcome != Outcome::Playing || isPaused()) {
@@ -434,24 +392,20 @@ private:
             const bool won = game.outcome == Outcome::Won;
             const std::string_view heading = won ? "HOME AT LAST" : (game.outcome == Outcome::Lost ? "NO MOTIVATION" : "PAUSED");
             const Color color = won ? GoalColor : (game.outcome == Outcome::Lost ? WarningColor : WhiteColor);
-            rectangle({ center.x - 190, center.y - 65, 380, 130 }, PanelColor);
-            rectangle({ center.x - 190, center.y - 65, 380, 130 }, color, false);
-            text(heading, { center.x - static_cast<float>(heading.size()) * 6, center.y - 38 }, color, 3);
+            drawing.rectangle({ center.x - 190, center.y - 65, 380, 130 }, PanelColor);
+            drawing.rectangle({ center.x - 190, center.y - 65, 380, 130 }, color, false);
+            drawing.text(heading, { center.x - static_cast<float>(heading.size()) * 6, center.y - 38 }, color, 3);
             if (game.outcome == Outcome::Lost) {
-                text("REST AND TRY AGAIN", { center.x - 72, center.y - 4 }, WhiteColor);
+                drawing.text("REST AND TRY AGAIN", { center.x - 72, center.y - 4 }, WhiteColor);
             }
-            text(game.outcome == Outcome::Playing ? "P TO CONTINUE" : "R TO RESTART", { center.x - 52, center.y + 25 }, WhiteColor);
+            drawing.text(game.outcome == Outcome::Playing ? "P TO CONTINUE" : "R TO RESTART", { center.x - 52, center.y + 25 }, WhiteColor);
         }
-        return true;
+        return drawing.endFrame(error);
     }
 };
 }
 
-#ifdef _WIN32
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
-#else
-int main()
-#endif
+int Engine::applicationMain()
 {
     Engine::ApplicationOptions options;
     options.window.title = "Cleanup";

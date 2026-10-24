@@ -187,6 +187,7 @@ bool Application::run(const ApplicationOptions& options, std::vector<Platform::E
     }
     errors.insert(errors.end(), std::make_move_iterator(cleanupErrors.begin()),
         std::make_move_iterator(cleanupErrors.end()));
+    graphics.shutdown();
     Platform::shutdown(cleanupErrors);
     errors.insert(errors.end(), std::make_move_iterator(cleanupErrors.begin()),
         std::make_move_iterator(cleanupErrors.end()));
@@ -220,6 +221,11 @@ void Application::requestExit()
 bool Application::onStart(Platform::Error&)
 {
     return true;
+}
+
+Renderer2D& Application::getRenderer()
+{
+    return graphics;
 }
 
 bool Application::onInput(const FrameInfo&, Platform::Error&)

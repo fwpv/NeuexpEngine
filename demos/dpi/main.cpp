@@ -1,6 +1,7 @@
+#include "entry_point.h"
 #include "application.h"
 #include "ui.h"
-#include "../common/pixel_font.h"
+#include "../common/painter.h"
 
 #include <algorithm>
 #include <cmath>
@@ -36,31 +37,20 @@ int percent(float scale)
     return static_cast<int>(std::lround(scale * 100));
 }
 
-void rectangle(const Rect& bounds, Color color)
-{
-    glColor3f(color.red, color.green, color.blue);
-    glBegin(GL_QUADS);
-    glVertex2f(bounds.position.x, bounds.position.y);
-    glVertex2f(bounds.position.x + bounds.size.width, bounds.position.y);
-    glVertex2f(bounds.position.x + bounds.size.width, bounds.position.y + bounds.size.height);
-    glVertex2f(bounds.position.x, bounds.position.y + bounds.size.height);
-    glEnd();
-}
-
-void circle(Vector2 center, float radius, Color color)
-{
-    glColor3f(color.red, color.green, color.blue);
-    glBegin(GL_TRIANGLE_FAN);
-    glVertex2f(center.x, center.y);
-    for (int index = 0; index <= 40; ++index) {
-        const Vector2 point = center + Engine::rotated({ radius, 0 }, 2 * Pi * static_cast<float>(index) / 40);
-        glVertex2f(point.x, point.y);
-    }
-    glEnd();
-}
-
 class DpiApplication final : public Application
 {
+    Demo::Painter drawing{ getRenderer() };
+
+    void rectangle(const Rect& bounds, Color color)
+    {
+        drawing.rectangle(bounds, color);
+    }
+
+    void circle(Vector2 center, float radius, Color color)
+    {
+        drawing.circle({ center, radius }, color, true, 40);
+    }
+
     Camera2 camera = { {}, 1, { 960, 600 }, ViewportMode::Expand };
     UiCanvas canvas;
     CameraView worldView;
@@ -78,7 +68,7 @@ class DpiApplication final : public Application
             return false;
         }
         canvas.scale = std::clamp(state.systemScale, MinimumScale, MaximumScale);
-        return true;
+        return drawing.initialize(error);
     }
 
     bool updateViews(const FrameInfo& frame, Platform::Error& error)
@@ -202,24 +192,17 @@ class DpiApplication final : public Application
     {
         const bool hover = contains(bounds, mouse);
         rectangle(bounds, hover ? Blue : Grid);
-        Demo::text(label, bounds.position + Vector2{ 7, 7 }, hover ? Panel : White);
+        drawing.text(label, bounds.position + Vector2{ 7, 7 }, hover ? Panel : White);
     }
 
-    bool onRender(const FrameInfo& frame, Platform::Error&) override
+    bool onRender(const FrameInfo& frame, Platform::Error& error) override
     {
         if (!viewsReady) {
             return true;
         }
-        glViewport(0, 0, frame.window.width, frame.window.height);
-        glClearColor(Background.red, Background.green, Background.blue, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
+        drawing.beginFrame(frame, Background);
+        drawing.beginWorld(worldView);
         const Rect& bounds = worldView.worldBounds;
-        glOrtho(bounds.position.x, bounds.position.x + bounds.size.width,
-            bounds.position.y + bounds.size.height, bounds.position.y, -1, 1);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
         const float firstX = std::floor(bounds.position.x / 100) * 100;
         const float firstY = std::floor(bounds.position.y / 100) * 100;
         for (float x = firstX; x <= bounds.position.x + bounds.size.width; x += 100) {
@@ -234,16 +217,12 @@ class DpiApplication final : public Application
         circle(marker, 13, White);
         circle(marker, 8, Orange);
 
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        glOrtho(0, uiView.size.width, uiView.size.height, 0, -1, 1);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
+        drawing.beginUi(uiView);
         rectangle(UiPanel, Panel);
-        Demo::text("UI " + std::to_string(percent(canvas.scale)) + " / DPI " + std::to_string(percent(frame.window.systemScale)),
+        drawing.text("UI " + std::to_string(percent(canvas.scale)) + " / DPI " + std::to_string(percent(frame.window.systemScale)),
             { 20, 22 }, White);
-        Demo::text("UI", { 20, 51 }, Orange);
-        Demo::text("WORLD " + std::to_string(percent(camera.zoom)), { 20, 83 }, Blue, 1.5F);
+        drawing.text("UI", { 20, 51 }, Orange);
+        drawing.text("WORLD " + std::to_string(percent(camera.zoom)), { 20, 83 }, Blue, 1.5F);
         const auto& mouse = Platform::getInput().mouse();
         Vector2 pointer = { -1, -1 };
         if (mouse.inside) {
@@ -256,17 +235,13 @@ class DpiApplication final : public Application
         button(ZoomPlus, "+", pointer);
         button(ZoomReset, "RESET", pointer);
         button(ClickButton, "UI CLICKS " + std::to_string(uiClicks), pointer);
-        Demo::text("WASD / WHEEL / CLICK WORLD", { 20, 146 }, White, 1.5F);
-        return true;
+        drawing.text("WASD / WHEEL / CLICK WORLD", { 20, 146 }, White, 1.5F);
+        return drawing.endFrame(error);
     }
 };
 }
 
-#ifdef _WIN32
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
-#else
-int main()
-#endif
+int Engine::applicationMain()
 {
     ApplicationOptions options;
     options.window.title = "DPI";

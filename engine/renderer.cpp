@@ -1,0 +1,406 @@
+#include "renderer.h"
+#include "detail/polygon.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+#include <GL/gl.h>
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+
+namespace Engine
+{
+namespace
+{
+bool finite(Vector2 point)
+{
+    return std::isfinite(point.x) && std::isfinite(point.y);
+}
+
+bool finite(const Affine2& transform)
+{
+    return std::isfinite(transform.m00) && std::isfinite(transform.m01) && std::isfinite(transform.m02)
+        && std::isfinite(transform.m10) && std::isfinite(transform.m11) && std::isfinite(transform.m12);
+}
+
+bool valid(Color color)
+{
+    const auto component = [](float value) { return std::isfinite(value) && value >= 0 && value <= 1; };
+    return component(color.red) && component(color.green) && component(color.blue) && component(color.alpha);
+}
+
+bool valid(ShapeFill fill)
+{
+    return fill == ShapeFill::Outline || fill == ShapeFill::Filled;
+}
+
+// Каждый проход получает одинаковое начальное состояние фиксированного конвейера.
+void configureState()
+{
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_ALPHA_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_FOG);
+    glDisable(GL_TEXTURE_1D);
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_COLOR_LOGIC_OP);
+    glDisable(GL_LINE_STIPPLE);
+    glDisable(GL_POLYGON_STIPPLE);
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glDisable(GL_POLYGON_OFFSET_LINE);
+    glDisable(GL_POLYGON_OFFSET_POINT);
+    glDisable(GL_LINE_SMOOTH);
+    glDisable(GL_POINT_SMOOTH);
+    glDisable(GL_POLYGON_SMOOTH);
+    glDisable(GL_DITHER);
+    for (int index = 0; index < 6; ++index) {
+        glDisable(GL_CLIP_PLANE0 + static_cast<GLenum>(index));
+    }
+    glShadeModel(GL_SMOOTH);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+}
+}
+
+bool Renderer2D::initialize(RenderError& error)
+{
+    if (initialized) {
+        error = RenderError::InvalidState;
+        return false;
+    }
+    if (!glGetString(GL_VERSION)) {
+        error = RenderError::NoCurrentContext;
+        return false;
+    }
+    initialized = true;
+    error = RenderError::None;
+    return true;
+}
+
+bool Renderer2D::isInitialized() const
+{
+    return initialized;
+}
+
+void Renderer2D::shutdown()
+{
+    std::vector<Command>().swap(commands);
+    clip.reset();
+    stage = Stage::Idle;
+    frameWidth = 0;
+    frameHeight = 0;
+    initialized = false;
+}
+
+bool Renderer2D::beginFrame(int width, int height, Color clearColor, RenderError& error)
+{
+    if (!initialized || stage != Stage::Idle) {
+        error = RenderError::InvalidState;
+        return false;
+    }
+    if (width <= 0 || height <= 0) {
+        error = RenderError::InvalidFrameSize;
+        return false;
+    }
+    if (!valid(clearColor)) {
+        error = RenderError::InvalidOptions;
+        return false;
+    }
+    frameWidth = width;
+    frameHeight = height;
+    stage = Stage::Frame;
+    configureState();
+    glViewport(0, 0, width, height);
+    glDisable(GL_SCISSOR_TEST);
+    glClearColor(clearColor.red, clearColor.green, clearColor.blue, clearColor.alpha);
+    glClear(GL_COLOR_BUFFER_BIT);
+    error = RenderError::None;
+    return true;
+}
+
+bool Renderer2D::beginView(const Viewport& area, const Affine2& transform, Stage next, RenderError& error)
+{
+    if (stage == Stage::Idle || (stage == Stage::Ui && next == Stage::World)) {
+        error = RenderError::InvalidState;
+        return false;
+    }
+    const std::int64_t viewportY = static_cast<std::int64_t>(frameHeight) - area.y - area.height;
+    if (area.width <= 0 || area.height <= 0 || !finite(transform)
+        || viewportY < std::numeric_limits<int>::min() || viewportY > std::numeric_limits<int>::max()) {
+        error = RenderError::InvalidView;
+        return false;
+    }
+    flush();
+    viewport = area;
+    viewTransform = transform;
+    clip.reset();
+    stage = next;
+    configureState();
+    glViewport(area.x, static_cast<GLint>(viewportY), area.width, area.height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(area.x, static_cast<double>(area.x) + area.width,
+        static_cast<double>(area.y) + area.height, area.y, -1, 1);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    applyClip(clip);
+    error = RenderError::None;
+    return true;
+}
+
+bool Renderer2D::beginWorld(const CameraView& view, RenderError& error)
+{
+    return beginView(view.viewport, view.worldToScreenTransform, Stage::World, error);
+}
+
+bool Renderer2D::beginUi(const UiView& view, RenderError& error)
+{
+    return beginView(view.viewport, view.uiToScreenTransform, Stage::Ui, error);
+}
+
+void Renderer2D::applyClip(const std::optional<Viewport>& area) const
+{
+    using Wide = std::int64_t;
+    Wide left = std::max<Wide>(0, viewport.x);
+    Wide top = std::max<Wide>(0, viewport.y);
+    Wide right = std::min<Wide>(frameWidth, static_cast<Wide>(viewport.x) + viewport.width);
+    Wide bottom = std::min<Wide>(frameHeight, static_cast<Wide>(viewport.y) + viewport.height);
+    if (area) {
+        left = std::max<Wide>(left, area->x);
+        top = std::max<Wide>(top, area->y);
+        right = std::min<Wide>(right, static_cast<Wide>(area->x) + area->width);
+        bottom = std::min<Wide>(bottom, static_cast<Wide>(area->y) + area->height);
+    }
+    glEnable(GL_SCISSOR_TEST);
+    if (right <= left || bottom <= top) {
+        glScissor(0, 0, 0, 0);
+    } else {
+        glScissor(static_cast<GLint>(left), static_cast<GLint>(frameHeight - bottom),
+            static_cast<GLsizei>(right - left), static_cast<GLsizei>(bottom - top));
+    }
+}
+
+bool Renderer2D::setClip(const std::optional<Viewport>& area, RenderError& error)
+{
+    if (stage != Stage::World && stage != Stage::Ui) {
+        error = RenderError::InvalidState;
+        return false;
+    }
+    if (area && (area->width < 0 || area->height < 0)) {
+        error = RenderError::InvalidClip;
+        return false;
+    }
+    clip = area;
+    applyClip(clip);
+    error = RenderError::None;
+    return true;
+}
+
+bool Renderer2D::endFrame(RenderError& error)
+{
+    if (stage == Stage::Idle) {
+        error = RenderError::InvalidState;
+        return false;
+    }
+    flush();
+    glDisable(GL_SCISSOR_TEST);
+    stage = Stage::Idle;
+    clip.reset();
+    error = RenderError::None;
+    return true;
+}
+
+bool Renderer2D::prepareDraw(const DrawOptions& options, RenderError& error) const
+{
+    if (stage != Stage::World && stage != Stage::Ui) {
+        error = RenderError::InvalidState;
+        return false;
+    }
+    if (!valid(options.color) || !finite(options.transform)
+        || !std::isfinite(options.lineWidth) || options.lineWidth <= 0
+        || !std::isfinite(options.pointSize) || options.pointSize <= 0
+        || !std::isfinite(options.order)) {
+        error = RenderError::InvalidOptions;
+        return false;
+    }
+    error = RenderError::None;
+    return true;
+}
+
+bool Renderer2D::submit(Primitive primitive, const Vector2* vertices, std::size_t count,
+    const DrawOptions& options, RenderError& error)
+{
+    if (!prepareDraw(options, error)) {
+        return false;
+    }
+    if (options.color.alpha == 0 || count == 0) {
+        return true;
+    }
+    DrawOptions screenOptions = options;
+    screenOptions.transform = viewTransform * options.transform;
+    commands.push_back({ primitive, std::vector<Vector2>(vertices, vertices + count), screenOptions, clip, std::nullopt });
+    return true;
+}
+
+void Renderer2D::execute(Primitive primitive, const Vector2* vertices, std::size_t count,
+    const DrawOptions& options, const std::optional<std::array<Color, 2>>& gradient) const
+{
+    GLenum mode = GL_POINTS;
+    switch (primitive) {
+        case Primitive::Points: mode = GL_POINTS; break;
+        case Primitive::Lines: mode = GL_LINES; break;
+        case Primitive::LineLoop: mode = GL_LINE_LOOP; break;
+        case Primitive::Quads: mode = GL_QUADS; break;
+        case Primitive::TriangleFan: mode = GL_TRIANGLE_FAN; break;
+        case Primitive::Triangles: mode = GL_TRIANGLES; break;
+    }
+    glColor4f(options.color.red, options.color.green, options.color.blue, options.color.alpha);
+    glLineWidth(options.lineWidth);
+    glPointSize(options.pointSize);
+    glBegin(mode);
+    for (std::size_t index = 0; index < count; ++index) {
+        if (gradient) {
+            const Color color = (*gradient)[index < 2 ? 0 : 1];
+            glColor4f(color.red * options.color.red, color.green * options.color.green,
+                color.blue * options.color.blue, color.alpha * options.color.alpha);
+        }
+        const Vector2 screen = options.transform.transformPoint(vertices[index]);
+        glVertex2f(screen.x, screen.y);
+    }
+    glEnd();
+}
+
+void Renderer2D::flush()
+{
+    if (commands.empty()) {
+        return;
+    }
+    std::stable_sort(commands.begin(), commands.end(), [](const Command& first, const Command& second) {
+        if (first.options.layer != second.options.layer) {
+            return first.options.layer < second.options.layer;
+        }
+        return first.options.order < second.options.order;
+    });
+    for (const Command& command : commands) {
+        applyClip(command.clip);
+        execute(command.primitive, command.vertices.data(), command.vertices.size(), command.options, command.gradient);
+    }
+    commands.clear();
+    applyClip(clip);
+}
+
+bool Renderer2D::drawPoint(Vector2 point, const DrawOptions& options, RenderError& error)
+{
+    if (!finite(point)) {
+        error = RenderError::InvalidGeometry;
+        return false;
+    }
+    return submit(Primitive::Points, &point, 1, options, error);
+}
+
+bool Renderer2D::drawLine(Vector2 start, Vector2 end, const DrawOptions& options, RenderError& error)
+{
+    if (!finite(start) || !finite(end)) {
+        error = RenderError::InvalidGeometry;
+        return false;
+    }
+    const std::array<Vector2, 2> vertices = { start, end };
+    return submit(Primitive::Lines, vertices.data(), vertices.size(), options, error);
+}
+
+bool Renderer2D::drawRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options, RenderError& error)
+{
+    if (!finite(rectangle.position) || !std::isfinite(rectangle.size.width) || !std::isfinite(rectangle.size.height)
+        || rectangle.size.width < 0 || rectangle.size.height < 0 || !valid(fill)) {
+        error = RenderError::InvalidGeometry;
+        return false;
+    }
+    const std::array<Vector2, 4> vertices = {
+        rectangle.position,
+        rectangle.position + Vector2{ rectangle.size.width, 0 },
+        rectangle.position + Vector2{ rectangle.size.width, rectangle.size.height },
+        rectangle.position + Vector2{ 0, rectangle.size.height }
+    };
+    return submit(fill == ShapeFill::Filled ? Primitive::Quads : Primitive::LineLoop,
+        vertices.data(), vertices.size(), options, error);
+}
+
+bool Renderer2D::drawGradientRectangle(const Rect& rectangle, Color top, Color bottom,
+    const DrawOptions& options, RenderError& error)
+{
+    if (!valid(top) || !valid(bottom)) {
+        error = RenderError::InvalidOptions;
+        return false;
+    }
+    const auto previousSize = commands.size();
+    if (!drawRectangle(rectangle, ShapeFill::Filled, options, error)) {
+        return false;
+    }
+    if (commands.size() > previousSize) {
+        commands.back().gradient = std::array<Color, 2>{ top, bottom };
+    }
+    return true;
+}
+
+bool Renderer2D::drawCircle(const Circle& circle, ShapeFill fill, const DrawOptions& options,
+    RenderError& error, unsigned int segments)
+{
+    if (!finite(circle.center) || !std::isfinite(circle.radius) || circle.radius < 0 || segments < 3 || !valid(fill)) {
+        error = RenderError::InvalidGeometry;
+        return false;
+    }
+    if (!prepareDraw(options, error)) {
+        return false;
+    }
+    if (circle.radius == 0) {
+        return true;
+    }
+    std::vector<Vector2> vertices;
+    if (fill == ShapeFill::Filled) {
+        vertices.push_back(circle.center);
+    }
+    for (unsigned int index = 0; index < segments; ++index) {
+        const float angle = 2 * Pi * (static_cast<float>(index) / static_cast<float>(segments));
+        vertices.push_back(circle.center + Vector2{ std::cos(angle), std::sin(angle) } * circle.radius);
+    }
+    if (fill == ShapeFill::Filled) {
+        vertices.push_back(circle.center + Vector2{ circle.radius, 0 });
+    }
+    return submit(fill == ShapeFill::Filled ? Primitive::TriangleFan : Primitive::LineLoop,
+        vertices.data(), vertices.size(), options, error);
+}
+
+bool Renderer2D::drawPolygon(const std::vector<Vector2>& vertices, ShapeFill fill,
+    const DrawOptions& options, RenderError& error)
+{
+    if (!valid(fill)) {
+        error = RenderError::InvalidGeometry;
+        return false;
+    }
+    // Подготовка геометрии завершается до отправки команд: отказ не оставляет частичной заливки.
+    std::vector<Vector2> contour;
+    std::vector<std::array<std::size_t, 3>> triangles;
+    if (!Detail::triangulatePolygon(vertices, contour, triangles)) {
+        error = RenderError::InvalidGeometry;
+        return false;
+    }
+    if (fill == ShapeFill::Outline) {
+        return submit(Primitive::LineLoop, contour.data(), contour.size(), options, error);
+    }
+    std::vector<Vector2> points;
+    for (const auto& triangle : triangles) {
+        for (std::size_t index : triangle) {
+            points.push_back(contour[index]);
+        }
+    }
+    return submit(Primitive::Triangles, points.data(), points.size(), options, error);
+}
+}

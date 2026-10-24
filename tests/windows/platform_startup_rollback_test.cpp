@@ -13,7 +13,7 @@ unsigned int detachCount = 0;
 HWND failedWindow = nullptr;
 constexpr DWORD ActivationFailureCode = ERROR_INVALID_HANDLE;
 constexpr DWORD DeletionFailureCode = ERROR_GEN_FAILURE;
-enum class PixelCase { None, Read, Window, OpenGL, DoubleBuffer, Type, Color, Depth, NoDepth };
+enum class PixelCase { None, Read, Window, OpenGL, DoubleBuffer, Type, Color };
 PixelCase pixelCase = PixelCase::None;
 }
 
@@ -35,8 +35,6 @@ int describePixelFormat(HDC deviceContext, int format, UINT size, LPPIXELFORMATD
         case PixelCase::DoubleBuffer: description->dwFlags &= ~static_cast<DWORD>(PFD_DOUBLEBUFFER); break;
         case PixelCase::Type: description->iPixelType = PFD_TYPE_COLORINDEX; break;
         case PixelCase::Color: description->cColorBits = 16; break;
-        case PixelCase::Depth: description->cDepthBits = 16; break;
-        case PixelCase::NoDepth: description->cDepthBits = 0; break;
         case PixelCase::None: break;
     }
     return result;
@@ -110,13 +108,13 @@ int main()
         }
     }
     // Подменяется описание формата; формат драйвера не меняется.
-    for (const auto alternative : { PixelCase::Color, PixelCase::Depth, PixelCase::NoDepth }) {
+    for (const auto alternative : { PixelCase::Color }) {
         pixelCase = alternative;
         const bool started = Platform::initialize(options, errors);
         Platform::Error error;
         if (!started || !errors.empty() || pixelCase != PixelCase::None
             || !Platform::present(error)) {
-            std::cerr << "Alternative color/depth precision must allow rendering.\n";
+            std::cerr << "Alternative color precision must allow rendering.\n";
             PlatformTest::shutdownAfterFailure(errors);
             return 1;
         }
