@@ -32,5 +32,5 @@ if(BUILD_DEMOS OR BUILD_TESTING)
 
     add_library(engine_application STATIC application.cpp)
     target_include_directories(engine_application PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-    target_link_libraries(engine_application PUBLIC platform engine_time PRIVATE project_warnings)
+    target_link_libraries(engine_application PUBLIC platform engine_time engine_renderer PRIVATE project_warnings)
 endif()

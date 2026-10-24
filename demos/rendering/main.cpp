@@ -7,8 +7,8 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cmath>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -16,73 +16,107 @@ namespace
 {
 using namespace Engine;
 
-constexpr Color Background = { 0.025F, 0.04F, 0.07F };
-constexpr Color Ground = { 0.055F, 0.09F, 0.14F };
-constexpr Color Grid = { 0.12F, 0.19F, 0.26F };
-constexpr Color White = { 0.91F, 0.96F, 1 };
-constexpr Color Blue = { 0.25F, 0.75F, 1 };
-constexpr Color Orange = { 1, 0.58F, 0.2F };
-constexpr Color Green = { 0.35F, 0.95F, 0.65F };
-constexpr Color Panel = { 0.025F, 0.04F, 0.07F, 0.94F };
-constexpr float MinimumScale = 0.5F;
-constexpr float MaximumScale = 2.5F;
-constexpr float GridSpacing = 80;
-const std::vector<Vector2> Concave = { { 0, 0 }, { 95, 0 }, { 95, 30 }, { 35, 30 }, { 35, 95 }, { 0, 95 } };
+constexpr Color Ink = { 0.06F, 0.10F, 0.14F };
+constexpr Color White = { 0.92F, 0.97F, 1 };
+constexpr Color Mint = { 0.42F, 0.95F, 0.72F };
+constexpr Color Gold = { 1, 0.73F, 0.3F };
+constexpr Color Grass = { 0.18F, 0.32F, 0.27F };
+constexpr float WalkSpeed = 180;
+constexpr Vector2 ParkHalfSize = { 510, 330 };
+constexpr std::array<Vector2, 5> TourPositions = {{ { -240, 70 }, { 180, 70 },
+    { -340, -140 }, { 0, 120 }, { 0, 120 } }};
+constexpr std::array<const char*, 5> TourTitles = {{ "1 / WALK BEHIND AND IN FRONT OF TREES",
+    "2 / WALK UNDER THE GLASS CANOPY", "3 / WATCH THE WINDMILL BLADES",
+    "4 / MOVE AND ZOOM THE WORLD", "5 / WATCH THE PARCEL WINDOW" }};
+constexpr std::array<const char*, 5> TourHints = {{ "Y TOGGLE SORTING / O REVERSE COMMANDS",
+    "G TOGGLE GLASS / MOVE THROUGH THE BLUE AREA", "P PAUSE ROTATION / BLADES SHARE ONE PIVOT",
+    "F FOLLOW CAMERA / WHEEL ZOOM / CLICK TO WALK", "C TOGGLE CLIPPING / L RESTART RENDERER" }};
+constexpr std::array<const char*, 5> TourExplanations = {{ "FEET SET THE ORDER / LOWER FEET APPEAR IN FRONT",
+    "WORLD SHOWS THROUGH GLASS / FRAME STAYS ABOVE IT",
+    "LOCAL SHAPES ROTATE AND SCALE AROUND THE HUB",
+    "MAP IS A SECOND VIEW / HUD STAYS FIXED ON SCREEN",
+    "MOVING PARCELS ARE CUT AT THE WINDOW EDGES" }};
 
-DrawOptions style(Color color, const Transform2& transform = {})
+DrawOptions paint(Color color, int layer = 0, float order = 0, const Transform2& transform = {})
 {
     DrawOptions options;
     options.color = color;
+    options.layer = layer;
+    options.order = order;
     options.transform = transform.toAffine();
     return options;
 }
 
-bool renderResult(bool success, RenderError renderError, Platform::Error& error)
-{
-    if (!success) {
-        error = { "Renderer gallery", "Rendering failed (RenderError="
-            + std::to_string(static_cast<int>(renderError)) + ").", {} };
-    }
-    return success;
-}
-
 class RenderingApplication final : public Application
 {
-    Renderer2D renderer;
-    Camera2 camera = { {}, 1, { 1000, 700 }, ViewportMode::Fit };
-    UiCanvas canvas;
+    Renderer2D& renderer = getRenderer();
+    Camera2 camera = { {}, 1, { 1000, 550 }, ViewportMode::Expand };
     CameraView world;
+    CameraView map;
     UiView ui;
-    bool viewsReady = false;
-    bool clipped = true;
-    Vector2 marker;
-    bool hasMarker = false;
+    Vector2 player = TourPositions[0];
+    Vector2 destination = player;
+    bool walking = false;
+    bool sorting = true;
+    bool reverse = false;
+    bool glass = true;
+    bool clipping = true;
+    bool follow = false;
+    bool ready = false;
+    int tour = 0;
+    int restarts = 0;
+    float animation = 0;
+    float facing = Pi / 2;
+    RenderError drawError = RenderError::None;
+
+    bool rectangle(Rect bounds, Color color, int layer = 0, float order = 0)
+    {
+        return renderer.drawRectangle(bounds, ShapeFill::Filled, paint(color, layer, order), drawError);
+    }
+
+    bool circle(Vector2 center, float radius, Color color, int layer = 0, float order = 0)
+    {
+        return renderer.drawCircle({ center, radius }, ShapeFill::Filled, paint(color, layer, order), drawError);
+    }
+
+    bool text(const std::string& message, Vector2 position, Color color = White, float size = 2)
+    {
+        return Demo::text(renderer, message, position, color, drawError, size);
+    }
+
+    bool rendererResult(bool success, Platform::Error& error)
+    {
+        if (!success) {
+            error = { "Renderer town", "Rendering failed (RenderError="
+                + std::to_string(static_cast<int>(drawError)) + ").", {} };
+        }
+        return success;
+    }
 
     bool updateViews(const FrameInfo& frame, Platform::Error& error)
     {
-        viewsReady = false;
+        ready = false;
         if (frame.window.width <= 0 || frame.window.height <= 0) {
             return true;
         }
-        const Viewport area = { 0, 0, frame.window.width, frame.window.height };
+        const int width = frame.window.width;
+        const int height = frame.window.height;
         CameraError cameraError;
         UiError uiError;
-        if (!camera.createView(area, world, cameraError) || !canvas.createView(area, ui, uiError)) {
-            error = { "Renderer gallery", "Could not calculate world/UI views.", {} };
+        Camera2 mapCamera = { {}, 1, { 1150, 800 }, ViewportMode::Fit };
+        if (!camera.createView({ 0, 94, width, height - 258 }, world, cameraError)
+            || !mapCamera.createView({ width - 232, 110, 216, 150 }, map, cameraError)
+            || !UiCanvas{}.createView({ 0, 0, width, height }, ui, uiError)) {
+            error = { "Renderer town", "Could not calculate world/UI views.", {} };
             return false;
         }
-        viewsReady = true;
+        ready = true;
         return true;
     }
 
     bool onStart(Platform::Error& error) override
     {
-        Platform::WindowState state;
-        if (!Platform::getWindowState(state, error)) {
-            return false;
-        }
-        canvas.scale = std::clamp(state.systemScale, MinimumScale, MaximumScale);
-        return true;
+        return rendererResult(renderer.initialize(drawError), error);
     }
 
     bool onInput(const FrameInfo& frame, Platform::Error& error) override
@@ -90,29 +124,45 @@ class RenderingApplication final : public Application
         const auto& input = Platform::getInput();
         if (input.key(Key::Escape).pressed) { requestExit(); }
         if (input.key(Key::P).pressed) { setPaused(!isPaused()); }
-        if (input.key(Key::C).pressed) { clipped = !clipped; }
-        if (input.key(Key::F).pressed) {
-            camera.mode = camera.mode == ViewportMode::Fit ? ViewportMode::Expand : ViewportMode::Fit;
+        if (input.key(Key::Y).pressed) { sorting = !sorting; }
+        if (input.key(Key::O).pressed) { reverse = !reverse; }
+        if (input.key(Key::G).pressed) { glass = !glass; }
+        if (input.key(Key::C).pressed) { clipping = !clipping; }
+        if (input.key(Key::F).pressed) { follow = !follow; }
+        if (input.key(Key::Tab).pressed) {
+            tour = (tour + 1) % static_cast<int>(TourPositions.size());
+            player = TourPositions[static_cast<std::size_t>(tour)];
+            destination = player;
+            walking = false;
+            camera.position = {};
+            camera.zoom = 1;
+            follow = false;
         }
-        if (input.key(Key::Minus).pressed) { canvas.scale = std::max(MinimumScale, canvas.scale - 0.25F); }
-        if (input.key(Key::Equal).pressed) { canvas.scale = std::min(MaximumScale, canvas.scale + 0.25F); }
         if (input.key(Key::R).pressed) {
+            player = TourPositions[static_cast<std::size_t>(tour)];
+            walking = false;
             camera.position = {};
             camera.zoom = 1;
         }
+        if (input.key(Key::L).pressed) {
+            renderer.shutdown();
+            if (!rendererResult(renderer.initialize(drawError), error)) {
+                return false;
+            }
+            ++restarts;
+        }
         if (input.mouse().inside) {
-            camera.zoom = std::clamp(camera.zoom + static_cast<float>(input.mouse().wheelY) * 0.1F,
-                MinimumScale, MaximumScale);
+            camera.zoom = std::clamp(camera.zoom + static_cast<float>(input.mouse().wheelY) * 0.1F, 0.6F, 2.5F);
         }
         if (!updateViews(frame, error)) {
             return false;
         }
-        if (viewsReady && input.button(MouseButton::Left).pressed) {
-            Vector2 uiPoint;
+        if (ready && input.button(MouseButton::Left).pressed) {
             const Vector2 pixel = { static_cast<float>(input.mouse().x), static_cast<float>(input.mouse().y) };
-            const bool overUi = ui.screenToUi(pixel, uiPoint) && contains(Rect{ 12, 12, 460, 112 }, uiPoint);
-            if (!overUi) {
-                hasMarker = world.screenToWorld(pixel, marker);
+            if (!contains(map.viewport.bounds(), pixel)) {
+                walking = world.screenToWorld(pixel, destination);
+                destination.x = std::clamp(destination.x, -ParkHalfSize.x, ParkHalfSize.x);
+                destination.y = std::clamp(destination.y, -ParkHalfSize.y, ParkHalfSize.y);
             }
         }
         return true;
@@ -120,121 +170,196 @@ class RenderingApplication final : public Application
 
     bool onUpdate(const FrameInfo& frame, Platform::Error&) override
     {
+        animation += frame.deltaTime;
         Vector2 direction;
         if (Platform::isKeyDown(Key::A)) { direction.x -= 1; }
         if (Platform::isKeyDown(Key::D)) { direction.x += 1; }
         if (Platform::isKeyDown(Key::W)) { direction.y -= 1; }
         if (Platform::isKeyDown(Key::S)) { direction.y += 1; }
-        camera.position += normalized(direction) * (240 * frame.deltaTime);
+        if (direction.x != 0 || direction.y != 0) {
+            walking = false;
+        } else if (walking) {
+            direction = destination - player;
+            if (length(direction) <= WalkSpeed * frame.deltaTime) {
+                player = destination;
+                walking = false;
+                direction = {};
+            }
+        }
+        if (direction.x != 0 || direction.y != 0) {
+            facing = std::atan2(direction.y, direction.x);
+            player += normalized(direction) * (WalkSpeed * frame.deltaTime);
+        }
+        player.x = std::clamp(player.x, -ParkHalfSize.x, ParkHalfSize.x);
+        player.y = std::clamp(player.y, -ParkHalfSize.y, ParkHalfSize.y);
+        if (follow) { camera.position = player; }
         return true;
     }
 
     bool onPrepareFrame(const FrameInfo& frame, Platform::Error& error) override
     {
-        if (!updateViews(frame, error)) {
-            return false;
-        }
-        std::ostringstream title;
-        title << "Renderer 05 | " << (camera.mode == ViewportMode::Fit ? "FIT" : "EXPAND")
-            << " | zoom=" << camera.zoom << " UI=" << canvas.scale
-            << " | " << (isPaused() ? "PAUSED" : "RUNNING")
-            << " | WASD camera, wheel zoom, F fit/expand, C clip, -/+ UI, R reset, P pause, Esc exit";
-        return Platform::setWindowTitle(title.str(), error);
+        return updateViews(frame, error)
+            && Platform::setWindowTitle("Renderer town | tour=" + std::to_string(tour + 1)
+                + " sort=" + (sorting ? "on" : "off") + " commands=" + (reverse ? "reverse" : "forward")
+                + " glass=" + (glass ? "on" : "off") + " clip=" + (clipping ? "on" : "off")
+                + " restarts=" + std::to_string(restarts), error);
     }
 
-    bool drawWorld(float time, RenderError& error)
+    bool drawTree(Vector2 feet)
     {
-        if (!renderer.beginWorld(world, error)
-            || !renderer.drawRectangle(world.worldBounds, ShapeFill::Filled, style(Ground), error)) {
+        const float order = sorting ? feet.y : 0;
+        return circle(feet + Vector2{ 5, 0 }, 33, { 0.09F, 0.18F, 0.15F, 0.4F }, -2, order)
+            && rectangle({ feet.x - 9, feet.y - 65, 18, 65 }, { 0.45F, 0.28F, 0.18F }, 0, order)
+            && circle(feet + Vector2{ 0, -78 }, 47, { 0.10F, 0.24F, 0.19F }, 0, order)
+            && circle(feet + Vector2{ -13, -89 }, 33, { 0.25F, 0.49F, 0.31F }, 0, order)
+            && circle(feet + Vector2{ 14, -100 }, 25, { 0.35F, 0.61F, 0.37F }, 0, order);
+    }
+
+    bool drawPlayer()
+    {
+        const float order = sorting ? player.y : 0;
+        // Корпус остаётся вертикальным; при взгляде сбоку плечи видны уже.
+        const float shoulderWidth = 20 + 12 * std::abs(std::sin(facing));
+        return circle(player + Vector2{ 3, 1 }, 17, { 0.04F, 0.08F, 0.10F, 0.45F }, -2, order)
+            && rectangle({ player.x - shoulderWidth / 2, player.y - 32, shoulderWidth, 24 }, Gold, 0, order)
+            && circle(player + Vector2{ 0, -41 }, 13, White, 0, order)
+            && rectangle({ player.x - 10, player.y - 21, 20, 16 }, { 0.78F, 0.41F, 0.20F }, 0, order)
+            && circle(player, 4, Mint, 0, order);
+    }
+
+    bool drawTown(const CameraView& view)
+    {
+        if (!renderer.beginWorld(view, drawError)
+            || !rectangle({ -560, -380, 1120, 760 }, Grass, -20)
+            || !rectangle({ -540, 60, 1080, 80 }, { 0.59F, 0.54F, 0.39F }, -15)
+            || !rectangle({ -40, -350, 80, 700 }, { 0.59F, 0.54F, 0.39F }, -15)
+            || !rectangle({ 85, -35, 255, 195 }, { 0.29F, 0.39F, 0.39F }, -10)
+            || !rectangle({ 105, -15, 215, 155 }, { 0.39F, 0.48F, 0.47F }, -9)
+            || !circle({ 345, -220 }, 85, { 0.15F, 0.43F, 0.52F }, -10)
+            || !circle({ 365, -235 }, 57, { 0.22F, 0.54F, 0.61F }, -9)) {
             return false;
         }
-        const Rect bounds = world.worldBounds;
-        for (float x = std::floor(bounds.position.x / GridSpacing) * GridSpacing;
-            x < bounds.position.x + bounds.size.width; x += GridSpacing) {
-            if (!renderer.drawLine({ x, bounds.position.y }, { x, bounds.position.y + bounds.size.height }, style(Grid), error)) {
+        const std::vector<Vector2> garden = { { 95, 210 }, { 185, 210 }, { 185, 240 },
+            { 130, 240 }, { 130, 310 }, { 95, 310 } };
+        if (!renderer.drawPolygon(garden, ShapeFill::Filled, paint({ 0.46F, 0.30F, 0.25F }, -8), drawError)) {
+            return false;
+        }
+        for (int flower = 0; flower < 4; ++flower) {
+            if (!circle({ 111, 225 + static_cast<float>(flower) * 23 }, 6, Gold, -7)) {
                 return false;
             }
         }
-        for (float y = std::floor(bounds.position.y / GridSpacing) * GridSpacing;
-            y < bounds.position.y + bounds.size.height; y += GridSpacing) {
-            if (!renderer.drawLine({ bounds.position.x, y }, { bounds.position.x + bounds.size.width, y }, style(Grid), error)) {
+        if (walking) {
+            DrawOptions target = paint(Mint, -3);
+            target.pointSize = 6;
+            if (!renderer.drawLine(player, destination, target, drawError)
+                || !renderer.drawCircle({ destination, 16 }, ShapeFill::Outline, target, drawError)
+                || !renderer.drawPoint(destination, target, drawError)) {
                 return false;
             }
         }
-        DrawOptions point = style(White);
-        point.pointSize = 7;
-        const Transform2 spinning = { { -250, -85 }, time * 0.6F,
-            { 1.1F + 0.25F * std::sin(time), 0.85F }, { 60, 40 } };
-        if (!renderer.drawRectangle({ 0, 0, 120, 80 }, ShapeFill::Filled, style(Blue, spinning), error)
-            || !renderer.drawRectangle({ 0, 0, 120, 80 }, ShapeFill::Outline, style(White, spinning), error)
-            || !renderer.drawPoint(spinning.position, point, error)
-            || !renderer.drawCircle({ { -25, -90 }, 54 }, ShapeFill::Filled, style(Orange), error)
-            || !renderer.drawCircle({ { -25, -90 }, 70 }, ShapeFill::Outline, style(White), error)
-            || !renderer.drawPolygon(Concave, ShapeFill::Filled,
-                style(Green, { { 170, -130 }, 0.15F * std::sin(time), { 1.2F, 1.2F }, {} }), error)
-            || !renderer.drawPolygon(Concave, ShapeFill::Outline,
-                style(White, { { 310, -130 }, 0, { -0.8F, 0.8F }, {} }), error)
-            || !renderer.drawLine({ -350, 25 }, { 350, 25 }, style(White), error)
-            || !renderer.drawCircle({ { -220 + 22 * std::sin(time), 125 }, 64 }, ShapeFill::Filled,
-                style({ Blue.red, Blue.green, Blue.blue, 0.6F }), error)
-            || !renderer.drawCircle({ { -165, 125 }, 64 }, ShapeFill::Filled,
-                style({ Orange.red, Orange.green, Orange.blue, 0.6F }), error)) {
+        constexpr std::array<Vector2, 6> Trees = {{ { -240, 50 }, { -365, 140 }, { -140, -80 },
+            { 390, 190 }, { 280, 270 }, { -260, 290 } }};
+        // Перестановка подачи не меняет результат при разных ключах Y.
+        for (int step = 0; step < 7; ++step) {
+            const int index = reverse ? 6 - step : step;
+            if (!(index == 6 ? drawPlayer() : drawTree(Trees[static_cast<std::size_t>(index)]))) {
+                return false;
+            }
+        }
+        if (!rectangle({ -385, -195, 90, 125 }, { 0.79F, 0.70F, 0.51F }, 0, -70)) {
             return false;
         }
-        if (hasMarker && (!renderer.drawCircle({ marker, 12 }, ShapeFill::Outline, style(White), error)
-            || !renderer.drawPoint(marker, point, error))) {
+        const std::vector<Vector2> roof = { { -402, -195 }, { -340, -252 }, { -278, -195 } };
+        if (!renderer.drawPolygon(roof, ShapeFill::Filled, paint({ 0.62F, 0.31F, 0.22F }, 0, -70), drawError)) {
+            return false;
+        }
+        const float stretch = 1 + 0.12F * std::sin(animation);
+        const Transform2 rotor = { { -340, -175 }, animation * 0.7F, { stretch, stretch }, {} };
+        for (int blade = 0; blade < 4; ++blade) {
+            Transform2 transform = rotor;
+            transform.rotation += static_cast<float>(blade) * Pi / 2;
+            if (!renderer.drawRectangle({ 8, -9, 69, 18 }, ShapeFill::Filled,
+                paint(White, 1, 0, transform), drawError)) {
+                return false;
+            }
+        }
+        if (!circle(rotor.position, 12, Gold, 1)) { return false; }
+        if (glass && !rectangle({ 95, -80, 235, 190 }, { 0.3F, 0.8F, 0.95F, 0.38F }, 5)) {
+            return false;
+        }
+        if (!renderer.drawRectangle({ 95, -80, 235, 190 }, ShapeFill::Outline,
+                paint({ 0.65F, 0.92F, 0.98F }, 6), drawError)
+            || !rectangle({ 95, -80, 8, 190 }, White, 6)
+            || !rectangle({ 322, -80, 8, 190 }, White, 6)) {
             return false;
         }
         return true;
     }
 
-    bool drawUi(RenderError& error)
+    bool drawHud()
     {
-        if (!renderer.beginUi(ui, error)
-            || !renderer.drawRectangle({ 12, 12, 460, 112 }, ShapeFill::Filled, style(Panel), error)
-            || !Demo::text(renderer, "RENDERER 05 - PRIMITIVES AND VIEWS", { 24, 24 }, White, error)
-            || !Demo::text(renderer, "WASD CAMERA / WHEEL ZOOM / F FIT", { 24, 46 }, Blue, error)
-            || !Demo::text(renderer, "C CLIP / -+ UI SCALE / R RESET", { 24, 68 }, Green, error)
-            || !Demo::text(renderer, "P PAUSE / CLICK WORLD / ESC EXIT", { 24, 90 }, Orange, error)) {
+        const float width = ui.size.width;
+        const float bottom = ui.size.height - 150;
+        if (!renderer.beginUi(ui, drawError)
+            || !rectangle({ 0, 0, width, 94 }, Ink)
+            || !text("RENDERER TOWN", { 22, 16 }, Mint, 3)
+            || !text("WASD WALK / CLICK DESTINATION / WHEEL ZOOM", { 22, 45 })
+            || !text("TAB NEXT STOP / R RESET / ESC EXIT", { 22, 66 }, Gold)
+            || !text("YOU ARE THE COURIER", { width - 264, 20 }, Gold)
+            || !text(isPaused() ? "PAUSED / P RESUME" : "P PAUSE / RESUME", { width - 264, 45 })
+            || !rectangle({ 0, bottom, width, 150 }, Ink)
+            || !text(TourTitles[static_cast<std::size_t>(tour)], { 22, bottom + 16 }, Mint)
+            || !text(TourExplanations[static_cast<std::size_t>(tour)], { 22, bottom + 40 }, White, 1.5F)
+            || !text(TourHints[static_cast<std::size_t>(tour)], { 22, bottom + 62 }, Gold, 1.5F)
+            || !text(std::string("SORT ") + (sorting ? "ON" : "OFF") + " / GLASS " + (glass ? "ON" : "OFF")
+                + " / CLIP " + (clipping ? "ON" : "OFF"), { 22, bottom + 92 }, White, 1.5F)
+            || !text("RENDERER RESTARTS " + std::to_string(restarts), { 22, bottom + 116 }, Mint, 1.5F)) {
             return false;
         }
-        const Rect box = { 50, 160, 160, 86 };
-        if (!renderer.drawRectangle(box, ShapeFill::Outline, style(White), error)) {
+        if (!renderer.drawRectangle(map.viewport.bounds(), ShapeFill::Outline, paint(Mint), drawError)
+            || !text("LIVE MAP", { width - 224, 116 }, White, 1.5F)) {
             return false;
         }
-        const Vector2 clipStart = ui.uiToScreen(box.position);
-        const Vector2 clipEnd = ui.uiToScreen(box.position + Vector2{ box.size.width, box.size.height });
-        const Viewport clipArea = { static_cast<int>(std::ceil(clipStart.x)), static_cast<int>(std::ceil(clipStart.y)),
-            static_cast<int>(std::floor(clipEnd.x) - std::ceil(clipStart.x)),
-            static_cast<int>(std::floor(clipEnd.y) - std::ceil(clipStart.y)) };
-        if (!renderer.setClip(clipped ? std::optional<Viewport>{ clipArea } : std::nullopt, error)
-            || !renderer.drawCircle({ { 70, 200 }, 65 }, ShapeFill::Filled, style(Blue), error)
-            || !renderer.drawCircle({ { 185, 200 }, 65 }, ShapeFill::Filled,
-                style({ Green.red, Green.green, Green.blue, 0.7F }), error)
-            || !renderer.setClip(std::nullopt, error)
-            || !Demo::text(renderer, clipped ? "CLIP ON" : "CLIP OFF", { 50, 270 }, White, error)) {
+        // Лента остаётся в экранном пространстве при движении и масштабировании мира.
+        const Rect slot = { width - 270, bottom + 38, 242, 62 };
+        if (!text("PARCEL WINDOW", { width - 270, bottom + 14 }, Mint)
+            || !rectangle(slot, { 0.13F, 0.21F, 0.26F })) {
             return false;
         }
-        return true;
+        const Vector2 topLeft = ui.uiToScreen(slot.position);
+        const Vector2 bottomRight = ui.uiToScreen(slot.position + Vector2{ slot.size.width, slot.size.height });
+        const Viewport clip = { static_cast<int>(std::ceil(topLeft.x)), static_cast<int>(std::ceil(topLeft.y)),
+            static_cast<int>(bottomRight.x - topLeft.x), static_cast<int>(bottomRight.y - topLeft.y) };
+        if (!renderer.setClip(clipping ? std::optional<Viewport>{ clip } : std::nullopt, drawError)) {
+            return false;
+        }
+        for (int index = -1; index < 5; ++index) {
+            const float x = slot.position.x + static_cast<float>(index) * 72 + std::fmod(animation * 32, 72.0F);
+            if (!rectangle({ x, slot.position.y + 12, 48, 38 }, Gold)
+                || !rectangle({ x + 21, slot.position.y + 12, 6, 38 }, { 0.85F, 0.51F, 0.22F })) {
+                return false;
+            }
+        }
+        return renderer.setClip(std::nullopt, drawError)
+            && renderer.drawRectangle(slot, ShapeFill::Outline, paint(White), drawError)
+            && text(clipping ? "C CLIP ON" : "C CLIP OFF", { width - 270, bottom + 116 }, Gold, 1.5F);
     }
 
     bool onRender(const FrameInfo& frame, Platform::Error& error) override
     {
-        if (!viewsReady) {
-            return true;
+        if (!ready) { return true; }
+        if (!renderer.beginFrame(frame.window.width, frame.window.height, Ink, drawError)) {
+            return rendererResult(false, error);
         }
-        RenderError renderError;
-        bool success = renderer.beginFrame(frame.window.width, frame.window.height, Background, renderError);
-        if (success) {
-            success = drawWorld(static_cast<float>(frame.elapsedTime), renderError) && drawUi(renderError);
-            RenderError endError;
-            const bool ended = renderer.endFrame(endError);
-            if (success && !ended) {
-                success = false;
-                renderError = endError;
-            }
+        bool success = drawTown(world) && drawTown(map) && drawHud();
+        RenderError endError;
+        const bool ended = renderer.endFrame(endError);
+        if (success && !ended) {
+            drawError = endError;
+            success = false;
         }
-        return renderResult(success, renderError, error);
+        return rendererResult(success, error);
     }
 };
 }
@@ -248,15 +373,13 @@ int main()
     RenderingApplication application;
     ApplicationOptions options;
     options.window.width = 1100;
-    options.window.height = 760;
-    options.window.title = "Renderer gallery";
-    options.window.minimumWidth = 520;
-    options.window.minimumHeight = 360;
+    options.window.height = 800;
+    options.window.title = "Renderer town";
+    options.window.minimumWidth = 900;
+    options.window.minimumHeight = 650;
     std::vector<Platform::Error> errors;
     if (!application.run(options, errors)) {
-        for (const auto& error : errors) {
-            Platform::reportError(error);
-        }
+        for (const auto& error : errors) { Platform::reportError(error); }
         return 1;
     }
     return 0;

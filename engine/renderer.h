@@ -3,6 +3,7 @@
 #include "camera.h"
 #include "ui.h"
 
+#include <cstddef>
 #include <optional>
 #include <vector>
 
@@ -16,7 +17,8 @@ enum class RenderError
     InvalidView,
     InvalidClip,
     InvalidGeometry,
-    InvalidOptions
+    InvalidOptions,
+    NoCurrentContext
 };
 
 enum class ShapeFill
@@ -34,12 +36,16 @@ struct DrawOptions
     // Поддерживаемый диапазон и округление определяются драйвером OpenGL.
     float lineWidth = 1;
     float pointSize = 1;
+    // Сначала рисуются меньшие слои, затем меньшие значения order внутри слоя.
+    // order может задаваться координатой Y для сортировки объектов по положению.
+    int layer = 0;
+    float order = 0;
 };
 
 // Рисует в текущий графический контекст в потоке приложения. Контекст должен оставаться
-// действующим до endFrame(). Одновременно кадром управляет только один рендерер;
+// действующим от initialize() до shutdown(). Одновременно кадром управляет только один рендерер;
 // прямые изменения состояния OpenGL внутри кадра не поддерживаются.
-// GPU-ресурсы не создаются; конструктор и деструктор не обращаются к контексту.
+// Конструктор и деструктор не обращаются к контексту.
 class Renderer2D
 {
 public:
@@ -47,11 +53,20 @@ public:
     Renderer2D(const Renderer2D&) = delete;
     Renderer2D& operator=(const Renderer2D&) = delete;
 
+    // Инициализация при текущем контексте; повторная инициализация отклоняется.
+    bool initialize(RenderError& error);
+    bool isInitialized() const;
+    // Отменяет незавершённый кадр и освобождает очередь команд. Повторный вызов безопасен.
+    // GPU-ресурсы не создаются; shutdown() не вызывает OpenGL, деструктор освобождает память.
+    void shutdown();
     // Размеры — фактические клиентские пиксели. Очищается весь цветовой буфер,
-    // включая поля; глубина отключена. Вложенные кадры отклоняются.
+    // включая поля. Вложенные кадры отклоняются.
     bool beginFrame(int width, int height, Color clearColor, RenderError& error);
-    // Несколько мировых видов допустимы до первого beginUi(). Команды выполняются
-    // сразу, в порядке вызовов, с обычным альфа-смешиванием без записи глубины.
+    // Команды копируются в очередь активного вида. При смене вида/endFrame()
+    // выполняется стабильная сортировка по (layer, order), общая для непрозрачных
+    // и полупрозрачных фигур. При одинаковых ключах сохраняется порядок команд.
+    // Сортировка не пересекает границы видов: более поздний вид рисуется поверх
+    // предыдущего. Несколько мировых видов допустимы до первого beginUi().
     bool beginWorld(const CameraView& view, RenderError& error);
     // Один или несколько экранных видов рисуются после мира, поверх него.
     // Виды должны быть получены из Camera2::createView / UiCanvas::createView.
@@ -88,15 +103,39 @@ private:
         Ui
     };
 
+    enum class Primitive
+    {
+        Points,
+        Lines,
+        LineLoop,
+        Quads,
+        TriangleFan,
+        Triangles
+    };
+
+    struct Command
+    {
+        Primitive primitive;
+        std::vector<Vector2> vertices;
+        DrawOptions options;
+        std::optional<Viewport> clip;
+    };
+
+    bool initialized = false;
     Stage stage = Stage::Idle;
     int frameWidth = 0;
     int frameHeight = 0;
     Viewport viewport;
     Affine2 viewTransform;
     std::optional<Viewport> clip;
+    std::vector<Command> commands;
 
     bool beginView(const Viewport& area, const Affine2& transform, Stage next, RenderError& error);
     bool prepareDraw(const DrawOptions& options, RenderError& error) const;
-    void applyClip() const;
+    bool submit(Primitive primitive, const Vector2* vertices, std::size_t count,
+        const DrawOptions& options, RenderError& error);
+    void execute(Primitive primitive, const Vector2* vertices, std::size_t count, const DrawOptions& options) const;
+    void flush();
+    void applyClip(const std::optional<Viewport>& area) const;
 };
 }

@@ -599,7 +599,7 @@ bool initializeWindows(const WindowOptions& options, Error& error)
     PIXELFORMATDESCRIPTOR format = {};
     format.nSize = sizeof(format);
     format.nVersion = 1;
-    format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER | PFD_DEPTH_DONTCARE;
+    format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
     format.iPixelType = PFD_TYPE_RGBA;
     format.cColorBits = 32;
     format.cDepthBits = 0;
@@ -615,7 +615,7 @@ bool initializeWindows(const WindowOptions& options, Error& error)
         return false;
     }
     constexpr DWORD RequiredPixelFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-    // Разрядность цвета и глубины — предпочтения запроса, а не условия отказа.
+    // Разрядность цвета — предпочтение запроса, а не условие отказа.
     if ((actualFormat.dwFlags & RequiredPixelFlags) != RequiredPixelFlags
         || actualFormat.iPixelType != PFD_TYPE_RGBA) {
         error = windowsError("ChoosePixelFormat", "The selected format requires window OpenGL, double buffering and RGBA colors.");

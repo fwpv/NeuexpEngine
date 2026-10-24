@@ -3,11 +3,19 @@ target_link_libraries(renderer_test PRIVATE engine_renderer platform project_war
 if(WIN32)
     target_compile_definitions(renderer_test PRIVATE NOMINMAX)
 endif()
-foreach(mode primitives transforms views errors state)
+foreach(mode primitives transforms views errors state sorting)
     add_test(NAME renderer_${mode} COMMAND renderer_test ${mode})
     set_tests_properties(renderer_${mode} PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
 endforeach()
+
+add_executable(renderer_lifecycle_test renderer_lifecycle_test.cpp)
+target_link_libraries(renderer_lifecycle_test PRIVATE engine_application project_warnings)
+if(WIN32)
+    target_compile_definitions(renderer_lifecycle_test PRIVATE NOMINMAX)
+endif()
+add_test(NAME renderer_lifecycle COMMAND renderer_lifecycle_test)
+set_tests_properties(renderer_lifecycle PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
 
 add_executable(camera_test camera_test.cpp)
 target_link_libraries(camera_test PRIVATE engine_camera project_warnings)
@@ -159,7 +167,7 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/application_under_test.cpp"
 add_executable(application_test application_test.cpp application_runtime.cpp
     "${CMAKE_CURRENT_BINARY_DIR}/application_under_test.cpp")
 target_include_directories(application_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(application_test PRIVATE engine_time engine_events engine_input project_warnings)
+target_link_libraries(application_test PRIVATE engine_time engine_events engine_input engine_renderer project_warnings)
 
 foreach(group lifecycle pause failures vsync limiter statistics)
     add_test(NAME application_${group} COMMAND application_test ${group})
