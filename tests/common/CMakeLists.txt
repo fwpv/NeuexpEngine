@@ -1,3 +1,14 @@
+add_executable(renderer_test renderer_test.cpp)
+target_link_libraries(renderer_test PRIVATE engine_renderer platform project_warnings)
+if(WIN32)
+    target_compile_definitions(renderer_test PRIVATE NOMINMAX)
+endif()
+foreach(mode primitives transforms views errors state)
+    add_test(NAME renderer_${mode} COMMAND renderer_test ${mode})
+    set_tests_properties(renderer_${mode} PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
+endforeach()
+
 add_executable(camera_test camera_test.cpp)
 target_link_libraries(camera_test PRIVATE engine_camera project_warnings)
 add_test(NAME camera COMMAND camera_test)
