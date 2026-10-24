@@ -1,5 +1,6 @@
 #include "renderer.h"
 #include "detail/polygon.h"
+#include "detail/texture_data.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -49,6 +50,10 @@ void configureState()
     glDisable(GL_FOG);
     glDisable(GL_TEXTURE_1D);
     glDisable(GL_TEXTURE_2D);
+    glDisable(GL_TEXTURE_GEN_S);
+    glDisable(GL_TEXTURE_GEN_T);
+    glDisable(GL_TEXTURE_GEN_R);
+    glDisable(GL_TEXTURE_GEN_Q);
     glDisable(GL_COLOR_LOGIC_OP);
     glDisable(GL_LINE_STIPPLE);
     glDisable(GL_POLYGON_STIPPLE);
@@ -93,6 +98,12 @@ bool Renderer2D::isInitialized() const
 void Renderer2D::shutdown()
 {
     std::vector<Command>().swap(commands);
+    for (const auto& texture : textures) {
+        glDeleteTextures(1, &texture->id);
+        texture->id = 0;
+        texture->image.reset();
+    }
+    textures.clear();
     clip.reset();
     stage = Stage::Idle;
     frameWidth = 0;
@@ -117,6 +128,7 @@ bool Renderer2D::beginFrame(int width, int height, Color clearColor, RenderError
     frameWidth = width;
     frameHeight = height;
     stage = Stage::Frame;
+    collectUnusedTextures();
     configureState();
     glViewport(0, 0, width, height);
     glDisable(GL_SCISSOR_TEST);
@@ -246,7 +258,7 @@ bool Renderer2D::submit(Primitive primitive, const Vector2* vertices, std::size_
     }
     DrawOptions screenOptions = options;
     screenOptions.transform = viewTransform * options.transform;
-    commands.push_back({ primitive, std::vector<Vector2>(vertices, vertices + count), screenOptions, clip, std::nullopt });
+    commands.push_back({ primitive, std::vector<Vector2>(vertices, vertices + count), screenOptions, clip, std::nullopt, {}, {} });
     return true;
 }
 
@@ -291,7 +303,11 @@ void Renderer2D::flush()
     });
     for (const Command& command : commands) {
         applyClip(command.clip);
-        execute(command.primitive, command.vertices.data(), command.vertices.size(), command.options, command.gradient);
+        if (command.texture.isValid()) {
+            executeTexture(command);
+        } else {
+            execute(command.primitive, command.vertices.data(), command.vertices.size(), command.options, command.gradient);
+        }
     }
     commands.clear();
     applyClip(clip);

@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "ui.h"
+#include "texture.h"
 
 #include <array>
 #include <cstddef>
@@ -19,7 +20,8 @@ enum class RenderError
     InvalidClip,
     InvalidGeometry,
     InvalidOptions,
-    NoCurrentContext
+    NoCurrentContext,
+    InvalidTexture
 };
 
 enum class ShapeFill
@@ -58,8 +60,22 @@ public:
     bool initialize(RenderError& error);
     bool isInitialized() const;
     // Отменяет незавершённый кадр и освобождает очередь команд. Повторный вызов безопасен.
-    // GPU-ресурсы не создаются; shutdown() не вызывает OpenGL, деструктор освобождает память.
+    // Удаляет все текстуры при текущем контексте. Обязателен до уничтожения контекста;
+    // деструктор освобождает только память и не заменяет shutdown().
     void shutdown();
+    // Лимит суммарного объёма GPU-текстур; задаётся до initialize().
+    bool setTextureBudget(std::size_t bytes, ResourceError& error);
+    // Исходные размеры сохраняются. Для OpenGL 1.1 стороны GPU-изображения
+    // округляются вверх до степени двойки с масштабированием ближайшим соседом.
+    bool createTexture(const Image& image, Texture& result, ResourceError& error, bool keepPixels = false);
+    // Кеш по каноническому пути внутри этого рендерера, независимо от параметров рисования.
+    // Сохранение CPU-пикселей запрашивается при первой загрузке. Для изменения
+    // этого выбора нужно освободить все ссылки и вызвать collectUnusedTextures().
+    bool loadTexture(const ResourceFiles& files, const std::string& name, Texture& result,
+        ResourceError& error, bool keepPixels = false);
+    // Удаляет ресурсы без пользовательских ссылок и команд; также вызывается в beginFrame().
+    void collectUnusedTextures();
+    TextureStats textureStats() const;
     // Размеры — фактические клиентские пиксели. Очищается весь цветовой буфер,
     // включая поля. Вложенные кадры отклоняются.
     bool beginFrame(int width, int height, Color clearColor, RenderError& error);
@@ -83,6 +99,9 @@ public:
     // Рисование требует активного вида. Ошибка не завершает кадр и не рисует фигуру.
     // Все координаты и коэффициенты преобразований конечны; компоненты цвета — [0, 1].
     bool drawPoint(Vector2 point, const DrawOptions& options, RenderError& error);
+    // Рисует целую текстуру; использует общие преобразования, сортировку и отсечение.
+    bool drawTexture(const Texture& texture, const Rect& rectangle, const DrawOptions& options,
+        RenderError& error, const TextureSampling& sampling = {});
     bool drawLine(Vector2 start, Vector2 end, const DrawOptions& options, RenderError& error);
     bool drawRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options, RenderError& error);
     // Вертикальный градиент в локальных координатах. Цвета умножаются на options.color.
@@ -124,6 +143,8 @@ private:
         DrawOptions options;
         std::optional<Viewport> clip;
         std::optional<std::array<Color, 2>> gradient;
+        Texture texture;
+        TextureSampling sampling;
     };
 
     bool initialized = false;
@@ -134,6 +155,8 @@ private:
     Affine2 viewTransform;
     std::optional<Viewport> clip;
     std::vector<Command> commands;
+    std::vector<std::shared_ptr<Detail::TextureData>> textures;
+    std::size_t textureBudget = 256 * 1024 * 1024;
 
     bool beginView(const Viewport& area, const Affine2& transform, Stage next, RenderError& error);
     bool prepareDraw(const DrawOptions& options, RenderError& error) const;
@@ -142,6 +165,7 @@ private:
     void execute(Primitive primitive, const Vector2* vertices, std::size_t count, const DrawOptions& options,
         const std::optional<std::array<Color, 2>>& gradient) const;
     void flush();
+    void executeTexture(const Command& command) const;
     void applyClip(const std::optional<Viewport>& area) const;
 };
 }

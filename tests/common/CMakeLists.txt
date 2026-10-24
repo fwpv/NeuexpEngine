@@ -173,3 +173,22 @@ foreach(group lifecycle pause failures vsync limiter statistics)
     add_test(NAME application_${group} COMMAND application_test ${group})
     set_tests_properties(application_${group} PROPERTIES TIMEOUT 15)
 endforeach()
+
+add_executable(resources_test resources_test.cpp)
+target_link_libraries(resources_test PRIVATE engine_resources project_warnings)
+add_custom_command(TARGET resources_test POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${TEST_ASSETS_DIR}" "$<TARGET_FILE_DIR:resources_test>/assets")
+add_test(NAME resources COMMAND resources_test)
+
+add_executable(texture_test texture_test.cpp)
+target_link_libraries(texture_test PRIVATE engine_renderer platform project_warnings)
+if(WIN32)
+    target_compile_definitions(texture_test PRIVATE NOMINMAX)
+endif()
+add_custom_command(TARGET texture_test POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${TEST_ASSETS_DIR}" "$<TARGET_FILE_DIR:texture_test>/assets")
+foreach(mode pixels sampling integration resources)
+    add_test(NAME texture_${mode} COMMAND texture_test ${mode})
+    set_tests_properties(texture_${mode} PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
+endforeach()

@@ -11,7 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(BUILD_DEMOS "Build demonstration applications" ON)
 include(CTest)
 
-add_library(stb_image STATIC EXCLUDE_FROM_ALL third_party/stb/stb_image_impl.cpp)
+add_library(stb_image STATIC EXCLUDE_FROM_ALL third_party/stb/stb_image_impl.cpp third_party/stb/decode_memory.cpp)
 add_library(miniaudio STATIC EXCLUDE_FROM_ALL third_party/miniaudio/miniaudio_impl.cpp)
 
 target_include_directories(stb_image SYSTEM PRIVATE third_party/stb)

@@ -18,15 +18,20 @@ add_library(engine_time STATIC frame_clock.cpp)
 target_include_directories(engine_time PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(engine_time PRIVATE project_warnings)
 
+add_library(engine_resources STATIC resources.cpp image.cpp ../platform/resource_path.cpp)
+target_include_directories(engine_resources PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(engine_resources SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/third_party/stb")
+target_link_libraries(engine_resources PRIVATE stb_image project_warnings)
+
 if(BUILD_DEMOS OR BUILD_TESTING)
     # Точка входа включается напрямую: MinGW запрашивает WinMain после просмотра архивов.
     add_library(engine_entry_point OBJECT entry_point.cpp)
     target_include_directories(engine_entry_point PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
     target_link_libraries(engine_entry_point PRIVATE project_warnings)
 
-    add_library(engine_renderer STATIC renderer.cpp detail/polygon.cpp)
+    add_library(engine_renderer STATIC renderer.cpp renderer_textures.cpp texture.cpp detail/polygon.cpp)
     target_include_directories(engine_renderer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-    target_link_libraries(engine_renderer PUBLIC engine_ui PRIVATE project_warnings)
+    target_link_libraries(engine_renderer PUBLIC engine_ui engine_resources PRIVATE project_warnings)
     if(WIN32)
         target_compile_definitions(engine_renderer PRIVATE NOMINMAX)
         target_link_libraries(engine_renderer PRIVATE opengl32)
