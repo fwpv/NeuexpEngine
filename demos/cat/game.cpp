@@ -26,6 +26,7 @@ constexpr double EdgeSlideSpeed = 80;
 constexpr double SupportHeightTolerance = 3;
 constexpr double LandingMargin = 10;
 constexpr double MinimumPawContact = 3;
+constexpr double BridgeSupportMargin = 5;
 constexpr double LeftPawLeft = 54 * CatScale;
 constexpr double LeftPawRight = 108 * CatScale;
 constexpr double RightPawLeft = 146 * CatScale;
@@ -327,11 +328,11 @@ std::optional<Game::SupportInterval> Game::supportInterval(std::size_t index, do
         const auto& left = platform.x < neighbor.x ? platform : neighbor;
         const auto& right = platform.x < neighbor.x ? neighbor : platform;
         if (left.x + PlatformWidth >= right.x) { continue; }
-        // Обе подошвы должны иметь площадку контакта по разные стороны щели.
+        // Контакт подошв по разные стороны щели проверяется с горизонтальным допуском.
         const double begin = std::max({ left.x + MinimumPawContact - LeftPawRight,
-            right.x + MinimumPawContact - RightPawRight, left.x + PlatformWidth - SupportPointOffset });
+            right.x + MinimumPawContact - RightPawRight, left.x + PlatformWidth - SupportPointOffset }) - BridgeSupportMargin;
         const double end = std::min({ left.x + PlatformWidth - MinimumPawContact - LeftPawLeft,
-            right.x + PlatformWidth - MinimumPawContact - RightPawLeft, right.x - SupportPointOffset });
+            right.x + PlatformWidth - MinimumPawContact - RightPawLeft, right.x - SupportPointOffset }) + BridgeSupportMargin;
         if (begin <= end) { intervals[count++] = { begin, end }; }
     }
 
@@ -501,7 +502,7 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
                 if (other == *support || !platforms[other] || ignoredPlatforms[other]) { continue; }
                 const auto& neighbor = *platforms[other];
                 const double gap = std::abs(neighbor.x - platform.x) - PlatformWidth;
-                if (gap <= 0 || gap > RightPawRight - LeftPawLeft - 2 * MinimumPawContact) { continue; }
+                if (gap <= 0 || gap > RightPawRight - LeftPawLeft - 2 * MinimumPawContact + 2 * BridgeSupportMargin) { continue; }
                 const double relativeSpeed = platformVelocityY(neighbor) - platformVelocityY(platform);
                 if (relativeSpeed == 0) { continue; }
                 for (double boundary : { -SupportHeightTolerance, SupportHeightTolerance }) {
