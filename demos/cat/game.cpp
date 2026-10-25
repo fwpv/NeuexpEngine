@@ -332,7 +332,16 @@ std::optional<Game::SupportInterval> Game::supportInterval(std::size_t index, do
             right.x + MinimumPawContact - RightPawRight, left.x + PlatformWidth - SupportPointOffset }) - BridgeSupportMargin;
         const double end = std::min({ left.x + PlatformWidth - MinimumPawContact - LeftPawLeft,
             right.x + PlatformWidth - MinimumPawContact - RightPawLeft, right.x - SupportPointOffset }) + BridgeSupportMargin;
-        if (begin <= end) { intervals[count++] = { begin, end }; }
+        if (begin <= end) {
+            SupportInterval bridge{ begin, end };
+            // Опора двумя лапами непрерывно переходит во въезд на принимающую платформу.
+            if (allowEntry && enteringRight && end < intervals[0].left) {
+                bridge.right = intervals[0].left;
+            } else if (allowEntry && enteringLeft && begin > intervals[0].right) {
+                bridge.left = intervals[0].right;
+            }
+            intervals[count++] = bridge;
+        }
     }
 
     std::optional<SupportInterval> result;
