@@ -23,9 +23,9 @@ constexpr double RespawnFallSpeed = 500;
 constexpr double JumpBufferDuration = 0.1;
 constexpr double AnimationInterval = 0.03;
 constexpr double SupportHeightTolerance = 5;
-constexpr double LandingMargin = 7;
+constexpr double LandingMargin = 10;
 constexpr double MinimumPawContact = 3;
-constexpr double BridgeSupportMargin = 7;
+constexpr double BridgeSupportMargin = 5;
 constexpr double LeftPawLeft = 54 * CatScale;
 constexpr double LeftPawRight = 108 * CatScale;
 constexpr double RightPawLeft = 146 * CatScale;
@@ -312,8 +312,9 @@ std::optional<Game::SupportInterval> Game::supportInterval(std::size_t index, do
     const bool continuingEntry = support == index && entryDirection * velocityX >= 0;
     const bool enteringRight = velocityX > ContactTolerance || (continuingEntry && entryDirection > 0);
     const bool enteringLeft = velocityX < -ContactTolerance || (continuingEntry && entryDirection < 0);
-    const double leftMargin = allowEntry && enteringRight ? LandingMargin : SupportMargin;
-    const double rightMargin = allowEntry && enteringLeft ? LandingMargin : SupportMargin;
+    const double entryMargin = SupportMargin + LandingMargin;
+    const double leftMargin = allowEntry && enteringRight ? entryMargin : SupportMargin;
+    const double rightMargin = allowEntry && enteringLeft ? entryMargin : SupportMargin;
     intervals[0] = { platform.x - leftMargin - SupportPointOffset,
         platform.x + PlatformWidth + rightMargin - SupportPointOffset };
     for (std::size_t other = 0; other < platforms.size(); ++other) {
