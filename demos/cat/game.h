@@ -100,6 +100,7 @@ private:
     std::optional<std::size_t> support;
     std::array<bool, PlatformLimit> ignoredPlatforms{};
     int fallDirection = 0;
+    int entryDirection = 0;
     double cameraOffsetX = 0;
     double cameraOffsetVelocityX = 0;
     double feetTime = 0;
@@ -125,7 +126,8 @@ private:
         double right = 0;
     };
 
-    std::optional<SupportInterval> supportInterval(std::size_t index, double playerX, double after = 0) const;
+    std::optional<SupportInterval> supportInterval(std::size_t index, double playerX,
+        double velocityX, double after = 0, bool allowEntry = true) const;
     std::optional<std::size_t> findSupport(double playerX, double feetY, int direction = 0,
         std::optional<std::size_t> excluded = std::nullopt) const;
     void ignoreSupports(double playerX, double feetY);
