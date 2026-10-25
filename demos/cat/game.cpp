@@ -23,8 +23,6 @@ constexpr double RespawnFallSpeed = 500;
 constexpr double JumpBufferDuration = 0.1;
 constexpr double AnimationInterval = 0.03;
 constexpr double EdgeSlideSpeed = 80;
-constexpr double EdgeCameraOffset = 20;
-constexpr double CameraResponse = 6;
 constexpr double SupportHeightTolerance = 3;
 constexpr double LandingMargin = 10;
 constexpr double MinimumPawContact = 3;
@@ -569,13 +567,6 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
 
         // dT делится по событиям: контакт, разворот платформы, смена режима движения и выход за экран.
         player.x += player.velocityX * duration + accelerationX * duration * duration / 2;
-        // Критически затухающее смещение камеры сохраняет непрерывную скорость при смене опоры.
-        const double cameraTarget = fallDirection * EdgeCameraOffset;
-        const double cameraDistance = cameraOffsetX - cameraTarget;
-        const double cameraTerm = cameraOffsetVelocityX + CameraResponse * cameraDistance;
-        const double decay = std::exp(-CameraResponse * duration);
-        cameraOffsetX = cameraTarget + (cameraDistance + cameraTerm * duration) * decay;
-        cameraOffsetVelocityX = (cameraOffsetVelocityX - CameraResponse * cameraTerm * duration) * decay;
         player.velocityX += accelerationX * duration;
         if (accelerationX != 0 && std::abs(duration - targetTime) <= TimeTolerance) {
             player.velocityX = targetSpeed;
@@ -657,6 +648,6 @@ void Game::update(double deltaTime, const Controls& controls)
     time += deltaTime;
     updateLeaves(deltaTime);
     updateAnimation(controls);
-    cameraX = player.x - CatScreenX - cameraOffsetX;
+    cameraX = player.x - CatScreenX;
 }
 }

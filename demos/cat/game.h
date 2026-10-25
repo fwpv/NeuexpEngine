@@ -101,8 +101,6 @@ private:
     std::array<bool, PlatformLimit> ignoredPlatforms{};
     int fallDirection = 0;
     int entryDirection = 0;
-    double cameraOffsetX = 0;
-    double cameraOffsetVelocityX = 0;
     double feetTime = 0;
     double headTime = 0;
 
