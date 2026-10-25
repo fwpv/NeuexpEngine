@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <random>
 #include <utility>
 
 namespace Cat
@@ -51,6 +52,9 @@ int artHeight(Art art)
 
 Game::Game()
 {
+    std::random_device seed;
+    randomState = seed();
+    leafRandomState = seed();
     addPlatform(lastX, lastY, Art::Platform);
     for (auto& leaf : leaves) {
         const int type = leafRandom() % 8;

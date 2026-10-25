@@ -87,12 +87,12 @@ public:
     double time = 0;
 
 private:
-    std::uint32_t randomState = 1;
+    std::uint32_t randomState;
     int generationMode = 1;
     int nextModeX = 3000;
     int lastX = 360;
     int lastY = 400;
-    std::uint32_t leafRandomState = 7;
+    std::uint32_t leafRandomState;
     double jumpBufferTime = 0;
     bool jumpHeld = false;
     bool downHeld = false;
