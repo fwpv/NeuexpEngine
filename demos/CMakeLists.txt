@@ -45,18 +45,17 @@ endif()
 target_link_libraries(cat_rendering PRIVATE engine_entry_point engine_application engine_renderer project_warnings)
 set_target_properties(cat_rendering PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 
-add_executable(texture_demo textures/main.cpp)
+add_executable(rendering_demo rendering/main.cpp)
 if(WIN32)
-    set_target_properties(texture_demo PROPERTIES WIN32_EXECUTABLE TRUE)
+    set_target_properties(rendering_demo PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
-target_link_libraries(texture_demo PRIVATE engine_entry_point engine_application project_warnings)
-set_target_properties(texture_demo PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
+target_link_libraries(rendering_demo PRIVATE engine_entry_point engine_application engine_renderer project_warnings)
+set_target_properties(rendering_demo PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
+
 set(DEMO_ASSET_DIRECTORY "${PROJECT_BINARY_DIR}/assets")
 if(CMAKE_CONFIGURATION_TYPES)
     set(DEMO_ASSET_DIRECTORY "${PROJECT_BINARY_DIR}/$<CONFIG>/assets")
 endif()
 add_custom_target(demo_assets ALL
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${PROJECT_SOURCE_DIR}/assets" "${DEMO_ASSET_DIRECTORY}")
-add_dependencies(texture_demo demo_assets)
-
 add_dependencies(cat_rendering demo_assets)
