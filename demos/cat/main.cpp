@@ -160,11 +160,10 @@ class CatApplication final : public Application
             const auto& image = texture(leaf.art);
             const float width = static_cast<float>(image.width());
             const float height = static_cast<float>(image.height());
-            const int x = static_cast<int>(leaf.x - game.cameraX);
-            const int y = static_cast<int>(leaf.y);
             DrawOptions options;
             Transform2 transform;
-            transform.position = { static_cast<float>(x) + 17.5F, static_cast<float>(y) + 17.5F };
+            transform.position = { static_cast<float>(leaf.x - game.cameraX) + 17.5F,
+                static_cast<float>(leaf.y) + 17.5F };
             transform.rotation = -degreesToRadians(static_cast<float>(leaf.angle));
             options.transform = transform.toAffine();
             if (!renderer.drawTexture(image, { -17.5F, -17.5F, width, height },
@@ -180,11 +179,9 @@ class CatApplication final : public Application
             const auto& platform = *slot;
             const double screenX = platform.x - game.cameraX;
             if (screenX <= -250 || screenX >= game.viewWidth + 5) { continue; }
-            const int x = static_cast<int>(screenX);
-            const int y = static_cast<int>(platform.y);
-            if (!picture(texture(platform.art), x, y)) { return false; }
+            if (!picture(texture(platform.art), screenX, platform.y)) { return false; }
             for (const auto& decoration : platform.decorations) {
-                if (!picture(texture(decoration.art), x + decoration.x, y + decoration.y)) { return false; }
+                if (!picture(texture(decoration.art), screenX + decoration.x, platform.y + decoration.y)) { return false; }
             }
         }
         return true;

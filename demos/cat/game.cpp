@@ -22,7 +22,14 @@ constexpr double RespawnFallSpeed = 500;
 constexpr double JumpBufferDuration = 0.1;
 constexpr double AnimationInterval = 0.03;
 constexpr double EdgeSlideSpeed = 80;
-constexpr double CameraReturnRate = 10;
+constexpr double EdgeCameraOffset = 20;
+constexpr double CameraResponse = 6;
+constexpr double SupportHeightTolerance = 3;
+constexpr double MinimumPawContact = 3;
+constexpr double LeftPawLeft = 54 * CatScale;
+constexpr double LeftPawRight = 108 * CatScale;
+constexpr double RightPawLeft = 146 * CatScale;
+constexpr double RightPawRight = 208 * CatScale;
 constexpr int GenerationAhead = 1024;
 
 double platformVelocityY(const Platform& platform)
@@ -249,7 +256,7 @@ void Game::generatePlatforms()
         auto& slot = platforms[index];
         if (slot && slot->x < player.x - GenerationAhead && support != index) {
             slot.reset();
-            if (ignoredPlatform == index) { ignoredPlatform.reset(); }
+            ignoredPlatforms[index] = false;
         }
     }
     if (lastX < generationRight()) { generate(); }
@@ -279,19 +286,98 @@ void Game::updateLeaves(double deltaTime)
     }
 }
 
-bool Game::supportsPlayer(const Platform& platform, double playerX) const
+std::optional<Game::SupportInterval> Game::supportInterval(std::size_t index, double playerX, double after) const
 {
-    const double point = playerX + SupportPointOffset;
-    return point >= platform.x - SupportMargin && point <= platform.x + PlatformWidth + SupportMargin;
+    if (!platforms[index] || ignoredPlatforms[index]) { return std::nullopt; }
+    const auto& platform = *platforms[index];
+    std::array<SupportInterval, PlatformLimit + 1> intervals{};
+    std::size_t count = 1;
+    intervals[0] = { platform.x - SupportMargin - SupportPointOffset,
+        platform.x + PlatformWidth + SupportMargin - SupportPointOffset };
+    for (std::size_t other = 0; other < platforms.size(); ++other) {
+        if (other == index || !platforms[other] || ignoredPlatforms[other]) { continue; }
+        const auto& neighbor = *platforms[other];
+        const double relativeSpeed = platformVelocityY(neighbor) - platformVelocityY(platform);
+        const double heightDifference = neighbor.y - platform.y + relativeSpeed * after;
+        if (std::abs(heightDifference) > SupportHeightTolerance + ContactTolerance
+            || (std::abs(heightDifference) >= SupportHeightTolerance - ContactTolerance
+                && heightDifference * relativeSpeed > 0)) { continue; }
+        const auto& left = platform.x < neighbor.x ? platform : neighbor;
+        const auto& right = platform.x < neighbor.x ? neighbor : platform;
+        if (left.x + PlatformWidth >= right.x) { continue; }
+        // Обе подошвы должны иметь площадку контакта по разные стороны щели.
+        const double begin = std::max({ left.x + MinimumPawContact - LeftPawRight,
+            right.x + MinimumPawContact - RightPawRight, left.x + PlatformWidth - SupportPointOffset });
+        const double end = std::min({ left.x + PlatformWidth - MinimumPawContact - LeftPawLeft,
+            right.x + PlatformWidth - MinimumPawContact - RightPawLeft, right.x - SupportPointOffset });
+        if (begin <= end) { intervals[count++] = { begin, end }; }
+    }
+
+    std::optional<SupportInterval> result;
+    for (std::size_t i = 0; i < count; ++i) {
+        if (playerX >= intervals[i].left - ContactTolerance && playerX <= intervals[i].right + ContactTolerance) {
+            result = intervals[i];
+            break;
+        }
+    }
+    if (!result) { return std::nullopt; }
+    bool extended = true;
+    while (extended) {
+        extended = false;
+        for (std::size_t i = 0; i < count; ++i) {
+            const auto& interval = intervals[i];
+            if (interval.left > result->right + ContactTolerance || interval.right < result->left - ContactTolerance) {
+                continue;
+            }
+            const double left = std::min(result->left, interval.left);
+            const double right = std::max(result->right, interval.right);
+            if (left < result->left || right > result->right) {
+                *result = { left, right };
+                extended = true;
+            }
+        }
+    }
+    return result;
+}
+
+std::optional<std::size_t> Game::findSupport(double playerX, double feetY, int direction,
+    std::optional<std::size_t> excluded) const
+{
+    std::optional<std::size_t> result;
+    double bestDistance = 0;
+    for (std::size_t index = 0; index < platforms.size(); ++index) {
+        if (excluded == index || !platforms[index]) { continue; }
+        const double distance = std::abs(platforms[index]->y - feetY);
+        if (distance > SupportHeightTolerance + ContactTolerance) { continue; }
+        const auto interval = supportInterval(index, playerX);
+        if (!interval || (direction > 0 && interval->right <= playerX + ContactTolerance)
+            || (direction < 0 && interval->left >= playerX - ContactTolerance)) { continue; }
+        if (!result || distance < bestDistance - ContactTolerance) {
+            result = index;
+            bestDistance = distance;
+        }
+    }
+    return result;
+}
+
+void Game::ignoreSupports(double playerX, double feetY)
+{
+    auto ignored = ignoredPlatforms;
+    for (std::size_t index = 0; index < platforms.size(); ++index) {
+        if (platforms[index] && std::abs(platforms[index]->y - feetY) <= SupportHeightTolerance + ContactTolerance
+            && supportInterval(index, playerX)) {
+            ignored[index] = true;
+        }
+    }
+    ignoredPlatforms = ignored;
 }
 
 void Game::respawn()
 {
     support.reset();
-    ignoredPlatform.reset();
+    ignoredPlatforms.fill(false);
     player.y = -FeetOffset;
     player.velocityY = RespawnFallSpeed;
-    fallDirection = 0;
     player.grounded = false;
     jumpBufferTime = 0;
 }
@@ -301,6 +387,12 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
     double remaining = deltaTime;
     while (remaining > TimeTolerance) {
         if (player.y >= CanvasHeight) { respawn(); }
+        for (std::size_t index = 0; index < platforms.size(); ++index) {
+            if (ignoredPlatforms[index] && (!platforms[index]
+                || player.y + FeetOffset > platforms[index]->y + PlatformHeight)) {
+                ignoredPlatforms[index] = false;
+            }
+        }
         double duration = remaining;
         for (auto& slot : platforms) {
             if (!slot || slot->art != Art::MovingPlatform || slot->speed <= 0) { continue; }
@@ -316,15 +408,21 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
             const double distance = platform.movingDown ? platform.bottom - platform.y : platform.y - platform.top;
             duration = std::min(duration, distance / platform.speed);
         }
-        if (support && (!platforms[*support] || !supportsPlayer(*platforms[*support], player.x))) {
-            if (platforms[*support]) {
-                fallDirection = player.x + SupportPointOffset > platforms[*support]->x + PlatformWidth / 2.0 ? 1 : -1;
+        if (support && !supportInterval(*support, player.x)) {
+            const auto previous = support;
+            support = findSupport(player.x, player.y + FeetOffset, 0, previous);
+            if (support) {
+                player.y = platforms[*support]->y - FeetOffset;
+            } else if (platforms[*previous]) {
+                const auto& platform = *platforms[*previous];
+                fallDirection = player.x + SupportPointOffset > platform.x + PlatformWidth / 2.0 ? 1 : -1;
+                player.velocityY = platformVelocityY(platform);
+                ignoredPlatforms[*previous] = true;
             }
-            support.reset();
         }
         player.grounded = support.has_value();
         if (dropRequested && support) {
-            ignoredPlatform = support;
+            ignoreSupports(player.x, player.y + FeetOffset);
             const auto& platform = *platforms[*support];
             const double platformSpeed = platformVelocityY(platform);
             player.velocityY = std::max(DropSpeed, platformSpeed + DropSpeed);
@@ -342,7 +440,7 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         dropRequested = false;
 
         const int direction = static_cast<int>(controls.right) - static_cast<int>(controls.left);
-        const double targetSpeed = direction * MaximumWalkSpeed;
+        const double targetSpeed = direction == 0 ? fallDirection * EdgeSlideSpeed : direction * MaximumWalkSpeed;
         const double acceleration = direction == 0
             ? (player.grounded ? GroundBraking : AirBraking)
             : (player.grounded ? GroundAcceleration : AirAcceleration);
@@ -362,10 +460,22 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         double edgeX = 0;
         if (support) {
             const auto& platform = *platforms[*support];
+            for (std::size_t other = 0; other < platforms.size(); ++other) {
+                if (other == *support || !platforms[other] || ignoredPlatforms[other]) { continue; }
+                const auto& neighbor = *platforms[other];
+                const double gap = std::abs(neighbor.x - platform.x) - PlatformWidth;
+                if (gap <= 0 || gap > RightPawRight - LeftPawLeft - 2 * MinimumPawContact) { continue; }
+                const double relativeSpeed = platformVelocityY(neighbor) - platformVelocityY(platform);
+                if (relativeSpeed == 0) { continue; }
+                for (double boundary : { -SupportHeightTolerance, SupportHeightTolerance }) {
+                    const double contactTime = (boundary - (neighbor.y - platform.y)) / relativeSpeed;
+                    if (contactTime > TimeTolerance) { duration = std::min(duration, contactTime); }
+                }
+            }
+            const auto interval = *supportInterval(*support, player.x);
             const double nextX = player.x + player.velocityX * duration + accelerationX * duration * duration / 2;
-            if (!supportsPlayer(platform, nextX)) {
-                edgeX = nextX > player.x ? platform.x + PlatformWidth + SupportMargin - SupportPointOffset
-                    : platform.x - SupportMargin - SupportPointOffset;
+            if (nextX > interval.right + ContactTolerance || nextX < interval.left - ContactTolerance) {
+                edgeX = nextX > player.x ? interval.right : interval.left;
                 const double distance = edgeX - player.x;
                 double edgeTime = 0;
                 if (accelerationX == 0) {
@@ -386,13 +496,11 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
 
         std::optional<std::size_t> landing;
         bool returningToTop = false;
-        const double slideSpeed = support ? 0 : fallDirection * EdgeSlideSpeed;
-        const double horizontalSpeed = player.velocityX + slideSpeed;
         if (!support) {
             const double feet = player.y + FeetOffset;
             for (std::size_t index = 0; index < platforms.size(); ++index) {
                 const auto& slot = platforms[index];
-                if (!slot || ignoredPlatform == index) { continue; }
+                if (!slot || ignoredPlatforms[index]) { continue; }
                 const double gap = feet - slot->y;
                 if (gap > ContactTolerance) { continue; }
                 const double platformSpeed = platformVelocityY(*slot);
@@ -401,8 +509,8 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
                 const double contact = relativeSpeed >= 0 && root + relativeSpeed > 0
                     ? -2 * gap / (root + relativeSpeed) : (root - relativeSpeed) / Gravity;
                 if (contact < -TimeTolerance || contact > duration + TimeTolerance) { continue; }
-                const double contactX = player.x + horizontalSpeed * contact + accelerationX * contact * contact / 2;
-                if (supportsPlayer(*slot, contactX) && (!landing || contact < duration - TimeTolerance)) {
+                const double contactX = player.x + player.velocityX * contact + accelerationX * contact * contact / 2;
+                if (supportInterval(index, contactX, contact) && (!landing || contact < duration - TimeTolerance)) {
                     duration = std::max(0.0, contact);
                     landing = index;
                 }
@@ -419,13 +527,14 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         }
 
         // dT делится по событиям: контакт, разворот платформы, смена режима движения и выход за экран.
-        player.x += horizontalSpeed * duration + accelerationX * duration * duration / 2;
-        // Камера не компенсирует боковое сползание; после него плавно возвращает кота к опорной позиции экрана.
-        if (fallDirection != 0) {
-            cameraOffsetX += slideSpeed * duration;
-        } else {
-            cameraOffsetX *= std::exp(-CameraReturnRate * duration);
-        }
+        player.x += player.velocityX * duration + accelerationX * duration * duration / 2;
+        // Критически затухающее смещение камеры сохраняет непрерывную скорость при смене опоры.
+        const double cameraTarget = fallDirection * EdgeCameraOffset;
+        const double cameraDistance = cameraOffsetX - cameraTarget;
+        const double cameraTerm = cameraOffsetVelocityX + CameraResponse * cameraDistance;
+        const double decay = std::exp(-CameraResponse * duration);
+        cameraOffsetX = cameraTarget + (cameraDistance + cameraTerm * duration) * decay;
+        cameraOffsetVelocityX = (cameraOffsetVelocityX - CameraResponse * cameraTerm * duration) * decay;
         player.velocityX += accelerationX * duration;
         if (accelerationX != 0 && std::abs(duration - targetTime) <= TimeTolerance) {
             player.velocityX = targetSpeed;
@@ -451,21 +560,24 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         }
         if (leavingEdge) {
             const auto& platform = *platforms[*support];
+            const int departureDirection = edgeX + SupportPointOffset > platform.x + PlatformWidth / 2.0 ? 1 : -1;
             player.x = edgeX;
-            player.velocityY = platformVelocityY(platform);
-            fallDirection = edgeX + SupportPointOffset > platform.x + PlatformWidth / 2.0 ? 1 : -1;
-            // Покинутая платформа не захватывает кота повторно в момент пересечения края.
-            ignoredPlatform = support;
-            support.reset();
+            const auto nextSupport = findSupport(edgeX, platform.y, departureDirection, support);
+            if (nextSupport) {
+                support = nextSupport;
+                player.y = platforms[*support]->y - FeetOffset;
+            } else {
+                player.velocityY = platformVelocityY(platform);
+                fallDirection = departureDirection;
+                ignoreSupports(player.x, platform.y);
+                ignoredPlatforms[*support] = true;
+                support.reset();
+            }
         }
         if (returningToTop) { respawn(); }
         player.grounded = support.has_value();
         remaining -= duration;
         jumpBufferTime = std::max(0.0, jumpBufferTime - duration);
-    }
-    if (ignoredPlatform && (!platforms[*ignoredPlatform]
-        || player.y + FeetOffset > platforms[*ignoredPlatform]->y + PlatformHeight)) {
-        ignoredPlatform.reset();
     }
 }
 
