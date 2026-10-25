@@ -8,7 +8,6 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <sstream>
 #include <string>
 #include <utility>
 
@@ -19,24 +18,21 @@ constexpr Color Background = { 245.0F / 255, 250.0F / 255, 245.0F / 255 };
 constexpr std::array<const char*, static_cast<std::size_t>(Cat::Art::Count)> ArtFiles = {{
     "platform.png", "platform2.png", "platform3.png", "grib.png", "flower2.png", "flower1.png",
     "head1.png", "head2.png", "head3.png", "head4.png", "head5.png", "feet.png",
-    "label1.png", "label2.png", "label3.png", "font.png"
+    "label1.png", "label2.png", "label3.png"
 }};
 constexpr std::array<Cat::Art, 5> HeadFrames = {{ Cat::Art::Head5, Cat::Art::Head4,
     Cat::Art::Head1, Cat::Art::Head2, Cat::Art::Head3 }};
-constexpr const char* Credit = "by devgrib ";
 
 class CatApplication final : public Application
 {
     Renderer2D& renderer = getRenderer();
     ResourceFiles files;
     Cat::Game game;
-    std::array<Cat::Leaf, 50> visibleLeaves;
     std::array<Texture, static_cast<std::size_t>(Cat::Art::Count)> textures;
     std::array<Texture, 12> feet;
-    std::array<Texture, 256> glyphs;
     RenderError renderError = RenderError::None;
-    double milliseconds = 0;
-    int lastMilliseconds = 0;
+    bool verticalSync = false;
+    bool syncUnavailable = false;
 
     const Texture& texture(Cat::Art art) const
     {
@@ -45,7 +41,7 @@ class CatApplication final : public Application
 
     bool failure(const std::string& message, Platform::Error& error)
     {
-        error = { "cat_rendering", message, {} };
+        error = { "cat", message, {} };
         return false;
     }
 
@@ -68,7 +64,7 @@ class CatApplication final : public Application
         ResourceError resourceError;
         for (std::size_t index = 0; index < textures.size(); ++index) {
             Image image;
-            if (!files.loadPng(std::string("cat_rendering/") + ArtFiles[index], image, resourceError)) {
+            if (!files.loadPng(std::string("cat/") + ArtFiles[index], image, resourceError)) {
                 return failure(resourceError.message, error);
             }
             // SDL_DisplayFormat + чёрный ColorKey в оригинале игнорируют альфа-канал PNG.
@@ -81,23 +77,6 @@ class CatApplication final : public Application
                     if (!crop(image, frame % 2 * 180, frame / 2 * 53, 180, 53,
                             feet[static_cast<std::size_t>(frame)], resourceError)) {
                         return failure(resourceError.message, error);
-                    }
-                }
-            } else if (index == static_cast<std::size_t>(Cat::Art::Font)) {
-                std::string description;
-                if (!files.readText("cat_rendering/font.fnt", description, resourceError)) {
-                    return failure(resourceError.message, error);
-                }
-                std::istringstream lines(description);
-                std::string line;
-                while (std::getline(lines, line)) {
-                    std::istringstream fields(line);
-                    int code = 0, x = 0, y = 0, width = 0, height = 0;
-                    if (fields >> code >> x >> y >> width >> height && code >= 0 && code < 256
-                        && std::string(Credit).find(static_cast<char>(code)) != std::string::npos) {
-                        if (!crop(image, x, y, width, height, glyphs[static_cast<std::size_t>(code)], resourceError)) {
-                            return failure(resourceError.message, error);
-                        }
                     }
                 }
             } else {
@@ -124,30 +103,31 @@ class CatApplication final : public Application
         ResourceError resourceError;
         if (!files.initialize(resourceError)) { return failure(resourceError.message, error); }
         if (!renderer.initialize(renderError)) { return failure("Cannot initialize renderer.", error); }
+        Platform::Error syncError;
+        syncUnavailable = !setVSync(false, syncError);
         return loadArt(error);
     }
 
     bool onInput(const FrameInfo&, Platform::Error&) override
     {
         if (Platform::isKeyPressed(Key::Escape)) { requestExit(); }
+        if (Platform::isKeyPressed(Key::V)) {
+            const bool enabled = !verticalSync;
+            Platform::Error syncError;
+            syncUnavailable = !setVSync(enabled, syncError);
+            if (!syncUnavailable) { verticalSync = enabled; }
+        }
         if (Platform::isKeyPressed(Key::R)) {
             game = Cat::Game{};
-            visibleLeaves = {};
-            milliseconds = 0;
-            lastMilliseconds = 0;
         }
         return true;
     }
 
     bool onUpdate(const FrameInfo& frame, Platform::Error&) override
     {
-        milliseconds += static_cast<double>(frame.deltaTime) * 1000;
-        const int current = static_cast<int>(milliseconds);
-        visibleLeaves = game.leaves;
         const Cat::Controls controls = { Platform::isKeyDown(Key::ArrowRight), Platform::isKeyDown(Key::ArrowLeft),
             Platform::isKeyDown(Key::ArrowUp), Platform::isKeyDown(Key::ArrowDown) };
-        game.update(current - lastMilliseconds, controls);
-        lastMilliseconds = current;
+        game.update(frame.deltaTime, controls);
         return true;
     }
 
@@ -159,22 +139,20 @@ class CatApplication final : public Application
             static_cast<float>(image.width()), static_cast<float>(image.height()) }, {}, renderError, sampling);
     }
 
-    bool drawCredit()
+    bool onPrepareFrame(const FrameInfo& frame, Platform::Error& error) override
     {
-        int x = 825;
-        for (const char* character = Credit; *character; ++character) {
-            const auto& glyph = glyphs[static_cast<unsigned char>(*character)];
-            if (!picture(glyph, x, 670)) { return false; }
-            x += glyph.width();
-        }
-        return true;
+        const auto fps = static_cast<int>(std::round(frame.framesPerSecond));
+        return Platform::setWindowTitle("CAT | " + std::to_string(fps) + " FPS | "
+            + (verticalSync ? "VSync ON" : "Limit 100 FPS")
+            + (syncUnavailable ? " / VSync control unavailable" : (verticalSync ? "" : " / VSync OFF"))
+            + " | V: VSync / R: restart", error);
     }
 
     bool drawLeaves()
     {
         TextureSampling sampling;
         sampling.filter = TextureFilter::Nearest;
-        for (const auto& leaf : visibleLeaves) {
+        for (const auto& leaf : game.leaves) {
             if (!leaf.active || leaf.x < game.cameraX - 25 || leaf.x > game.cameraX + 960
                 || leaf.y < -25 || leaf.y > 725) { continue; }
             const auto& image = texture(leaf.art);
@@ -182,21 +160,11 @@ class CatApplication final : public Application
             const float height = static_cast<float>(image.height());
             const int x = static_cast<int>(leaf.x - game.cameraX);
             const int y = static_cast<int>(leaf.y);
-            if (leaf.angle == 0) {
-                if (!picture(image, x, y)) { return false; }
-                continue;
-            }
-            // Центр и шаг 16.16 соответствуют nearest-повороту исходной SDL-игры.
-            constexpr double FixedPointScale = 65536;
-            constexpr double DegreesToRadians = 3.14159265358979323846 / 180;
-            const double radians = leaf.angle * DegreesToRadians;
-            const double sine = static_cast<int>(std::sin(radians) * FixedPointScale) / FixedPointScale;
-            const double cosine = static_cast<int>(std::cos(radians) * FixedPointScale) / FixedPointScale;
-            const double determinant = sine * sine + cosine * cosine;
             DrawOptions options;
-            options.transform = { static_cast<float>(cosine / determinant), static_cast<float>(sine / determinant),
-                static_cast<float>(x) + 1.5F, static_cast<float>(-sine / determinant),
-                static_cast<float>(cosine / determinant), static_cast<float>(y) + 1.5F };
+            Transform2 transform;
+            transform.position = { static_cast<float>(x) + 17.5F, static_cast<float>(y) + 17.5F };
+            transform.rotation = -degreesToRadians(static_cast<float>(leaf.angle));
+            options.transform = transform.toAffine();
             if (!renderer.drawTexture(image, { -17.5F, -17.5F, width, height },
                     options, renderError, sampling)) { return false; }
         }
@@ -242,7 +210,7 @@ class CatApplication final : public Application
             return failure("Cannot calculate game viewport.", error);
         }
         if (!renderer.beginFrame(frame.window.width, frame.window.height, Background, renderError)
-            || !renderer.beginUi(ui, renderError) || !drawCredit() || !drawLeaves()
+            || !renderer.beginUi(ui, renderError) || !drawLeaves()
             || !drawPlatforms() || !drawCat() || !renderer.endFrame(renderError)) {
             return failure("Rendering failed (RenderError=" + std::to_string(static_cast<int>(renderError)) + ").", error);
         }
@@ -259,8 +227,9 @@ int Engine::applicationMain()
     options.window.height = Cat::CanvasHeight;
     options.window.minimumWidth = Cat::CanvasWidth;
     options.window.minimumHeight = Cat::CanvasHeight;
-    options.window.title = "CAT v0.01";
+    options.window.title = "CAT";
     options.maxDeltaTime = 0.2F;
+    options.targetFramesPerSecond = 100;
     std::vector<Platform::Error> errors;
     if (!application.run(options, errors)) {
         for (const auto& error : errors) { Platform::reportError(error); }
