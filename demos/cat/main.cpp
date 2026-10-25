@@ -23,6 +23,12 @@ constexpr std::array<const char*, static_cast<std::size_t>(Cat::Art::Count)> Art
 constexpr std::array<Cat::Art, 5> HeadFrames = {{ Cat::Art::Head5, Cat::Art::Head4,
     Cat::Art::Head1, Cat::Art::Head2, Cat::Art::Head3 }};
 
+float viewScale(int width, int height)
+{
+    return std::min(static_cast<float>(width) / Cat::CanvasWidth,
+        static_cast<float>(height) / Cat::CanvasHeight);
+}
+
 class CatApplication final : public Application
 {
     Renderer2D& renderer = getRenderer();
@@ -125,18 +131,21 @@ class CatApplication final : public Application
 
     bool onUpdate(const FrameInfo& frame, Platform::Error&) override
     {
+        if (frame.window.width > 0 && frame.window.height > 0) {
+            game.viewWidth = static_cast<double>(frame.window.width) / viewScale(frame.window.width, frame.window.height);
+        }
         const Cat::Controls controls = { Platform::isKeyDown(Key::ArrowRight), Platform::isKeyDown(Key::ArrowLeft),
             Platform::isKeyDown(Key::ArrowUp), Platform::isKeyDown(Key::ArrowDown) };
         game.update(frame.deltaTime, controls);
         return true;
     }
 
-    bool picture(const Texture& image, double x, double y, double scale = 1)
+    bool picture(const Texture& image, double x, double y, double scale = 1, const DrawOptions& options = {})
     {
         TextureSampling sampling;
         sampling.filter = TextureFilter::Linear;
         return renderer.drawTexture(image, { static_cast<float>(x), static_cast<float>(y),
-            static_cast<float>(image.width() * scale), static_cast<float>(image.height() * scale) }, {}, renderError, sampling);
+            static_cast<float>(image.width() * scale), static_cast<float>(image.height() * scale) }, options, renderError, sampling);
     }
 
     bool onPrepareFrame(const FrameInfo& frame, Platform::Error& error) override
@@ -153,7 +162,7 @@ class CatApplication final : public Application
         TextureSampling sampling;
         sampling.filter = TextureFilter::Linear;
         for (const auto& leaf : game.leaves) {
-            if (!leaf.active || leaf.x < game.cameraX - 25 || leaf.x > game.cameraX + 960
+            if (!leaf.active || leaf.x < game.cameraX - 25 || leaf.x > game.cameraX + game.viewWidth + 25
                 || leaf.y < -25 || leaf.y > 725) { continue; }
             const auto& image = texture(leaf.art);
             const float width = static_cast<float>(image.width());
@@ -177,7 +186,7 @@ class CatApplication final : public Application
             if (!slot) { continue; }
             const auto& platform = *slot;
             const double screenX = platform.x - game.cameraX;
-            if (platform.art != Cat::Art::MovingPlatform && (screenX <= -250 || screenX >= 940)) { continue; }
+            if (screenX <= -250 || screenX >= game.viewWidth + 5) { continue; }
             const int x = static_cast<int>(screenX);
             const int y = static_cast<int>(platform.y);
             if (!picture(texture(platform.art), x, y)) { return false; }
@@ -195,22 +204,27 @@ class CatApplication final : public Application
         constexpr double FeetSpriteY = 120 * Cat::CatScale;
         const auto art = HeadFrames[static_cast<std::size_t>(game.player.head - 1)];
         const double y = game.player.y + PlatformInset;
-        return picture(texture(art), Cat::CatScreenX, y, Cat::CatScale)
-            && picture(feet[static_cast<std::size_t>(game.player.feet - 1)], Cat::CatScreenX + FeetSpriteX,
-                y + FeetSpriteY, Cat::CatScale);
+        Transform2 transform;
+        transform.origin = { static_cast<float>(Cat::SupportPointOffset), static_cast<float>(Cat::FeetOffset) };
+        transform.position = { static_cast<float>(Cat::CatScreenX + Cat::SupportPointOffset),
+            static_cast<float>(y + Cat::FeetOffset) };
+        transform.rotation = degreesToRadians(static_cast<float>(game.player.tilt));
+        DrawOptions options;
+        options.transform = transform.toAffine();
+        return picture(texture(art), 0, 0, Cat::CatScale, options)
+            && picture(feet[static_cast<std::size_t>(game.player.feet - 1)], FeetSpriteX,
+                FeetSpriteY, Cat::CatScale, options);
     }
 
     bool onRender(const FrameInfo& frame, Platform::Error& error) override
     {
         if (frame.window.width <= 0 || frame.window.height <= 0) { return true; }
-        const float scale = std::min(static_cast<float>(frame.window.width) / Cat::CanvasWidth,
-            static_cast<float>(frame.window.height) / Cat::CanvasHeight);
-        const int width = static_cast<int>(Cat::CanvasWidth * scale);
+        const float scale = viewScale(frame.window.width, frame.window.height);
         const int height = static_cast<int>(Cat::CanvasHeight * scale);
         UiView ui;
         UiError uiError;
-        if (!UiCanvas{ scale }.createView({ (frame.window.width - width) / 2,
-                (frame.window.height - height) / 2, width, height }, ui, uiError)) {
+        if (!UiCanvas{ scale }.createView({ 0,
+                (frame.window.height - height) / 2, frame.window.width, height }, ui, uiError)) {
             return failure("Cannot calculate game viewport.", error);
         }
         if (!renderer.beginFrame(frame.window.width, frame.window.height, Background, renderError)

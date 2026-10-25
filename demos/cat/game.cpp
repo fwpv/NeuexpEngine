@@ -20,6 +20,8 @@ constexpr double TimeTolerance = 0.000000001;
 constexpr double DropSpeed = 200;
 constexpr double JumpBufferDuration = 0.1;
 constexpr double AnimationInterval = 0.03;
+constexpr double EdgeFallTilt = 12;
+constexpr double TiltResponse = 10;
 constexpr int GenerationAhead = 1024;
 
 int artHeight(Art art)
@@ -140,7 +142,7 @@ bool Game::overlaps(int x, int y) const
 // Ограничения на расстояние проверяются до добавления платформы.
 void Game::generateNormal(int type)
 {
-    if (lastX >= player.x + GenerationAhead || platformCount() == PlatformLimit) { return; }
+    if (lastX >= generationRight() || platformCount() == PlatformLimit) { return; }
     const int gap = static_cast<int>((1 - std::pow(25.0, -player.x / 100000)) * 275 + 175);
     const int span = player.x > 100000 ? 460 : static_cast<int>(gap + 40 - 30 * player.x / 100000);
     do {
@@ -167,12 +169,12 @@ void Game::generateNormal(int type)
         }
         lastX = x;
         lastY = y;
-    } while (lastX < player.x + GenerationAhead && platformCount() < PlatformLimit);
+    } while (lastX < generationRight() && platformCount() < PlatformLimit);
 }
 
 bool Game::generateLift()
 {
-    if (lastX >= player.x + GenerationAhead || platformCount() >= PlatformLimit - 2) { return false; }
+    if (lastX >= generationRight() || platformCount() >= PlatformLimit - 2) { return false; }
     const int bottom = std::min(lastY + 400, 650);
     int x = lastX + random() % 50 + 250;
     addPlatform(x, bottom, Art::Platform);
@@ -189,7 +191,7 @@ bool Game::generateLift()
 bool Game::generateZigzag()
 {
     const double difficulty = std::min(1.0, 1 - std::pow(5.0, -player.x / 100000));
-    if (lastX >= player.x + GenerationAhead || platformCount() > PlatformLimit - 6) { return false; }
+    if (lastX >= generationRight() || platformCount() > PlatformLimit - 6) { return false; }
     int middleX = 0;
     for (int index = 0; index < 4; ++index) {
         int x = static_cast<int>(lastX + 320 + 200 * difficulty);
@@ -229,6 +231,11 @@ void Game::generate()
     }
 }
 
+double Game::generationRight() const
+{
+    return player.x + std::max(static_cast<double>(GenerationAhead), viewWidth - CatScreenX + PlatformWidth);
+}
+
 void Game::generatePlatforms()
 {
     for (std::size_t index = 0; index < platforms.size(); ++index) {
@@ -238,7 +245,7 @@ void Game::generatePlatforms()
             if (ignoredPlatform == index) { ignoredPlatform.reset(); }
         }
     }
-    if (lastX < player.x + GenerationAhead) { generate(); }
+    if (lastX < generationRight()) { generate(); }
 }
 
 void Game::updateLeaves(double deltaTime)
@@ -289,6 +296,8 @@ void Game::respawn()
     ignoredPlatform.reset();
     player.velocityX = 0;
     player.velocityY = 0;
+    player.tilt = 0;
+    fallDirection = 0;
     player.grounded = nearest.has_value();
     jumpBufferTime = 0;
     if (nearest) {
@@ -320,6 +329,9 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
             duration = std::min(duration, distance / platform.speed);
         }
         if (support && (!platforms[*support] || !supportsPlayer(*platforms[*support], player.x))) {
+            if (platforms[*support]) {
+                fallDirection = player.x + SupportPointOffset > platforms[*support]->x + PlatformWidth / 2.0 ? 1 : -1;
+            }
             support.reset();
         }
         player.grounded = support.has_value();
@@ -332,11 +344,15 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
             support.reset();
             player.grounded = false;
             jumpBufferTime = 0;
+            fallDirection = 0;
+            player.tilt = 0;
         } else if (jumpBufferTime > 0 && support) {
             support.reset();
             player.grounded = false;
             player.velocityY = JumpSpeed;
             jumpBufferTime = 0;
+            fallDirection = 0;
+            player.tilt = 0;
         }
         dropRequested = false;
 
@@ -415,6 +431,8 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         if (!support) {
             player.y += player.velocityY * duration + Gravity * duration * duration / 2;
             player.velocityY += Gravity * duration;
+            const double targetTilt = fallDirection * EdgeFallTilt;
+            player.tilt = targetTilt + (player.tilt - targetTilt) * std::exp(-TiltResponse * duration);
         }
         for (auto& slot : platforms) {
             if (!slot || slot->art != Art::MovingPlatform || slot->bottom <= slot->top) { continue; }
@@ -423,17 +441,22 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         if (support) {
             player.y = platforms[*support]->y - FeetOffset;
             player.velocityY = 0;
+            player.tilt = 0;
+            fallDirection = 0;
         }
         if (landing) {
             support = landing;
             player.y = platforms[*landing]->y - FeetOffset;
             player.velocityY = 0;
+            player.tilt = 0;
+            fallDirection = 0;
         }
         if (leavingEdge) {
             const auto& platform = *platforms[*support];
             player.x = edgeX;
             player.velocityY = platform.art == Art::MovingPlatform
                 ? (platform.movingDown ? platform.speed : -platform.speed) : 0;
+            fallDirection = edgeX + SupportPointOffset > platform.x + PlatformWidth / 2.0 ? 1 : -1;
             support.reset();
         }
         player.grounded = support.has_value();
