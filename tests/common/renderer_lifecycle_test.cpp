@@ -56,6 +56,7 @@ public:
     int stops = 0;
     bool stopHadContext = false;
     bool stopHadRenderer = false;
+    Texture texture;
 
     bool rendererReady()
     {
@@ -79,6 +80,8 @@ private:
         draw.color = { 1, 0, 0, 0.5F };
         require(renderer.drawRectangle({ -40, -40, 80, 80 }, ShapeFill::Filled, draw, error),
             "Could not queue lifecycle geometry.");
+        require(renderer.drawTexture(texture, { -20, -20, 40, 40 }, {}, error),
+            "Could not queue lifecycle texture.");
     }
 
     bool onStart(Platform::Error& error) override
@@ -109,6 +112,9 @@ private:
         require(getRenderer().initialize(renderError), "Renderer initialization failed.");
         require(!getRenderer().initialize(renderError) && renderError == RenderError::InvalidState,
             "Repeated renderer initialization was accepted.");
+        ResourceError resourceError;
+        require(getRenderer().createTexture({ 1, 1, { 255, 0, 0, 255 } }, texture, resourceError, true),
+            "Could not create lifecycle texture.");
         if (failure == Failure::Start || failure == Failure::StartException) {
             queueFrame();
             if (failure == Failure::StartException) {
@@ -178,6 +184,8 @@ int main()
             require(app.stops == 1 && app.stopHadContext, "Cleanup did not run before context destruction.");
             require(app.stopHadRenderer == (failure != Failure::Initialize), "Renderer lifetime ended before onStop.");
             require(!app.rendererReady() && app.rejectedAfterStop(), "Application left a live renderer after shutdown.");
+            require(!app.texture.isValid() && app.texture.image() == nullptr,
+                "Application retained a GPU texture or CPU image after shutdown.");
             require(!glGetString(GL_VERSION), "Application left a current context.");
         }
         // После очистки приложения допустим новый контекст и повторное использование рендерера.
