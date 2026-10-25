@@ -18,11 +18,18 @@ constexpr double MaximumWalkSpeed = 600;
 constexpr double ContactTolerance = 0.000001;
 constexpr double TimeTolerance = 0.000000001;
 constexpr double DropSpeed = 200;
+constexpr double RespawnFallSpeed = 500;
 constexpr double JumpBufferDuration = 0.1;
 constexpr double AnimationInterval = 0.03;
 constexpr double EdgeSlideSpeed = 80;
 constexpr double CameraReturnRate = 10;
 constexpr int GenerationAhead = 1024;
+
+double platformVelocityY(const Platform& platform)
+{
+    return platform.art == Art::MovingPlatform && platform.bottom > platform.top
+        ? (platform.movingDown ? platform.speed : -platform.speed) : 0;
+}
 
 int artHeight(Art art)
 {
@@ -280,38 +287,20 @@ bool Game::supportsPlayer(const Platform& platform, double playerX) const
 
 void Game::respawn()
 {
-    std::optional<std::size_t> nearest;
-    double nearestDistance = 0;
-    const double feetCenter = player.x + SupportPointOffset;
-    for (std::size_t index = 0; index < platforms.size(); ++index) {
-        if (!platforms[index]) { continue; }
-        const double distance = std::abs(platforms[index]->x + PlatformWidth / 2.0 - feetCenter);
-        if (!nearest || distance < nearestDistance) {
-            nearest = index;
-            nearestDistance = distance;
-        }
-    }
-    support = nearest;
+    support.reset();
     ignoredPlatform.reset();
-    player.velocityX = 0;
-    player.velocityY = 0;
+    player.y = -FeetOffset;
+    player.velocityY = RespawnFallSpeed;
     fallDirection = 0;
-    cameraOffsetX = 0;
-    player.grounded = nearest.has_value();
+    player.grounded = false;
     jumpBufferTime = 0;
-    if (nearest) {
-        const auto& platform = *platforms[*nearest];
-        player.x = platform.x + PlatformWidth / 2.0 - SupportPointOffset;
-        player.y = platform.y - FeetOffset;
-    } else {
-        player.y = 100;
-    }
 }
 
 void Game::updatePlayer(double deltaTime, const Controls& controls)
 {
     double remaining = deltaTime;
     while (remaining > TimeTolerance) {
+        if (player.y >= CanvasHeight) { respawn(); }
         double duration = remaining;
         for (auto& slot : platforms) {
             if (!slot || slot->art != Art::MovingPlatform || slot->speed <= 0) { continue; }
@@ -337,17 +326,16 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         if (dropRequested && support) {
             ignoredPlatform = support;
             const auto& platform = *platforms[*support];
-            const double platformSpeed = platform.art == Art::MovingPlatform
-                ? (platform.movingDown ? platform.speed : -platform.speed) : 0;
+            const double platformSpeed = platformVelocityY(platform);
             player.velocityY = std::max(DropSpeed, platformSpeed + DropSpeed);
             support.reset();
             player.grounded = false;
             jumpBufferTime = 0;
             fallDirection = 0;
         } else if (jumpBufferTime > 0 && support) {
+            player.velocityY = JumpSpeed + platformVelocityY(*platforms[*support]);
             support.reset();
             player.grounded = false;
-            player.velocityY = JumpSpeed;
             jumpBufferTime = 0;
             fallDirection = 0;
         }
@@ -397,6 +385,7 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         }
 
         std::optional<std::size_t> landing;
+        bool returningToTop = false;
         const double slideSpeed = support ? 0 : fallDirection * EdgeSlideSpeed;
         const double horizontalSpeed = player.velocityX + slideSpeed;
         if (!support) {
@@ -406,8 +395,7 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
                 if (!slot || ignoredPlatform == index) { continue; }
                 const double gap = feet - slot->y;
                 if (gap > ContactTolerance) { continue; }
-                const double platformSpeed = slot->art == Art::MovingPlatform && slot->bottom > slot->top
-                    ? (slot->movingDown ? slot->speed : -slot->speed) : 0;
+                const double platformSpeed = platformVelocityY(*slot);
                 const double relativeSpeed = player.velocityY - platformSpeed;
                 const double root = std::sqrt(std::max(0.0, relativeSpeed * relativeSpeed - 2 * Gravity * gap));
                 const double contact = relativeSpeed >= 0 && root + relativeSpeed > 0
@@ -419,9 +407,18 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
                     landing = index;
                 }
             }
+            const double distanceToBottom = CanvasHeight - player.y;
+            const double root = std::sqrt(player.velocityY * player.velocityY + 2 * Gravity * distanceToBottom);
+            const double exitTime = player.velocityY >= 0
+                ? 2 * distanceToBottom / (root + player.velocityY) : (root - player.velocityY) / Gravity;
+            if (exitTime <= duration && (!landing || exitTime < duration - TimeTolerance)) {
+                duration = exitTime;
+                landing.reset();
+                returningToTop = true;
+            }
         }
 
-        // dT делится только в моменты контакта, разворота платформы и изменения режима движения.
+        // dT делится по событиям: контакт, разворот платформы, смена режима движения и выход за экран.
         player.x += horizontalSpeed * duration + accelerationX * duration * duration / 2;
         // Камера не компенсирует боковое сползание; после него плавно возвращает кота к опорной позиции экрана.
         if (fallDirection != 0) {
@@ -455,13 +452,13 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         if (leavingEdge) {
             const auto& platform = *platforms[*support];
             player.x = edgeX;
-            player.velocityY = platform.art == Art::MovingPlatform
-                ? (platform.movingDown ? platform.speed : -platform.speed) : 0;
+            player.velocityY = platformVelocityY(platform);
             fallDirection = edgeX + SupportPointOffset > platform.x + PlatformWidth / 2.0 ? 1 : -1;
             // Покинутая платформа не захватывает кота повторно в момент пересечения края.
             ignoredPlatform = support;
             support.reset();
         }
+        if (returningToTop) { respawn(); }
         player.grounded = support.has_value();
         remaining -= duration;
         jumpBufferTime = std::max(0.0, jumpBufferTime - duration);
@@ -470,7 +467,6 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         || player.y + FeetOffset > platforms[*ignoredPlatform]->y + PlatformHeight)) {
         ignoredPlatform.reset();
     }
-    if (player.y > CanvasHeight + FeetOffset) { respawn(); }
 }
 
 void Game::updateAnimation(const Controls& controls)
