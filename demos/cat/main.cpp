@@ -134,7 +134,7 @@ class CatApplication final : public Application
     bool picture(const Texture& image, double x, double y, double scale = 1)
     {
         TextureSampling sampling;
-        sampling.filter = TextureFilter::Nearest;
+        sampling.filter = TextureFilter::Linear;
         return renderer.drawTexture(image, { static_cast<float>(x), static_cast<float>(y),
             static_cast<float>(image.width() * scale), static_cast<float>(image.height() * scale) }, {}, renderError, sampling);
     }
@@ -151,7 +151,7 @@ class CatApplication final : public Application
     bool drawLeaves()
     {
         TextureSampling sampling;
-        sampling.filter = TextureFilter::Nearest;
+        sampling.filter = TextureFilter::Linear;
         for (const auto& leaf : game.leaves) {
             if (!leaf.active || leaf.x < game.cameraX - 25 || leaf.x > game.cameraX + 960
                 || leaf.y < -25 || leaf.y > 725) { continue; }

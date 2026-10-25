@@ -10,7 +10,7 @@ namespace Cat
 {
 constexpr int CanvasWidth = 935;
 constexpr int CanvasHeight = 700;
-constexpr double CatScale = 0.5;
+constexpr double CatScale = 0.75;
 constexpr double SupportPointOffset = 135 * CatScale;
 constexpr double CatScreenX = 450 - SupportPointOffset;
 constexpr double FeetOffset = 165 * CatScale;
