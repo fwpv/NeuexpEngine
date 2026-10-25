@@ -554,6 +554,8 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         }
         if (landing) {
             support = landing;
+            // Новая опора завершает пропуск ранее покинутых платформ.
+            ignoredPlatforms.fill(false);
             player.y = platforms[*landing]->y - FeetOffset;
             player.velocityY = 0;
             fallDirection = 0;
