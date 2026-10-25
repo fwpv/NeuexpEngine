@@ -68,8 +68,6 @@ struct Player
     // Скорости в пикселях в секунду; положительная вертикальная скорость направлена вниз.
     double velocityX = 0;
     double velocityY = 0;
-    // Наклон в градусах; положительный угол направлен вправо.
-    double tilt = 0;
     bool grounded = false;
     int feet = 1;
     int head = 3;
@@ -103,6 +101,7 @@ private:
     std::optional<std::size_t> support;
     std::optional<std::size_t> ignoredPlatform;
     int fallDirection = 0;
+    double cameraOffsetX = 0;
     double feetTime = 0;
     double headTime = 0;
 

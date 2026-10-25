@@ -20,8 +20,8 @@ constexpr double TimeTolerance = 0.000000001;
 constexpr double DropSpeed = 200;
 constexpr double JumpBufferDuration = 0.1;
 constexpr double AnimationInterval = 0.03;
-constexpr double EdgeFallTilt = 12;
-constexpr double TiltResponse = 10;
+constexpr double EdgeSlideSpeed = 80;
+constexpr double CameraReturnRate = 10;
 constexpr int GenerationAhead = 1024;
 
 int artHeight(Art art)
@@ -296,8 +296,8 @@ void Game::respawn()
     ignoredPlatform.reset();
     player.velocityX = 0;
     player.velocityY = 0;
-    player.tilt = 0;
     fallDirection = 0;
+    cameraOffsetX = 0;
     player.grounded = nearest.has_value();
     jumpBufferTime = 0;
     if (nearest) {
@@ -345,14 +345,12 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
             player.grounded = false;
             jumpBufferTime = 0;
             fallDirection = 0;
-            player.tilt = 0;
         } else if (jumpBufferTime > 0 && support) {
             support.reset();
             player.grounded = false;
             player.velocityY = JumpSpeed;
             jumpBufferTime = 0;
             fallDirection = 0;
-            player.tilt = 0;
         }
         dropRequested = false;
 
@@ -400,6 +398,8 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         }
 
         std::optional<std::size_t> landing;
+        const double slideSpeed = support ? 0 : fallDirection * EdgeSlideSpeed;
+        const double horizontalSpeed = player.velocityX + slideSpeed;
         if (!support) {
             const double feet = player.y + FeetOffset;
             for (std::size_t index = 0; index < platforms.size(); ++index) {
@@ -414,7 +414,7 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
                 const double contact = relativeSpeed >= 0 && root + relativeSpeed > 0
                     ? -2 * gap / (root + relativeSpeed) : (root - relativeSpeed) / Gravity;
                 if (contact < -TimeTolerance || contact > duration + TimeTolerance) { continue; }
-                const double contactX = player.x + player.velocityX * contact + accelerationX * contact * contact / 2;
+                const double contactX = player.x + horizontalSpeed * contact + accelerationX * contact * contact / 2;
                 if (supportsPlayer(*slot, contactX) && (!landing || contact < duration - TimeTolerance)) {
                     duration = std::max(0.0, contact);
                     landing = index;
@@ -423,7 +423,13 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         }
 
         // dT делится только в моменты контакта, разворота платформы и изменения режима движения.
-        player.x += player.velocityX * duration + accelerationX * duration * duration / 2;
+        player.x += horizontalSpeed * duration + accelerationX * duration * duration / 2;
+        // Камера не компенсирует боковое сползание; после него плавно возвращает кота к опорной позиции экрана.
+        if (fallDirection != 0) {
+            cameraOffsetX += slideSpeed * duration;
+        } else {
+            cameraOffsetX *= std::exp(-CameraReturnRate * duration);
+        }
         player.velocityX += accelerationX * duration;
         if (accelerationX != 0 && std::abs(duration - targetTime) <= TimeTolerance) {
             player.velocityX = targetSpeed;
@@ -431,8 +437,6 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         if (!support) {
             player.y += player.velocityY * duration + Gravity * duration * duration / 2;
             player.velocityY += Gravity * duration;
-            const double targetTilt = fallDirection * EdgeFallTilt;
-            player.tilt = targetTilt + (player.tilt - targetTilt) * std::exp(-TiltResponse * duration);
         }
         for (auto& slot : platforms) {
             if (!slot || slot->art != Art::MovingPlatform || slot->bottom <= slot->top) { continue; }
@@ -441,14 +445,12 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         if (support) {
             player.y = platforms[*support]->y - FeetOffset;
             player.velocityY = 0;
-            player.tilt = 0;
             fallDirection = 0;
         }
         if (landing) {
             support = landing;
             player.y = platforms[*landing]->y - FeetOffset;
             player.velocityY = 0;
-            player.tilt = 0;
             fallDirection = 0;
         }
         if (leavingEdge) {
@@ -497,6 +499,6 @@ void Game::update(double deltaTime, const Controls& controls)
     time += deltaTime;
     updateLeaves(deltaTime);
     updateAnimation(controls);
-    cameraX = player.x - CatScreenX;
+    cameraX = player.x - CatScreenX - cameraOffsetX;
 }
 }

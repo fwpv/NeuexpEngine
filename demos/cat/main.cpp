@@ -140,12 +140,12 @@ class CatApplication final : public Application
         return true;
     }
 
-    bool picture(const Texture& image, double x, double y, double scale = 1, const DrawOptions& options = {})
+    bool picture(const Texture& image, double x, double y, double scale = 1)
     {
         TextureSampling sampling;
         sampling.filter = TextureFilter::Linear;
         return renderer.drawTexture(image, { static_cast<float>(x), static_cast<float>(y),
-            static_cast<float>(image.width() * scale), static_cast<float>(image.height() * scale) }, options, renderError, sampling);
+            static_cast<float>(image.width() * scale), static_cast<float>(image.height() * scale) }, {}, renderError, sampling);
     }
 
     bool onPrepareFrame(const FrameInfo& frame, Platform::Error& error) override
@@ -203,17 +203,11 @@ class CatApplication final : public Application
         constexpr double FeetSpriteX = 44 * Cat::CatScale;
         constexpr double FeetSpriteY = 120 * Cat::CatScale;
         const auto art = HeadFrames[static_cast<std::size_t>(game.player.head - 1)];
+        const double x = game.player.x - game.cameraX;
         const double y = game.player.y + PlatformInset;
-        Transform2 transform;
-        transform.origin = { static_cast<float>(Cat::SupportPointOffset), static_cast<float>(Cat::FeetOffset) };
-        transform.position = { static_cast<float>(Cat::CatScreenX + Cat::SupportPointOffset),
-            static_cast<float>(y + Cat::FeetOffset) };
-        transform.rotation = degreesToRadians(static_cast<float>(game.player.tilt));
-        DrawOptions options;
-        options.transform = transform.toAffine();
-        return picture(texture(art), 0, 0, Cat::CatScale, options)
-            && picture(feet[static_cast<std::size_t>(game.player.feet - 1)], FeetSpriteX,
-                FeetSpriteY, Cat::CatScale, options);
+        return picture(texture(art), x, y, Cat::CatScale)
+            && picture(feet[static_cast<std::size_t>(game.player.feet - 1)], x + FeetSpriteX,
+                y + FeetSpriteY, Cat::CatScale);
     }
 
     bool onRender(const FrameInfo& frame, Platform::Error& error) override
