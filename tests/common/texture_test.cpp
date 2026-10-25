@@ -1,6 +1,7 @@
 #include "renderer.h"
 #include "platform.h"
 #include "platform_test_diagnostics.h"
+#include "render_target.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -45,7 +46,6 @@ void check(bool success, const RenderError& error)
 void pixel(int x, int y, Color expected, int tolerance = 2)
 {
     std::array<GLubyte, 3> value{};
-    glReadBuffer(GL_BACK);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(x, WindowSize - 1 - y, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, value.data());
     const std::array<float, 3> target = { expected.red, expected.green, expected.blue };
@@ -303,8 +303,9 @@ int main(int argc, char** argv)
     try {
         require(argc == 2, "Expected texture test mode.");
         Platform::WindowOptions options;
-        options.width = WindowSize;
-        options.height = WindowSize;
+        // Оконный буфер намеренно меньше тестового FBO размером 256x256.
+        options.width = 64;
+        options.height = 64;
         options.title = "Texture checks";
         std::vector<Platform::Error> errors;
         const bool initialized = Platform::initialize(options, errors);
@@ -316,12 +317,37 @@ int main(int argc, char** argv)
         ResourceError error;
         check(files.initialize(error), error);
         const std::string mode = argv[1];
-        if (mode == "pixels") { pixels(renderer, files); }
-        else if (mode == "sampling") { sampling(renderer); }
-        else if (mode == "integration") { integration(renderer); }
-        else if (mode == "resources") { resources(renderer, files); }
-        else { throw std::runtime_error("Unknown mode."); }
-        result = 0;
+        if (mode == "resources") {
+            resources(renderer, files);
+            result = 0;
+        } else {
+            require(mode == "pixels" || mode == "sampling" || mode == "integration", "Unknown mode.");
+            RenderTest::FramebufferApi api;
+            if (!api.load()) {
+                std::cout << "Pixel checks require optional FBO support from the test driver.\n";
+                result = 77;
+            } else {
+                // Скрытое окно проверяет независимость результата от оконного буфера.
+#ifdef _WIN32
+                const HWND window = WindowFromDC(wglGetCurrentDC());
+                require(window != nullptr, "Cannot find the test window.");
+                ShowWindow(window, SW_HIDE);
+#else
+                Display* display = glXGetCurrentDisplay();
+                XUnmapWindow(display, glXGetCurrentDrawable());
+                XSync(display, False);
+#endif
+                Platform::Error windowError;
+                require(PlatformTest::checkOperation(Platform::processEvents(windowError), windowError),
+                    "Cannot process test window events.");
+                RenderTest::RenderTarget target(api, WindowSize);
+                target.initialize();
+                if (mode == "pixels") { pixels(renderer, files); }
+                else if (mode == "sampling") { sampling(renderer); }
+                else { integration(renderer); }
+                result = 0;
+            }
+        }
     } catch (const std::exception& exception) {
         std::cerr << exception.what() << '\n';
     }
