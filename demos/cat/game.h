@@ -99,7 +99,6 @@ private:
     bool dropRequested = false;
     std::optional<std::size_t> support;
     std::array<bool, PlatformLimit> ignoredPlatforms{};
-    int fallDirection = 0;
     int entryDirection = 0;
     double feetTime = 0;
     double headTime = 0;
@@ -123,9 +122,11 @@ private:
         double left = 0;
         double right = 0;
     };
+    enum class SupportQuery { Contact, Approach };
 
     std::optional<SupportInterval> supportInterval(std::size_t index, double playerX,
-        double velocityX, double after = 0, bool allowEntry = true) const;
+        double velocityX, double after = 0, bool allowEntry = true,
+        SupportQuery query = SupportQuery::Contact) const;
     std::optional<std::size_t> findSupport(double playerX, double feetY, int direction = 0,
         std::optional<std::size_t> excluded = std::nullopt) const;
     void ignoreSupports(double playerX, double feetY);
