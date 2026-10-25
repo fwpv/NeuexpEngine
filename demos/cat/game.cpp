@@ -275,8 +275,7 @@ void Game::updateLeaves(double deltaTime)
 bool Game::supportsPlayer(const Platform& platform, double playerX) const
 {
     const double point = playerX + SupportPointOffset;
-    return point > platform.x - SupportLeftMargin + ContactTolerance
-        && point < platform.x + PlatformWidth + SupportRightMargin - ContactTolerance;
+    return point >= platform.x && point <= platform.x + PlatformWidth;
 }
 
 void Game::respawn()
@@ -377,8 +376,8 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
             const auto& platform = *platforms[*support];
             const double nextX = player.x + player.velocityX * duration + accelerationX * duration * duration / 2;
             if (!supportsPlayer(platform, nextX)) {
-                edgeX = nextX > player.x ? platform.x + PlatformWidth + SupportRightMargin - SupportPointOffset
-                    : platform.x - SupportLeftMargin - SupportPointOffset;
+                edgeX = nextX > player.x ? platform.x + PlatformWidth - SupportPointOffset
+                    : platform.x - SupportPointOffset;
                 const double distance = edgeX - player.x;
                 double edgeTime = 0;
                 if (accelerationX == 0) {
@@ -459,6 +458,8 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
             player.velocityY = platform.art == Art::MovingPlatform
                 ? (platform.movingDown ? platform.speed : -platform.speed) : 0;
             fallDirection = edgeX + SupportPointOffset > platform.x + PlatformWidth / 2.0 ? 1 : -1;
+            // Покинутая платформа не захватывает кота повторно в момент пересечения края.
+            ignoredPlatform = support;
             support.reset();
         }
         player.grounded = support.has_value();
