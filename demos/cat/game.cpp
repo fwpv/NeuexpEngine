@@ -282,7 +282,7 @@ void Game::updateLeaves(double deltaTime)
 bool Game::supportsPlayer(const Platform& platform, double playerX) const
 {
     const double point = playerX + SupportPointOffset;
-    return point >= platform.x && point <= platform.x + PlatformWidth;
+    return point >= platform.x - SupportMargin && point <= platform.x + PlatformWidth + SupportMargin;
 }
 
 void Game::respawn()
@@ -364,8 +364,8 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
             const auto& platform = *platforms[*support];
             const double nextX = player.x + player.velocityX * duration + accelerationX * duration * duration / 2;
             if (!supportsPlayer(platform, nextX)) {
-                edgeX = nextX > player.x ? platform.x + PlatformWidth - SupportPointOffset
-                    : platform.x - SupportPointOffset;
+                edgeX = nextX > player.x ? platform.x + PlatformWidth + SupportMargin - SupportPointOffset
+                    : platform.x - SupportMargin - SupportPointOffset;
                 const double distance = edgeX - player.x;
                 double edgeTime = 0;
                 if (accelerationX == 0) {

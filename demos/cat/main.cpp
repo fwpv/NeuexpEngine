@@ -15,6 +15,7 @@ namespace
 {
 using namespace Engine;
 constexpr Color Background = { 245.0F / 255, 250.0F / 255, 245.0F / 255 };
+constexpr const char* WindowTitle = "Cat-AI-rework";
 constexpr std::array<const char*, static_cast<std::size_t>(Cat::Art::Count)> ArtFiles = {{
     "platform.png", "platform2.png", "platform3.png", "grib.png", "flower2.png", "flower1.png",
     "head1.png", "head2.png", "head3.png", "head4.png", "head5.png", "feet.png",
@@ -38,7 +39,6 @@ class CatApplication final : public Application
     std::array<Texture, 12> feet;
     RenderError renderError = RenderError::None;
     bool verticalSync = false;
-    bool syncUnavailable = false;
 
     const Texture& texture(Cat::Art art) const
     {
@@ -110,7 +110,7 @@ class CatApplication final : public Application
         if (!files.initialize(resourceError)) { return failure(resourceError.message, error); }
         if (!renderer.initialize(renderError)) { return failure("Cannot initialize renderer.", error); }
         Platform::Error syncError;
-        syncUnavailable = !setVSync(false, syncError);
+        verticalSync = setVSync(true, syncError);
         return loadArt(error);
     }
 
@@ -120,11 +120,7 @@ class CatApplication final : public Application
         if (Platform::isKeyPressed(Key::V)) {
             const bool enabled = !verticalSync;
             Platform::Error syncError;
-            syncUnavailable = !setVSync(enabled, syncError);
-            if (!syncUnavailable) { verticalSync = enabled; }
-        }
-        if (Platform::isKeyPressed(Key::R)) {
-            game = Cat::Game{};
+            if (setVSync(enabled, syncError)) { verticalSync = enabled; }
         }
         return true;
     }
@@ -151,10 +147,7 @@ class CatApplication final : public Application
     bool onPrepareFrame(const FrameInfo& frame, Platform::Error& error) override
     {
         const auto fps = static_cast<int>(std::round(frame.framesPerSecond));
-        return Platform::setWindowTitle("CAT | " + std::to_string(fps) + " FPS | "
-            + (verticalSync ? "VSync ON" : "Limit 100 FPS")
-            + (syncUnavailable ? " / VSync control unavailable" : (verticalSync ? "" : " / VSync OFF"))
-            + " | V: VSync / R: restart", error);
+        return Platform::setWindowTitle(std::string(WindowTitle) + " | " + std::to_string(fps) + " FPS", error);
     }
 
     bool drawLeaves()
@@ -199,12 +192,13 @@ class CatApplication final : public Application
 
     bool drawCat()
     {
-        constexpr double PlatformInset = 3;
+        constexpr double SpriteOffsetY = 3;
+        constexpr double StandingInset = 2;
         constexpr double FeetSpriteX = 44 * Cat::CatScale;
         constexpr double FeetSpriteY = 120 * Cat::CatScale;
         const auto art = HeadFrames[static_cast<std::size_t>(game.player.head - 1)];
         const double x = game.player.x - game.cameraX;
-        const double y = game.player.y + PlatformInset;
+        const double y = game.player.y + SpriteOffsetY + (game.player.grounded ? StandingInset : 0);
         return picture(texture(art), x, y, Cat::CatScale)
             && picture(feet[static_cast<std::size_t>(game.player.feet - 1)], x + FeetSpriteX,
                 y + FeetSpriteY, Cat::CatScale);
@@ -239,7 +233,7 @@ int Engine::applicationMain()
     options.window.height = Cat::CanvasHeight;
     options.window.minimumWidth = Cat::CanvasWidth;
     options.window.minimumHeight = Cat::CanvasHeight;
-    options.window.title = "CAT";
+    options.window.title = WindowTitle;
     options.maxDeltaTime = 0.2F;
     options.targetFramesPerSecond = 100;
     std::vector<Platform::Error> errors;
