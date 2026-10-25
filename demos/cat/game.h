@@ -10,10 +10,12 @@ namespace Cat
 {
 constexpr int CanvasWidth = 935;
 constexpr int CanvasHeight = 700;
-constexpr double CatScreenX = 315;
-constexpr double FeetOffset = 165;
-constexpr double FeetLeft = 54;
-constexpr double FeetWidth = 154;
+constexpr double CatScale = 0.5;
+constexpr double SupportPointOffset = 135 * CatScale;
+constexpr double CatScreenX = 450 - SupportPointOffset;
+constexpr double FeetOffset = 165 * CatScale;
+constexpr double SupportLeftMargin = 10;
+constexpr double SupportRightMargin = 20;
 constexpr int PlatformWidth = 175;
 constexpr int PlatformHeight = 35;
 constexpr std::size_t PlatformLimit = 50;
@@ -114,7 +116,7 @@ private:
     void updateLeaves(double deltaTime);
     void updatePlayer(double deltaTime, const Controls& controls);
     void updateAnimation(const Controls& controls);
-    bool overlapsFeet(const Platform& platform, double playerX) const;
+    bool supportsPlayer(const Platform& platform, double playerX) const;
     void respawn();
 };
 }

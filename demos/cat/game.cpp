@@ -265,18 +265,18 @@ void Game::updateLeaves(double deltaTime)
     }
 }
 
-bool Game::overlapsFeet(const Platform& platform, double playerX) const
+bool Game::supportsPlayer(const Platform& platform, double playerX) const
 {
-    const double left = playerX + FeetLeft;
-    const double right = left + FeetWidth;
-    return right > platform.x + ContactTolerance && left < platform.x + PlatformWidth - ContactTolerance;
+    const double point = playerX + SupportPointOffset;
+    return point > platform.x - SupportLeftMargin + ContactTolerance
+        && point < platform.x + PlatformWidth + SupportRightMargin - ContactTolerance;
 }
 
 void Game::respawn()
 {
     std::optional<std::size_t> nearest;
     double nearestDistance = 0;
-    const double feetCenter = player.x + FeetLeft + FeetWidth / 2;
+    const double feetCenter = player.x + SupportPointOffset;
     for (std::size_t index = 0; index < platforms.size(); ++index) {
         if (!platforms[index]) { continue; }
         const double distance = std::abs(platforms[index]->x + PlatformWidth / 2.0 - feetCenter);
@@ -293,7 +293,7 @@ void Game::respawn()
     jumpBufferTime = 0;
     if (nearest) {
         const auto& platform = *platforms[*nearest];
-        player.x = platform.x + PlatformWidth / 2.0 - FeetLeft - FeetWidth / 2;
+        player.x = platform.x + PlatformWidth / 2.0 - SupportPointOffset;
         player.y = platform.y - FeetOffset;
     } else {
         player.y = 100;
@@ -319,7 +319,7 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
             const double distance = platform.movingDown ? platform.bottom - platform.y : platform.y - platform.top;
             duration = std::min(duration, distance / platform.speed);
         }
-        if (support && (!platforms[*support] || !overlapsFeet(*platforms[*support], player.x))) {
+        if (support && (!platforms[*support] || !supportsPlayer(*platforms[*support], player.x))) {
             support.reset();
         }
         player.grounded = support.has_value();
@@ -362,9 +362,9 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
         if (support) {
             const auto& platform = *platforms[*support];
             const double nextX = player.x + player.velocityX * duration + accelerationX * duration * duration / 2;
-            if (!overlapsFeet(platform, nextX)) {
-                edgeX = nextX > player.x ? platform.x + PlatformWidth - FeetLeft
-                    : platform.x - FeetLeft - FeetWidth;
+            if (!supportsPlayer(platform, nextX)) {
+                edgeX = nextX > player.x ? platform.x + PlatformWidth + SupportRightMargin - SupportPointOffset
+                    : platform.x - SupportLeftMargin - SupportPointOffset;
                 const double distance = edgeX - player.x;
                 double edgeTime = 0;
                 if (accelerationX == 0) {
@@ -399,7 +399,7 @@ void Game::updatePlayer(double deltaTime, const Controls& controls)
                     ? -2 * gap / (root + relativeSpeed) : (root - relativeSpeed) / Gravity;
                 if (contact < -TimeTolerance || contact > duration + TimeTolerance) { continue; }
                 const double contactX = player.x + player.velocityX * contact + accelerationX * contact * contact / 2;
-                if (overlapsFeet(*slot, contactX) && (!landing || contact < duration - TimeTolerance)) {
+                if (supportsPlayer(*slot, contactX) && (!landing || contact < duration - TimeTolerance)) {
                     duration = std::max(0.0, contact);
                     landing = index;
                 }

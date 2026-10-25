@@ -131,12 +131,12 @@ class CatApplication final : public Application
         return true;
     }
 
-    bool picture(const Texture& image, int x, int y)
+    bool picture(const Texture& image, double x, double y, double scale = 1)
     {
         TextureSampling sampling;
         sampling.filter = TextureFilter::Nearest;
         return renderer.drawTexture(image, { static_cast<float>(x), static_cast<float>(y),
-            static_cast<float>(image.width()), static_cast<float>(image.height()) }, {}, renderError, sampling);
+            static_cast<float>(image.width() * scale), static_cast<float>(image.height() * scale) }, {}, renderError, sampling);
     }
 
     bool onPrepareFrame(const FrameInfo& frame, Platform::Error& error) override
@@ -190,10 +190,14 @@ class CatApplication final : public Application
 
     bool drawCat()
     {
+        constexpr double PlatformInset = 3;
+        constexpr double FeetSpriteX = 44 * Cat::CatScale;
+        constexpr double FeetSpriteY = 120 * Cat::CatScale;
         const auto art = HeadFrames[static_cast<std::size_t>(game.player.head - 1)];
-        return picture(texture(art), static_cast<int>(Cat::CatScreenX), static_cast<int>(game.player.y))
-            && picture(feet[static_cast<std::size_t>(game.player.feet - 1)], 359,
-                static_cast<int>(game.player.y + 120));
+        const double y = game.player.y + PlatformInset;
+        return picture(texture(art), Cat::CatScreenX, y, Cat::CatScale)
+            && picture(feet[static_cast<std::size_t>(game.player.feet - 1)], Cat::CatScreenX + FeetSpriteX,
+                y + FeetSpriteY, Cat::CatScale);
     }
 
     bool onRender(const FrameInfo& frame, Platform::Error& error) override
