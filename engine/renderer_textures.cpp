@@ -195,29 +195,31 @@ bool Renderer2D::loadTexture(const ResourceFiles& files, const std::string& name
     return true;
 }
 
-bool Renderer2D::drawTexture(const Texture& texture, const Rect& rectangle, const DrawOptions& options,
-    RenderError& error, const TextureSampling& sampling)
+void Renderer2D::drawTexture(const Texture& texture, const Rect& rectangle, const DrawOptions& options,
+    const TextureSampling& sampling)
 {
-    if (!prepareDraw(options, error)) {
-        return false;
+    if (!ready()) {
+        return;
+    }
+    if (!prepareDraw(options, firstError)) {
+        return;
     }
     if (!texture.isValid() || texture.data->owner != this) {
-        error = RenderError::InvalidTexture;
-        return false;
+        firstError = RenderError::InvalidTexture;
+        return;
     }
     if (!valid(sampling)) {
-        error = RenderError::InvalidOptions;
-        return false;
+        firstError = RenderError::InvalidOptions;
+        return;
     }
     const auto previous = commands.size();
-    if (!drawRectangle(rectangle, ShapeFill::Filled, options, error)) {
-        return false;
+    if (!queueRectangle(rectangle, ShapeFill::Filled, options, firstError)) {
+        return;
     }
     if (commands.size() > previous) {
         commands.back().texture = texture;
         commands.back().sampling = sampling;
     }
-    return true;
 }
 
 void Renderer2D::executeTexture(const Command& command) const

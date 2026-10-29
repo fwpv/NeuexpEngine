@@ -86,26 +86,25 @@ void primitives()
     Renderer2D renderer;
     RenderError error;
     check(renderer.initialize(error), error);
-    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-    check(renderer.beginUi(screen(), error), error);
-    check(renderer.drawRectangle({ 10, 10, 50, 40 }, ShapeFill::Filled, style(Red), error), error);
-    check(renderer.drawRectangle({ 80.5F, 10.5F, 40, 40 }, ShapeFill::Outline, style(Green), error), error);
-    check(renderer.drawCircle({ { 40, 100 }, 22 }, ShapeFill::Filled, style(Blue), error), error);
-    check(renderer.drawCircle({ { 110, 100 }, 22 }, ShapeFill::Outline, style(White), error, 4), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawRectangle({ 10, 10, 50, 40 }, style(Red), ShapeFill::Filled);
+    renderer.drawRectangle({ 80.5F, 10.5F, 40, 40 }, style(Green), ShapeFill::Outline);
+    renderer.drawCircle({ { 40, 100 }, 22 }, style(Blue), ShapeFill::Filled);
+    renderer.drawCircle({ { 110, 100 }, 22 }, style(White), ShapeFill::Outline, 4);
     DrawOptions point = style(White);
     point.pointSize = 5;
-    check(renderer.drawPoint({ 170.5F, 20.5F }, point, error), error);
-    check(renderer.drawLine({ 155.5F, 55.5F }, { 220.5F, 55.5F }, style(Red), error), error);
-    check(renderer.drawRectangle({ 150, 80, 60, 50 }, ShapeFill::Filled, style(Red), error), error);
-    check(renderer.drawRectangle({ 175, 100, 60, 50 }, ShapeFill::Filled, style({ 0, 0, 1, 0.5F }), error), error);
+    renderer.drawPoint({ 170.5F, 20.5F }, point);
+    renderer.drawLine({ 155.5F, 55.5F }, { 220.5F, 55.5F }, style(Red));
+    renderer.drawRectangle({ 150, 80, 60, 50 }, style(Red), ShapeFill::Filled);
+    renderer.drawRectangle({ 175, 100, 60, 50 }, style({ 0, 0, 1, 0.5F }), ShapeFill::Filled);
 
     const std::vector<Vector2> concave = { { 10, 160 }, { 90, 160 }, { 90, 185 },
         { 35, 185 }, { 35, 235 }, { 10, 235 } };
-    check(renderer.drawPolygon(concave, ShapeFill::Filled, style(Green), error), error);
+    renderer.drawPolygon(concave, style(Green), ShapeFill::Filled);
     auto reversed = concave;
     std::reverse(reversed.begin(), reversed.end());
-    check(renderer.drawPolygon(reversed, ShapeFill::Filled,
-        style(Red, { { 115, 0 }, 0, { 1, 1 }, {} }), error), error);
+    renderer.drawPolygon(reversed, style(Red, { { 115, 0 }, 0, { 1, 1 }, {} }), ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(15, 15, Red);
     pixel(59, 49, Red);
@@ -130,19 +129,18 @@ void primitives()
     pixel(135, 220, Red);
     pixel(185, 220, Black);
 
-    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-    check(renderer.beginUi(screen(), error), error);
-    check(renderer.drawPolygon(concave, ShapeFill::Outline,
-        style(White, { { 0.5F, 0.5F }, 0, { 1, 1 }, {} }), error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawPolygon(concave, style(White, { { 0.5F, 0.5F }, 0, { 1, 1 }, {} }), ShapeFill::Outline);
     check(renderer.endFrame(error), error);
     pixel(10, 200, White);
     pixel(70, 160, White);
     pixel(20, 200, Black);
     pixel(70, 200, Black);
 
-    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-    check(renderer.beginUi(screen(), error), error);
-    check(renderer.drawPolygon(concave, ShapeFill::Filled, style({ 1, 0, 0, 0.5F }), error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawPolygon(concave, style({ 1, 0, 0, 0.5F }), ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(20, 200, { 0.5F, 0, 0 });
     pixel(70, 200, Black);
@@ -154,26 +152,21 @@ void gradient()
     RenderError error;
     check(renderer.initialize(error), error);
     glShadeModel(GL_FLAT);
-    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-    check(renderer.beginUi(screen(), error), error);
-    check(renderer.drawGradientRectangle({ 10, 10, 80, 100 }, Red, Blue, style(White), error), error);
-    check(renderer.setClip(Viewport{ 130, 20, 30, 50 }, error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawGradientRectangle({ 10, 10, 80, 100 }, Red, Blue, style(White));
+    renderer.setClip(Viewport{ 130, 20, 30, 50 });
     DrawOptions rotated = style({ 0, 1, 0, 0.5F }, { { 160, 20 }, Pi / 2, { 1, 1 }, {} });
-    check(renderer.drawGradientRectangle({ 0, 0, 80, 40 }, White, Black, rotated, error), error);
-    check(renderer.setClip(std::nullopt, error), error);
+    renderer.drawGradientRectangle({ 0, 0, 80, 40 }, White, Black, rotated);
+    renderer.setClip(std::nullopt);
     DrawOptions foreground = style(Green);
     foreground.layer = 2;
-    check(renderer.drawRectangle({ 10, 140, 80, 80 }, ShapeFill::Filled, foreground, error), error);
+    renderer.drawRectangle({ 10, 140, 80, 80 }, foreground, ShapeFill::Filled);
     DrawOptions background = style(White);
     background.layer = -1;
-    check(renderer.drawGradientRectangle({ 10, 140, 80, 80 }, Red, Blue, background, error), error);
+    renderer.drawGradientRectangle({ 10, 140, 80, 80 }, Red, Blue, background);
     // Обычная заливка не наследует цвета ранее выполненного градиента.
-    check(renderer.drawRectangle({ 180, 20, 30, 30 }, ShapeFill::Filled, style(Red), error), error);
-    require(!renderer.drawGradientRectangle({ 180, 70, 30, 30 }, { 2, 0, 0 }, White, style(White), error)
-        && error == RenderError::InvalidOptions, "Invalid gradient color was accepted.");
-    require(!renderer.drawGradientRectangle({ 180, 70, 30, 30 }, White,
-        { 0, 0, std::numeric_limits<float>::quiet_NaN() }, style(White), error)
-        && error == RenderError::InvalidOptions, "Nonfinite gradient color was accepted.");
+    renderer.drawRectangle({ 180, 20, 30, 30 }, style(Red), ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(50, 10, { 0.995F, 0, 0.005F });
     pixel(50, 60, { 0.495F, 0, 0.505F });
@@ -193,19 +186,17 @@ void transforms()
     Renderer2D renderer;
     RenderError error;
     check(renderer.initialize(error), error);
-    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-    check(renderer.beginUi(screen(), error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
     const Transform2 transform = { { 100, 100 }, Pi / 2, { 2, 1 }, { 10, 5 } };
-    check(renderer.drawRectangle({ 0, 0, 20, 10 }, ShapeFill::Filled, style(Red, transform), error), error);
-    check(renderer.drawCircle({ {}, 10 }, ShapeFill::Filled,
-        style(Blue, { { 180, 80 }, Pi / 2, { 3, 1 }, {} }), error), error);
+    renderer.drawRectangle({ 0, 0, 20, 10 }, style(Red, transform), ShapeFill::Filled);
+    renderer.drawCircle({ {}, 10 }, style(Blue, { { 180, 80 }, Pi / 2, { 3, 1 }, {} }), ShapeFill::Filled);
     const std::vector<Vector2> triangle = { { 0, 0 }, { 40, 0 }, { 0, 40 } };
-    check(renderer.drawPolygon(triangle, ShapeFill::Filled,
-        style(Green, { { 220, 160 }, 0, { -2, 1 }, {} }), error), error);
+    renderer.drawPolygon(triangle, style(Green, { { 220, 160 }, 0, { -2, 1 }, {} }), ShapeFill::Filled);
     // Прямое аффинное преобразование с неперпендикулярными осями.
     DrawOptions shear = style(White);
     shear.transform = { 1, 1, 15, 0, 1, 190 };
-    check(renderer.drawRectangle({ 0, 0, 20, 20 }, ShapeFill::Filled, shear, error), error);
+    renderer.drawRectangle({ 0, 0, 20, 20 }, shear, ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(100, 85, Red);
     pixel(100, 115, Red);
@@ -230,10 +221,10 @@ void views()
     CameraError cameraError;
     require(camera.createView({ 20, 40, 200, 100 }, world, cameraError), "Camera creation failed.");
     const CameraView firstView = world;
-    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-    check(renderer.beginWorld(world, error), error);
-    check(renderer.drawRectangle({ 900, 1900, 200, 200 }, ShapeFill::Filled, style(Red), error), error);
-    check(renderer.drawRectangle({ 999, 1999, 2, 2 }, ShapeFill::Filled, style(White), error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setWorldView(world);
+    renderer.drawRectangle({ 900, 1900, 200, 200 }, style(Red), ShapeFill::Filled);
+    renderer.drawRectangle({ 999, 1999, 2, 2 }, style(White), ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(70, 40, Red);
     pixel(169, 139, Red);
@@ -243,13 +234,13 @@ void views()
     pixel(120, 140, Black);
     pixel(120, 90, White);
 
-    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-    check(renderer.beginWorld(world, error), error);
-    check(renderer.drawRectangle({ 900, 1900, 200, 200 }, ShapeFill::Filled, style(Red), error), error);
-    check(renderer.setClip(Viewport{ 100, 60, 30, 20 }, error), error);
-    check(renderer.drawRectangle({ 900, 1900, 200, 200 }, ShapeFill::Filled, style(Green), error), error);
-    check(renderer.setClip(Viewport{ 110, 70, 0, 10 }, error), error);
-    check(renderer.drawRectangle({ 900, 1900, 200, 200 }, ShapeFill::Filled, style(Blue), error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setWorldView(world);
+    renderer.drawRectangle({ 900, 1900, 200, 200 }, style(Red), ShapeFill::Filled);
+    renderer.setClip(Viewport{ 100, 60, 30, 20 });
+    renderer.drawRectangle({ 900, 1900, 200, 200 }, style(Green), ShapeFill::Filled);
+    renderer.setClip(Viewport{ 110, 70, 0, 10 });
+    renderer.drawRectangle({ 900, 1900, 200, 200 }, style(Blue), ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(100, 60, Green);
     pixel(129, 79, Green);
@@ -258,24 +249,22 @@ void views()
     pixel(100, 80, Red);
     pixel(115, 75, Green);
 
-    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-    check(renderer.beginWorld(firstView, error), error);
-    check(renderer.drawRectangle({ 900, 1900, 200, 200 }, ShapeFill::Filled, style(Red), error), error);
-    check(renderer.setClip(Viewport{ 0, 0, 0, 0 }, error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setWorldView(firstView);
+    renderer.drawRectangle({ 900, 1900, 200, 200 }, style(Red), ShapeFill::Filled);
+    renderer.setClip(Viewport{ 0, 0, 0, 0 });
     // Новый мировой вид сбрасывает clip и использует другую камеру.
     camera.position = {};
     require(camera.createView({ 10, 160, 60, 60 }, world, cameraError), "Second camera failed.");
-    check(renderer.beginWorld(world, error), error);
-    check(renderer.drawRectangle({ -100, -100, 200, 200 }, ShapeFill::Filled, style(Blue), error), error);
-    check(renderer.beginUi(screen(2, { 30, 20, 180, 180 }), error), error);
-    check(renderer.drawRectangle({ 30, 20, 20, 20 }, ShapeFill::Filled, style(White), error), error);
-    require(!renderer.beginWorld(world, error) && error == RenderError::InvalidState,
-        "World drawing after UI was accepted.");
+    renderer.setWorldView(world);
+    renderer.drawRectangle({ -100, -100, 200, 200 }, style(Blue), ShapeFill::Filled);
+    renderer.setUiView(screen(2, { 30, 20, 180, 180 }));
+    renderer.drawRectangle({ 30, 20, 20, 20 }, style(White), ShapeFill::Filled);
     // Отрицательная область отсечения пересекается с viewport, а не расширяет его.
-    check(renderer.setClip(Viewport{ -10, -20, 60, 60 }, error), error);
-    check(renderer.drawRectangle({ -100, -100, 500, 500 }, ShapeFill::Filled, style(Green), error), error);
-    check(renderer.setClip(std::nullopt, error), error);
-    check(renderer.drawRectangle({ 70, 70, 10, 10 }, ShapeFill::Filled, style(Green), error), error);
+    renderer.setClip(Viewport{ -10, -20, 60, 60 });
+    renderer.drawRectangle({ -100, -100, 500, 500 }, style(Green), ShapeFill::Filled);
+    renderer.setClip(std::nullopt);
+    renderer.drawRectangle({ 70, 70, 10, 10 }, style(Green), ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(15, 165, Blue);
     pixel(9, 165, Black);
@@ -289,9 +278,9 @@ void views()
     pixel(175, 165, Green);
 
     // Следующий кадр очищает и поля, и прежнее отсечение; размер можно менять.
-    check(renderer.beginFrame(128, 96, Blue, error), error);
-    check(renderer.beginUi(screen(1, { 0, 0, 128, 96 }), error), error);
-    check(renderer.drawRectangle({ 0, 0, 300, 300 }, ShapeFill::Filled, style(Red), error), error);
+    renderer.beginFrame(128, 96, Blue);
+    renderer.setUiView(screen(1, { 0, 0, 128, 96 }));
+    renderer.drawRectangle({ 0, 0, 300, 300 }, style(Red), ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(10, 10, Blue);
     pixel(200, 200, Blue);
@@ -307,19 +296,28 @@ void errors()
     Renderer2D renderer;
     RenderError error;
     require(!renderer.endFrame(error) && error == RenderError::InvalidState, "End without frame accepted.");
-    require(!renderer.beginUi(screen(), error) && error == RenderError::InvalidState, "UI without frame accepted.");
+    renderer.setUiView(screen());
+    require(!renderer.endFrame(error) && error == RenderError::InvalidState, "UI without frame accepted.");
     check(renderer.initialize(error), error);
-    require(!renderer.beginFrame(0, ImageSize, Black, error) && error == RenderError::InvalidFrameSize,
-        "Zero frame accepted.");
-    require(!renderer.beginFrame(ImageSize, ImageSize, { 1, 0, 0, 2 }, error)
-        && error == RenderError::InvalidOptions, "Invalid clear color accepted.");
-    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-    require(!renderer.beginFrame(ImageSize, ImageSize, White, error) && error == RenderError::InvalidState,
-        "Nested frame accepted.");
-    require(!renderer.drawPoint({}, style(Red), error) && error == RenderError::InvalidState,
-        "Drawing without view accepted.");
-    require(!renderer.beginUi({}, error) && error == RenderError::InvalidView, "Invalid view accepted.");
-    check(renderer.beginUi(screen(), error), error);
+    renderer.beginFrame(0, ImageSize, Black);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidFrameSize, "Zero frame accepted.");
+    renderer.beginFrame(ImageSize, ImageSize, { 1, 0, 0, 2 });
+    require(!renderer.endFrame(error) && error == RenderError::InvalidOptions, "Invalid clear color accepted.");
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.beginFrame(ImageSize, ImageSize, White);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidState, "Nested frame accepted.");
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.drawPoint({}, Red);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidState, "Drawing without view accepted.");
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView({});
+    require(!renderer.endFrame(error) && error == RenderError::InvalidView, "Invalid view accepted.");
+    const auto reject = [&](const auto& operation, RenderError expected, const char* message) {
+        renderer.beginFrame(ImageSize, ImageSize, Black);
+        renderer.setUiView(screen());
+        operation();
+        require(!renderer.endFrame(error) && error == expected, message);
+    };
     const std::vector<std::vector<Vector2>> invalid = {
         {}, { { 10, 10 }, { 20, 20 } }, { { 10, 10 }, { 20, 20 }, { 30, 30 } },
         { { 10, 10 }, { 60, 60 }, { 10, 60 }, { 60, 10 } },
@@ -329,42 +327,57 @@ void errors()
     };
     for (const auto& polygon : invalid) {
         for (ShapeFill fill : { ShapeFill::Filled, ShapeFill::Outline }) {
-            require(!renderer.drawPolygon(polygon, fill, style(Red), error)
-                && error == RenderError::InvalidGeometry, "Invalid polygon accepted.");
+            reject([&] { renderer.drawPolygon(polygon, style(Red), fill); }, RenderError::InvalidGeometry, "Invalid polygon accepted.");
         }
     }
-    require(!renderer.drawCircle({ {}, -1 }, ShapeFill::Filled, style(Red), error)
-        && error == RenderError::InvalidGeometry, "Negative radius accepted.");
-    require(!renderer.drawCircle({ {}, 10 }, ShapeFill::Filled, style(Red), error, 2)
-        && error == RenderError::InvalidGeometry, "Invalid circle subdivision accepted.");
-    require(!renderer.drawRectangle({ 10, 10, -1, 20 }, ShapeFill::Filled, style(Red), error)
-        && error == RenderError::InvalidGeometry, "Negative rectangle accepted.");
+    reject([&] { renderer.drawCircle({ {}, -1 }, style(Red), ShapeFill::Filled); }, RenderError::InvalidGeometry, "Negative radius accepted.");
+    reject([&] { renderer.drawCircle({ {}, 10 }, style(Red), ShapeFill::Filled, 2); }, RenderError::InvalidGeometry, "Invalid circle subdivision accepted.");
+    reject([&] { renderer.drawRectangle({ 10, 10, -1, 20 }, style(Red), ShapeFill::Filled); }, RenderError::InvalidGeometry, "Negative rectangle accepted.");
     DrawOptions options = style(Red);
     options.lineWidth = 0;
-    require(!renderer.drawLine({}, { 50, 50 }, options, error) && error == RenderError::InvalidOptions,
-        "Zero line width accepted.");
+    reject([&] { renderer.drawLine({}, { 50, 50 }, options); },
+        RenderError::InvalidOptions, "Zero line width accepted.");
     options = style(Red);
     options.transform.m02 = std::numeric_limits<float>::infinity();
-    require(!renderer.drawRectangle({ 0, 0, 50, 50 }, ShapeFill::Filled, options, error)
-        && error == RenderError::InvalidOptions, "Invalid transform accepted.");
-    require(!renderer.setClip(Viewport{ 0, 0, -1, 10 }, error) && error == RenderError::InvalidClip,
-        "Invalid clip accepted.");
+    reject([&] { renderer.drawRectangle({ 0, 0, 50, 50 }, options); },
+        RenderError::InvalidOptions, "Invalid transform accepted.");
+    reject([&] { renderer.setClip(Viewport{ 0, 0, -1, 10 }); },
+        RenderError::InvalidClip, "Invalid clip accepted.");
+
+    reject([&] { renderer.drawGradientRectangle({ 180, 70, 30, 30 }, { 2, 0, 0 }, White, style(White)); }, RenderError::InvalidOptions, "Invalid gradient color was accepted.");
+    reject([&] { renderer.drawGradientRectangle({ 180, 70, 30, 30 }, White, { 0, 0, std::numeric_limits<float>::quiet_NaN() }, style(White)); }, RenderError::InvalidOptions, "Nonfinite gradient color was accepted.");
+
+    for (float invalid : { std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN() }) {
+        options = style(Red);
+        options.order = invalid;
+        reject([&] { renderer.drawRectangle({ 0, 0, 100, 100 }, options); },
+            RenderError::InvalidOptions, "Nonfinite sort key accepted.");
+    }
+    Camera2 camera;
+    CameraView world;
+    CameraError cameraError;
+    require(camera.createView({ 0, 0, ImageSize, ImageSize }, world, cameraError), "Camera failed.");
+    reject([&] { renderer.setWorldView(world); }, RenderError::InvalidState, "World drawing after UI accepted.");
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
     pixel(20, 20, Black);
-    // Ошибки не меняют вид и отсечение; корректная команда продолжает кадр.
+    // Корректные вырожденные размеры и замкнутый контур разрешены.
     const std::vector<Vector2> closed = { { 10, 10 }, { 10, 10 }, { 30, 10 }, { 60, 10 },
         { 60, 60 }, { 10, 60 }, { 10, 10 } };
-    check(renderer.drawPolygon(closed, ShapeFill::Filled, style(Green), error), error);
-    check(renderer.drawCircle({ { 100, 100 }, 0 }, ShapeFill::Filled, style(Red), error), error);
-    check(renderer.drawRectangle({ 100, 100, 0, 10 }, ShapeFill::Filled, style(Red), error), error);
+    renderer.drawPolygon(closed, style(Green), ShapeFill::Filled);
+    renderer.drawCircle({ { 100, 100 }, 0 }, style(Red), ShapeFill::Filled);
+    renderer.drawRectangle({ 100, 100, 0, 10 }, style(Red), ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(20, 20, Green);
     pixel(50, 50, Green);
     pixel(100, 100, Black);
-    require(!renderer.drawPoint({}, style(Red), error) && error == RenderError::InvalidState,
-        "Drawing after end accepted.");
-    check(renderer.beginFrame(ImageSize, ImageSize, Blue, error), error);
+
+    renderer.drawPoint({}, Red);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidState, "Drawing after end accepted.");
+    renderer.beginFrame(ImageSize, ImageSize, Blue);
     check(renderer.endFrame(error), error);
     pixel(20, 20, Blue);
+    renderer.shutdown();
 }
 
 void state()
@@ -390,10 +403,10 @@ void state()
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     glScalef(0, 0, 0);
-    check(renderer.beginFrame(ImageSize, ImageSize, Blue, error), error);
-    check(renderer.beginUi(screen(), error), error);
-    check(renderer.drawRectangle({ 10, 10, 80, 80 }, ShapeFill::Filled, style(Red), error), error);
-    check(renderer.drawRectangle({ 10, 10, 80, 80 }, ShapeFill::Filled, style({ 0, 1, 0, 0.5F }), error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Blue);
+    renderer.setUiView(screen());
+    renderer.drawRectangle({ 10, 10, 80, 80 }, style(Red), ShapeFill::Filled);
+    renderer.drawRectangle({ 10, 10, 80, 80 }, style({ 0, 1, 0, 0.5F }), ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(200, 200, Blue);
     pixel(100, 100, Blue);
@@ -427,33 +440,25 @@ void sorting()
     RenderError error;
     check(renderer.initialize(error), error);
     for (bool reversed : { false, true }) {
-        check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-        check(renderer.beginWorld(screenWorld(), error), error);
+        renderer.beginFrame(ImageSize, ImageSize, Black);
+        renderer.setWorldView(screenWorld());
         for (int step = 0; step < 2; ++step) {
             const bool first = (step == 0) != reversed;
             // Слой имеет приоритет над ключом внутри слоя.
-            check(renderer.drawRectangle({ 10, 10, 80, 80 }, ShapeFill::Filled,
-                ordered(first ? Red : Blue, first ? -2 : -1, first ? 100 : -100), error), error);
+            renderer.drawRectangle({ 10, 10, 80, 80 }, ordered(first ? Red : Blue, first ? -2 : -1, first ? 100 : -100), ShapeFill::Filled);
             // Равные ключи сохраняют порядок подачи команд.
-            check(renderer.drawRectangle({ 110, 10, 50, 50 }, ShapeFill::Filled,
-                style(first ? Red : Green), error), error);
+            renderer.drawRectangle({ 110, 10, 50, 50 }, style(first ? Red : Green), ShapeFill::Filled);
             // Сортировка внутри одного слоя, включая отрицательные значения.
-            check(renderer.drawRectangle({ 200, 10, 40, 40 }, ShapeFill::Filled,
-                ordered(first ? Red : Blue, 4, first ? 50 : -20), error), error);
+            renderer.drawRectangle({ 200, 10, 40, 40 }, ordered(first ? Red : Blue, 4, first ? 50 : -20), ShapeFill::Filled);
             // Прозрачный фон должен оказаться позади непрозрачного объекта.
-            check(renderer.drawRectangle({ 10, 110, 80, 80 }, ShapeFill::Filled,
-                ordered(first ? Color{ 0, 0, 1, 0.5F } : Green, first ? -1 : 1), error), error);
+            renderer.drawRectangle({ 10, 110, 80, 80 }, ordered(first ? Color{ 0, 0, 1, 0.5F } : Green, first ? -1 : 1), ShapeFill::Filled);
             // Прозрачный передний слой смешивается с непрозрачным фоном.
-            check(renderer.drawRectangle({ 110, 110, 80, 80 }, ShapeFill::Filled,
-                ordered(first ? Red : Color{ 0, 0, 1, 0.5F }, first ? -1 : 1), error), error);
+            renderer.drawRectangle({ 110, 110, 80, 80 }, ordered(first ? Red : Color{ 0, 0, 1, 0.5F }, first ? -1 : 1), ShapeFill::Filled);
         }
-        check(renderer.drawRectangle({ 200, 110, 40, 40 }, ShapeFill::Filled,
-            style({ 1, 0, 0, 0.5F }), error), error);
-        check(renderer.drawRectangle({ 200, 110, 40, 40 }, ShapeFill::Filled,
-            style({ 0, 0, 1, 0.5F }), error), error);
-        check(renderer.beginUi(screen(), error), error);
-        check(renderer.drawRectangle({ 25, 25, 10, 10 }, ShapeFill::Filled,
-            ordered(White, std::numeric_limits<int>::min()), error), error);
+        renderer.drawRectangle({ 200, 110, 40, 40 }, style({ 1, 0, 0, 0.5F }), ShapeFill::Filled);
+        renderer.drawRectangle({ 200, 110, 40, 40 }, style({ 0, 0, 1, 0.5F }), ShapeFill::Filled);
+        renderer.setUiView(screen());
+        renderer.drawRectangle({ 25, 25, 10, 10 }, ordered(White, std::numeric_limits<int>::min()), ShapeFill::Filled);
         check(renderer.endFrame(error), error);
         pixel(20, 20, Blue);
         pixel(30, 30, White);
@@ -464,25 +469,20 @@ void sorting()
         pixel(210, 120, { 0.25F, 0, 0.5F });
     }
 
-    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-    check(renderer.beginWorld(screenWorld(), error), error);
-    check(renderer.setClip(Viewport{ 0, 0, 40, 100 }, error), error);
-    check(renderer.drawRectangle({ 0, 0, 100, 100 }, ShapeFill::Filled, ordered(Red, 2), error), error);
-    check(renderer.setClip(Viewport{ 60, 0, 40, 100 }, error), error);
-    check(renderer.drawRectangle({ 0, 0, 100, 100 }, ShapeFill::Filled, ordered(Blue, 1), error), error);
-    check(renderer.setClip(std::nullopt, error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setWorldView(screenWorld());
+    renderer.setClip(Viewport{ 0, 0, 40, 100 });
+    renderer.drawRectangle({ 0, 0, 100, 100 }, ordered(Red, 2), ShapeFill::Filled);
+    renderer.setClip(Viewport{ 60, 0, 40, 100 });
+    renderer.drawRectangle({ 0, 0, 100, 100 }, ordered(Blue, 1), ShapeFill::Filled);
+    renderer.setClip(std::nullopt);
     // Отложенные команды владеют копией вершин и параметров.
     std::vector<Vector2> vertices = { { 10, 120 }, { 70, 120 }, { 10, 180 } };
     DrawOptions options = style(Blue);
-    check(renderer.drawPolygon(vertices, ShapeFill::Filled, options, error), error);
+    renderer.drawPolygon(vertices, options, ShapeFill::Filled);
     vertices.clear();
     options.color = Green;
     options.transform.m02 = 1000;
-    for (float invalid : { std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN() }) {
-        options.order = invalid;
-        require(!renderer.drawRectangle({ 0, 0, 100, 100 }, ShapeFill::Filled, options, error)
-            && error == RenderError::InvalidOptions, "Nonfinite sort key accepted.");
-    }
     check(renderer.endFrame(error), error);
     pixel(20, 20, Red);
     pixel(50, 20, Black);
@@ -490,35 +490,155 @@ void sorting()
     pixel(20, 130, Blue);
 
     // Границы видов старше ключей сортировки; UI всегда идёт после мира.
-    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-    check(renderer.beginWorld(screenWorld(), error), error);
-    check(renderer.drawRectangle({ 0, 0, 100, 100 }, ShapeFill::Filled,
-        ordered(Red, std::numeric_limits<int>::max()), error), error);
-    check(renderer.beginWorld(screenWorld(), error), error);
-    check(renderer.drawRectangle({ 0, 0, 100, 100 }, ShapeFill::Filled,
-        ordered(Blue, std::numeric_limits<int>::min()), error), error);
-    check(renderer.beginUi(screen(), error), error);
-    check(renderer.drawRectangle({ 10, 10, 20, 20 }, ShapeFill::Filled,
-        ordered(White, std::numeric_limits<int>::min()), error), error);
-    check(renderer.drawRectangle({ 110, 10, 40, 40 }, ShapeFill::Filled, ordered(Red, 10), error), error);
-    check(renderer.drawRectangle({ 110, 10, 40, 40 }, ShapeFill::Filled, ordered(Green, 1), error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setWorldView(screenWorld());
+    renderer.drawRectangle({ 0, 0, 100, 100 }, ordered(Red, std::numeric_limits<int>::max()), ShapeFill::Filled);
+    renderer.setWorldView(screenWorld());
+    renderer.drawRectangle({ 0, 0, 100, 100 }, ordered(Blue, std::numeric_limits<int>::min()), ShapeFill::Filled);
+    renderer.setUiView(screen());
+    renderer.drawRectangle({ 10, 10, 20, 20 }, ordered(White, std::numeric_limits<int>::min()), ShapeFill::Filled);
+    renderer.drawRectangle({ 110, 10, 40, 40 }, ordered(Red, 10), ShapeFill::Filled);
+    renderer.drawRectangle({ 110, 10, 40, 40 }, ordered(Green, 1), ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(80, 80, Blue);
     pixel(20, 20, White);
     pixel(120, 20, Red);
 
     // Отмена кадра не переносит его команды в следующий запуск рендерера.
-    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-    check(renderer.beginWorld(screenWorld(), error), error);
-    check(renderer.drawRectangle({ 10, 10, 80, 80 }, ShapeFill::Filled, style(Red), error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setWorldView(screenWorld());
+    renderer.drawRectangle({ 10, 10, 80, 80 }, style(Red), ShapeFill::Filled);
     renderer.shutdown();
     check(renderer.initialize(error), error);
-    check(renderer.beginFrame(ImageSize, ImageSize, Black, error), error);
-    check(renderer.beginUi(screen(), error), error);
-    check(renderer.drawRectangle({ 10, 10, 30, 30 }, ShapeFill::Filled, style(Blue), error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawRectangle({ 10, 10, 30, 30 }, style(Blue), ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(20, 20, Blue);
     pixel(80, 80, Black);
+    renderer.shutdown();
+}
+
+void ellipses()
+{
+    Renderer2D renderer;
+    RenderError error;
+    check(renderer.initialize(error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawEllipse({ 40, 40 }, { 20, 10 }, Green, ShapeFill::Filled, 64);
+    const DrawOptions transformed = style(Red, { { 100, 80 }, Pi / 2, { 2, 1 }, {} });
+    renderer.drawEllipse({ 5, 0 }, { 12, 5 }, transformed, ShapeFill::Filled, 64);
+    renderer.drawRectangle({ 150, 20, 20, 20 }, Blue);
+    renderer.drawEllipse({ 65, 140 }, { 20, 10 }, White, ShapeFill::Outline, 4);
+    renderer.drawPolygon({ { 5, 170 }, { 25, 170 }, { 5, 190 } }, Green);
+    renderer.drawLine({ 150.5F, 60.5F }, { 190.5F, 60.5F });
+    DrawOptions point = style(Red);
+    point.pointSize = 5;
+    renderer.drawPoint({ 180.5F, 100.5F }, point);
+    check(renderer.endFrame(error), error);
+    pixel(40, 40, Green);
+    pixel(55, 40, Green);
+    pixel(40, 55, Black);
+    pixel(100, 90, Red);
+    pixel(100, 110, Red);
+    pixel(108, 90, Black);
+    pixel(155, 25, Blue);
+    pixel(65, 140, Black);
+    pixel(75, 144, White);
+    pixel(7, 172, Green);
+    pixel(170, 60, White);
+    pixel(180, 100, Red);
+    renderer.shutdown();
+}
+
+void debugText()
+{
+    Renderer2D renderer;
+    RenderError error;
+    check(renderer.initialize(error), error);
+    Image image;
+    image.width = 1;
+    image.height = 1;
+    image.pixels = { 0, 0, 255, 255 };
+    Texture texture;
+    ResourceError resourceError;
+    require(renderer.createTexture(image, texture, resourceError), "Renderer texture creation failed.");
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setWorldView(screenWorld());
+    renderer.drawRectangle({ 80, 80, 30, 30 }, ordered(Red, 5));
+    renderer.drawRectangle({ 80, 80, 30, 30 }, ordered(Blue, -5));
+    renderer.setUiView(screen());
+    renderer.setClip(Viewport{ 20, 20, 3, 20 });
+    renderer.drawDebugText("A", { 20, 20 }, Green, 2);
+    renderer.setClip(std::nullopt);
+    renderer.drawDebugText("A?9+-/", {}, style(White, { { 120, 20 }, 0, { 1, 1 }, {} }), 2);
+    renderer.drawTexture(texture, { 150, 80, 30, 30 });
+    renderer.drawGradientRectangle({ 180, 150, 30, 40 }, Red, Red);
+    check(renderer.endFrame(error), error);
+    pixel(85, 85, Red);
+    pixel(22, 20, Green);
+    pixel(20, 24, Green);
+    pixel(24, 24, Black);
+    pixel(122, 20, White);
+    pixel(120, 20, Black);
+    pixel(130, 20, Black);
+    pixel(136, 20, White);
+    pixel(146, 24, White);
+    pixel(154, 24, White);
+    pixel(160, 26, White);
+    pixel(160, 90, Blue);
+    pixel(190, 170, Red);
+    renderer.shutdown();
+}
+
+void frameErrors()
+{
+    Renderer2D renderer;
+    RenderError error;
+    check(renderer.initialize(error), error);
+    renderer.drawPoint({}, White);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidState, "Renderer accepted drawing outside a frame.");
+    renderer.beginFrame(0, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawEllipse({}, { -1, 2 }, Red);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidFrameSize, "Begin-frame error was overwritten.");
+
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawRectangle({ 10, 10, 20, 20 }, Red);
+    renderer.drawEllipse({ 40, 40 }, { -1, 5 }, White);
+    renderer.drawRectangle({ 10, 10, 20, 20 }, Blue);
+    renderer.setClip(Viewport{ 0, 0, -1, 5 });
+    require(!renderer.endFrame(error) && error == RenderError::InvalidGeometry, "First draw error was overwritten.");
+    pixel(15, 15, Red);
+
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawRectangle({ 10, 10, 20, 20 }, Blue);
+    check(renderer.endFrame(error), error);
+    pixel(15, 15, Blue);
+
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.beginFrame(ImageSize, ImageSize, Red);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidState, "Nested Renderer frame was accepted.");
+    renderer.beginFrame(ImageSize, ImageSize, Green);
+    check(renderer.endFrame(error), error);
+
+    for (float pixelSize : { 0.0F, -1.0F, std::numeric_limits<float>::infinity() }) {
+        renderer.beginFrame(ImageSize, ImageSize, Black);
+        renderer.setUiView(screen());
+        renderer.drawDebugText("A", {}, White, pixelSize);
+        require(!renderer.endFrame(error) && error == RenderError::InvalidGeometry, "Invalid debug-text size was accepted.");
+    }
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawEllipse({}, { 1, 1 }, White, ShapeFill::Filled, 2);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidGeometry, "Invalid ellipse segments were accepted.");
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawDebugText("A", {}, Color{ 2, 0, 0 });
+    require(!renderer.endFrame(error) && error == RenderError::InvalidOptions, "Debug text ignored invalid options.");
     renderer.shutdown();
 }
 
@@ -538,6 +658,15 @@ int runTest(const std::string& mode)
     else if (mode == "errors") { errors(); }
     else if (mode == "state") { state(); }
     else if (mode == "sorting") { sorting(); }
+    else if (mode == "ellipses") {
+        ellipses();
+    }
+    else if (mode == "debug_text") {
+        debugText();
+    }
+    else if (mode == "frame_errors") {
+        frameErrors();
+    }
     else { throw std::runtime_error("Unknown renderer test mode."); }
     return 0;
 }

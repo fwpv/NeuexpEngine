@@ -16,13 +16,18 @@ Vector2 CameraView::worldToScreen(Vector2 point) const
     return worldToScreenTransform.transformPoint(point);
 }
 
+bool Viewport::contains(Vector2 point) const
+{
+    const Rect screen = bounds();
+    return std::isfinite(point.x) && std::isfinite(point.y)
+        && point.x >= screen.position.x && point.y >= screen.position.y
+        && point.x < screen.position.x + screen.size.width
+        && point.y < screen.position.y + screen.size.height;
+}
+
 bool CameraView::screenToWorld(Vector2 point, Vector2& result) const
 {
-    const Rect screen = viewport.bounds();
-    if (!std::isfinite(point.x) || !std::isfinite(point.y)
-        || point.x < screen.position.x || point.y < screen.position.y
-        || point.x >= screen.position.x + screen.size.width
-        || point.y >= screen.position.y + screen.size.height) {
+    if (!viewport.contains(point)) {
         return false;
     }
     result = screenToWorldTransform.transformPoint(point);

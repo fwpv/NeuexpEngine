@@ -616,6 +616,8 @@ void mouse(NativeInput& native)
     native.send(WM_MOUSEWHEEL, MAKEWPARAM(0, 30), 0);
     native.frame();
     require(mouse.wheelY == 0.25, "High resolution wheel lost fractional steps.");
+    // Вход проверяется после явного выхода независимо от положения реального курсора.
+    native.motion(-1, -1);
     native.motion(15, 20);
     native.frame();
     // Реальный курсор не перемещается тестом: Windows вправе сразу прислать MouseLeave.

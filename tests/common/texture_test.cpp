@@ -67,9 +67,8 @@ UiView view()
 
 void frame(Renderer2D& renderer, Color background = Black)
 {
-    RenderError error;
-    check(renderer.beginFrame(WindowSize, WindowSize, background, error), error);
-    check(renderer.beginUi(view(), error), error);
+    renderer.beginFrame(WindowSize, WindowSize, background);
+    renderer.setUiView(view());
 }
 
 Texture create(Renderer2D& renderer, const Image& image, bool keep = false)
@@ -96,7 +95,7 @@ void pixels(Renderer2D& renderer, const ResourceFiles& files)
     const auto texture = create(renderer, { 3, 2, raw }, true);
     require(texture.width() == 3 && texture.height() == 2 && texture.image()->pixels == raw, "Original CPU pixels or dimensions changed.");
     frame(renderer);
-    check(renderer.drawTexture(texture, { 0, 0, 120, 80 }, {}, error, nearest()), error);
+    renderer.drawTexture(texture, { 0, 0, 120, 80 }, {}, nearest());
     check(renderer.endFrame(error), error);
     pixel(10, 10, Red);
     pixel(60, 10, Green);
@@ -107,7 +106,7 @@ void pixels(Renderer2D& renderer, const ResourceFiles& files)
     Texture png;
     check(renderer.loadTexture(files, "rgba_2x2.png", png, resourceError), resourceError);
     frame(renderer, Blue);
-    check(renderer.drawTexture(png, { 0, 0, 80, 80 }, {}, error, nearest()), error);
+    renderer.drawTexture(png, { 0, 0, 80, 80 }, {}, nearest());
     check(renderer.endFrame(error), error);
     pixel(10, 10, Blue);
     pixel(60, 10, { 0, 128.0F / 255, 127.0F / 255 });
@@ -120,14 +119,14 @@ void sampling(Renderer2D& renderer)
     RenderError error;
     const auto texture = create(renderer, { 2, 1, { 255, 0, 0, 255, 0, 0, 255, 255 } });
     frame(renderer);
-    check(renderer.drawTexture(texture, { 0, 0, 100, 40 }, {}, error, nearest()), error);
-    check(renderer.drawTexture(texture, { 0, 50, 100, 40 }, {}, error), error);
+    renderer.drawTexture(texture, { 0, 0, 100, 40 }, {}, nearest());
+    renderer.drawTexture(texture, { 0, 50, 100, 40 }, {});
     TextureSampling repeated = nearest();
     repeated.wrapX = TextureWrap::Repeat;
     repeated.repeats = { 2, 1 };
-    check(renderer.drawTexture(texture, { 0, 100, 100, 40 }, {}, error, repeated), error);
+    renderer.drawTexture(texture, { 0, 100, 100, 40 }, {}, repeated);
     repeated.wrapX = TextureWrap::Clamp;
-    check(renderer.drawTexture(texture, { 0, 150, 100, 40 }, {}, error, repeated), error);
+    renderer.drawTexture(texture, { 0, 150, 100, 40 }, {}, repeated);
     check(renderer.endFrame(error), error);
     pixel(49, 10, Red);
     pixel(50, 10, Blue);
@@ -156,14 +155,14 @@ void sampling(Renderer2D& renderer)
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
     frame(renderer);
-    check(renderer.drawTexture(uploaded, { 0, 0, 30, 30 }, {}, error), error);
+    renderer.drawTexture(uploaded, { 0, 0, 30, 30 }, {});
     check(renderer.endFrame(error), error);
     pixel(10, 10, Red);
     const auto vertical = create(renderer, { 1, 2, { 0, 255, 0, 255, 255, 0, 0, 255 } });
     frame(renderer);
     repeated.wrapY = TextureWrap::Repeat;
     repeated.repeats = { 1, 2 };
-    check(renderer.drawTexture(vertical, { 0, 0, 40, 100 }, {}, error, repeated), error);
+    renderer.drawTexture(vertical, { 0, 0, 40, 100 }, {}, repeated);
     check(renderer.endFrame(error), error);
     pixel(10, 10, Green);
     pixel(10, 35, Red);
@@ -179,23 +178,23 @@ void integration(Renderer2D& renderer)
     DrawOptions front;
     front.color = { 0, 0, 1, 0.5F };
     front.layer = 2;
-    check(renderer.drawRectangle({ 0, 0, 80, 80 }, ShapeFill::Filled, front, error), error);
+    renderer.drawRectangle({ 0, 0, 80, 80 }, front, ShapeFill::Filled);
     DrawOptions behind;
     behind.layer = -2;
-    check(renderer.setClip(Viewport{ 0, 0, 40, 80 }, error), error);
-    check(renderer.drawTexture(texture, { 0, 0, 80, 80 }, behind, error), error);
-    check(renderer.setClip(std::nullopt, error), error);
+    renderer.setClip(Viewport{ 0, 0, 40, 80 });
+    renderer.drawTexture(texture, { 0, 0, 80, 80 }, behind);
+    renderer.setClip(std::nullopt);
     DrawOptions transform;
     transform.transform = Transform2{ { 130, 30 }, Pi / 2, { 1, 1 }, {} }.toAffine();
     transform.color = { 0.5F, 1, 1, 1 };
-    check(renderer.drawTexture(texture, { 0, 0, 20, 40 }, transform, error), error);
+    renderer.drawTexture(texture, { 0, 0, 20, 40 }, transform);
     check(renderer.endFrame(error), error);
     pixel(10, 10, { 0.5F, 0, 0.5F });
     pixel(60, 10, { 0, 0, 0.5F });
     pixel(100, 40, { 0.5F, 0, 0 });
     // Команда удерживает ресурс после освобождения последней пользовательской ссылки.
     frame(renderer);
-    check(renderer.drawTexture(texture, { 0, 0, 80, 80 }, {}, error), error);
+    renderer.drawTexture(texture, { 0, 0, 80, 80 }, {});
     texture = {};
     renderer.collectUnusedTextures();
     require(renderer.textureStats().count == 1, "Queued texture was collected prematurely.");
@@ -207,18 +206,18 @@ void integration(Renderer2D& renderer)
     renderer.collectUnusedTextures();
     require(renderer.textureStats().count == 0 && !glIsTexture(static_cast<GLuint>(name)), "Unused GPU texture leaked.");
     texture = create(renderer, { 1, 1, { 0, 255, 0, 255 } });
-    check(renderer.beginFrame(WindowSize, WindowSize, Black, error), error);
+    renderer.beginFrame(WindowSize, WindowSize, Black);
     Camera2 camera;
     CameraView world;
     CameraError cameraError;
     require(camera.createView({ 0, 0, WindowSize, WindowSize }, world, cameraError), "Camera failed.");
-    check(renderer.beginWorld(world, error), error);
-    check(renderer.drawTexture(texture, { -128, -128, 256, 256 }, {}, error), error);
-    check(renderer.beginUi(view(), error), error);
+    renderer.setWorldView(world);
+    renderer.drawTexture(texture, { -128, -128, 256, 256 }, {});
+    renderer.setUiView(view());
     DrawOptions ui;
     ui.color = Red;
     ui.layer = -100;
-    check(renderer.drawRectangle({ 0, 0, 30, 30 }, ShapeFill::Filled, ui, error), error);
+    renderer.drawRectangle({ 0, 0, 30, 30 }, ui, ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(10, 10, Red);
     pixel(100, 100, Green);
@@ -244,28 +243,35 @@ void resources(Renderer2D& renderer, const ResourceFiles& files)
     require(!renderer.createTexture({ 1, 1, {} }, second, error) && first == second, "Invalid upload changed output.");
     require(!renderer.setTextureBudget(1, error), "Live renderer accepted a budget change.");
     frame(renderer);
-    require(!renderer.drawTexture({}, { 0, 0, 10, 10 }, {}, renderError)
-        && renderError == RenderError::InvalidTexture, "Empty texture accepted.");
+    renderer.drawTexture({}, { 0, 0, 10, 10 });
+    require(!renderer.endFrame(renderError) && renderError == RenderError::InvalidTexture,
+        "Empty texture accepted.");
     TextureSampling invalid;
     invalid.repeats.x = std::numeric_limits<float>::quiet_NaN();
-    require(!renderer.drawTexture(first, { 0, 0, 10, 10 }, {}, renderError, invalid), "NaN repetition accepted.");
-    check(renderer.drawTexture(first, { 0, 0, 10, 10 }, {}, renderError), renderError);
+    frame(renderer);
+    renderer.drawTexture(first, { 0, 0, 10, 10 }, {}, invalid);
+    require(!renderer.endFrame(renderError) && renderError == RenderError::InvalidOptions,
+        "NaN repetition accepted.");
+    frame(renderer);
+    renderer.drawTexture(first, { 0, 0, 10, 10 }, {});
     check(renderer.endFrame(renderError), renderError);
     GLint liveName = 0;
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &liveName);
     Renderer2D other;
     check(other.initialize(renderError), renderError);
     frame(other);
-    require(!other.drawTexture(first, { 0, 0, 10, 10 }, {}, renderError)
-        && renderError == RenderError::InvalidTexture, "Foreign texture accepted.");
+    other.drawTexture(first, { 0, 0, 10, 10 });
+    require(!other.endFrame(renderError) && renderError == RenderError::InvalidTexture,
+        "Foreign texture accepted.");
     other.shutdown();
     renderer.shutdown();
     require(!glIsTexture(static_cast<GLuint>(liveName)), "Shutdown did not delete the GPU object.");
     require(!first.isValid() && !second.isValid() && !first.image() && first.width() == 0, "Shutdown left usable texture handles.");
     check(renderer.initialize(renderError), renderError);
     frame(renderer);
-    require(!renderer.drawTexture(first, { 0, 0, 10, 10 }, {}, renderError), "Old texture accepted after restart.");
-    check(renderer.endFrame(renderError), renderError);
+    renderer.drawTexture(first, { 0, 0, 10, 10 });
+    require(!renderer.endFrame(renderError) && renderError == RenderError::InvalidTexture,
+        "Old texture accepted after restart.");
     first = {};
     second = {};
     check(renderer.loadTexture(files, "rgba_2x2.png", first, error), error);

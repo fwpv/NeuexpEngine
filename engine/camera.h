@@ -14,6 +14,8 @@ struct Viewport
     int height = 0;
 
     Rect bounds() const;
+    // Клиентские пиксели; правая и нижняя границы исключены.
+    bool contains(Vector2 point) const;
 };
 
 enum class ViewportMode

@@ -1,10 +1,11 @@
 #include "entry_point.h"
 #include "application.h"
 #include "ui.h"
-#include "../common/painter.h"
+#include "renderer.h"
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -13,21 +14,19 @@ namespace
 {
 using namespace Engine;
 
-constexpr Color Background = { 0.08F, 0.13F, 0.16F };
-constexpr Color Grid = { 0.17F, 0.25F, 0.28F };
-constexpr Color Panel = { 0.035F, 0.055F, 0.08F };
-constexpr Color White = { 0.91F, 0.96F, 1 };
-constexpr Color Orange = { 1, 0.65F, 0.28F };
-constexpr Color Blue = { 0.4F, 0.86F, 1 };
-constexpr Color Green = { 0.35F, 0.95F, 0.55F };
-constexpr Rect UiPanel = { 12, 12, 232, 152 };
-constexpr Rect UiMinus = { 80, 44, 24, 24 };
-constexpr Rect UiPlus = { 110, 44, 24, 24 };
-constexpr Rect UiSystem = { 144, 44, 90, 24 };
-constexpr Rect ZoomMinus = { 80, 76, 24, 24 };
-constexpr Rect ZoomPlus = { 110, 76, 24, 24 };
-constexpr Rect ZoomReset = { 144, 76, 90, 24 };
-constexpr Rect ClickButton = { 20, 108, 214, 24 };
+constexpr Color Grid = {0.17F, 0.25F, 0.28F};
+constexpr Color Panel = {0.035F, 0.055F, 0.08F};
+constexpr Color White = {0.91F, 0.96F, 1};
+constexpr Color Orange = {1, 0.65F, 0.28F};
+constexpr Color Blue = {0.4F, 0.86F, 1};
+constexpr Rect UiPanel = {12, 12, 232, 152};
+constexpr Rect UiMinus = {80, 44, 24, 24};
+constexpr Rect UiPlus = {110, 44, 24, 24};
+constexpr Rect UiSystem = {144, 44, 90, 24};
+constexpr Rect ZoomMinus = {80, 76, 24, 24};
+constexpr Rect ZoomPlus = {110, 76, 24, 24};
+constexpr Rect ZoomReset = {144, 76, 90, 24};
+constexpr Rect ClickButton = {20, 108, 214, 24};
 constexpr float ScaleStep = 0.25F;
 constexpr float MinimumScale = 0.5F;
 constexpr float MaximumScale = 2.5F;
@@ -39,28 +38,7 @@ int percent(float scale)
 
 class DpiApplication final : public Application
 {
-    Demo::Painter drawing{ getRenderer() };
-
-    void rectangle(const Rect& bounds, Color color)
-    {
-        drawing.rectangle(bounds, color);
-    }
-
-    void circle(Vector2 center, float radius, Color color)
-    {
-        drawing.circle({ center, radius }, color, true, 40);
-    }
-
-    Camera2 camera = { {}, 1, { 960, 600 }, ViewportMode::Expand };
-    UiCanvas canvas;
-    CameraView worldView;
-    UiView uiView;
-    bool viewsReady = false;
-    bool titleDirty = true;
-    int uiClicks = 0;
-    int worldClicks = 0;
-    Vector2 marker = { 100, 80 };
-
+private:
     bool onStart(Platform::Error& error) override
     {
         Platform::WindowState state;
@@ -68,7 +46,7 @@ class DpiApplication final : public Application
             return false;
         }
         canvas.scale = std::clamp(state.systemScale, MinimumScale, MaximumScale);
-        return drawing.initialize(error);
+        return initializeRenderer(error);
     }
 
     bool updateViews(const FrameInfo& frame, Platform::Error& error)
@@ -77,11 +55,11 @@ class DpiApplication final : public Application
         if (frame.window.width <= 0 || frame.window.height <= 0) {
             return true;
         }
-        const Viewport area = { 0, 0, frame.window.width, frame.window.height };
+        const Viewport area = {0, 0, frame.window.width, frame.window.height};
         CameraError cameraError;
         UiError uiError;
         if (!camera.createView(area, worldView, cameraError) || !canvas.createView(area, uiView, uiError)) {
-            error = { "DPI demo views", "Could not calculate the world and interface coordinates.", {} };
+            error = Platform::Error{"DPI demo views", "Could not calculate the world and interface coordinates.", std::optional<int>{}};
             return false;
         }
         viewsReady = true;
@@ -110,7 +88,7 @@ class DpiApplication final : public Application
             changeUiScale(frame.window.systemScale);
         }
         if (input.key(Key::R).pressed) {
-            camera.position = {};
+            camera.position = Vector2{};
             camera.zoom = 1;
             titleDirty = true;
         }
@@ -128,7 +106,7 @@ class DpiApplication final : public Application
             if (!viewsReady || event.type != EventType::MousePressed || event.button != MouseButton::Left) {
                 continue;
             }
-            const Vector2 screen = { static_cast<float>(event.x), static_cast<float>(event.y) };
+            const Vector2 screen = {static_cast<float>(event.x), static_cast<float>(event.y)};
             Vector2 ui;
             if (uiView.screenToUi(screen, ui) && contains(UiPanel, ui)) {
                 if (contains(UiMinus, ui)) {
@@ -164,7 +142,7 @@ class DpiApplication final : public Application
         if (Platform::isKeyDown(Key::D)) { direction.x += 1; }
         if (Platform::isKeyDown(Key::W)) { direction.y -= 1; }
         if (Platform::isKeyDown(Key::S)) { direction.y += 1; }
-        camera.position += normalized(direction) * (260 * frame.deltaTime);
+        camera.position += normalized(direction) * (260.0f * frame.deltaTime);
         return true;
     }
 
@@ -191,8 +169,8 @@ class DpiApplication final : public Application
     void button(const Rect& bounds, std::string_view label, Vector2 mouse)
     {
         const bool hover = contains(bounds, mouse);
-        rectangle(bounds, hover ? Blue : Grid);
-        drawing.text(label, bounds.position + Vector2{ 7, 7 }, hover ? Panel : White);
+        drawing.drawRectangle(bounds, hover ? Blue : Grid);
+        drawing.drawDebugText(label, bounds.position + Vector2{7, 7}, hover ? Panel : White);
     }
 
     bool onRender(const FrameInfo& frame, Platform::Error& error) override
@@ -200,33 +178,33 @@ class DpiApplication final : public Application
         if (!viewsReady) {
             return true;
         }
-        drawing.beginFrame(frame, Background);
-        drawing.beginWorld(worldView);
+        beginFrame(frame.window.width, frame.window.height, Color{0.08F, 0.13F, 0.16F});
+        drawing.setWorldView(worldView);
         const Rect& bounds = worldView.worldBounds;
-        const float firstX = std::floor(bounds.position.x / 100) * 100;
-        const float firstY = std::floor(bounds.position.y / 100) * 100;
-        for (float x = firstX; x <= bounds.position.x + bounds.size.width; x += 100) {
-            rectangle({ x, bounds.position.y, 1, bounds.size.height }, Grid);
+        constexpr float GridSpacing = 100;
+        const float firstX = std::floor(bounds.position.x / GridSpacing) * GridSpacing;
+        const float firstY = std::floor(bounds.position.y / GridSpacing) * GridSpacing;
+        for (float x = firstX; x <= bounds.position.x + bounds.size.width; x += GridSpacing) {
+            drawing.drawRectangle(Rect{x, bounds.position.y, 1, bounds.size.height}, Grid);
         }
-        for (float y = firstY; y <= bounds.position.y + bounds.size.height; y += 100) {
-            rectangle({ bounds.position.x, y, bounds.size.width, 1 }, Grid);
+        for (float y = firstY; y <= bounds.position.y + bounds.size.height; y += GridSpacing) {
+            drawing.drawRectangle(Rect{bounds.position.x, y, bounds.size.width, 1}, Grid);
         }
-        rectangle({ -160, -90, 100, 160 }, Blue);
-        rectangle({ 150, -180, 170, 80 }, Green);
-        circle({}, 40, Orange);
-        circle(marker, 13, White);
-        circle(marker, 8, Orange);
+        drawing.drawRectangle(Rect{-160, -90, 100, 160}, Blue);
+        drawing.drawRectangle(Rect{150, -180, 170, 80}, Color{0.35F, 0.95F, 0.55F});
+        drawing.drawCircle(Circle{Vector2{}, 40}, Orange, Engine::ShapeFill::Filled, 40);
+        drawing.drawCircle(Circle{marker, 13}, White, Engine::ShapeFill::Filled, 40);
+        drawing.drawCircle(Circle{marker, 8}, Orange, Engine::ShapeFill::Filled, 40);
 
-        drawing.beginUi(uiView);
-        rectangle(UiPanel, Panel);
-        drawing.text("UI " + std::to_string(percent(canvas.scale)) + " / DPI " + std::to_string(percent(frame.window.systemScale)),
-            { 20, 22 }, White);
-        drawing.text("UI", { 20, 51 }, Orange);
-        drawing.text("WORLD " + std::to_string(percent(camera.zoom)), { 20, 83 }, Blue, 1.5F);
+        drawing.setUiView(uiView);
+        drawing.drawRectangle(UiPanel, Panel);
+        drawing.drawDebugText("UI " + std::to_string(percent(canvas.scale)) + " / DPI " + std::to_string(percent(frame.window.systemScale)), Vector2{20, 22}, White);
+        drawing.drawDebugText("UI", Vector2{20, 51}, Orange);
+        drawing.drawDebugText("WORLD " + std::to_string(percent(camera.zoom)), Vector2{20, 83}, Blue, 1.5F);
         const auto& mouse = Platform::getInput().mouse();
-        Vector2 pointer = { -1, -1 };
+        Vector2 pointer = {-1, -1};
         if (mouse.inside) {
-            uiView.screenToUi({ static_cast<float>(mouse.x), static_cast<float>(mouse.y) }, pointer);
+            uiView.screenToUi(Vector2{static_cast<float>(mouse.x), static_cast<float>(mouse.y)}, pointer);
         }
         button(UiMinus, "-", pointer);
         button(UiPlus, "+", pointer);
@@ -235,9 +213,20 @@ class DpiApplication final : public Application
         button(ZoomPlus, "+", pointer);
         button(ZoomReset, "RESET", pointer);
         button(ClickButton, "UI CLICKS " + std::to_string(uiClicks), pointer);
-        drawing.text("WASD / WHEEL / CLICK WORLD", { 20, 146 }, White, 1.5F);
-        return drawing.endFrame(error);
+        drawing.drawDebugText("WASD / WHEEL / CLICK WORLD", Vector2{20, 146}, White, 1.5F);
+        return endFrame(error);
     }
+
+    Engine::Renderer2D& drawing = getRenderer();
+    Camera2 camera = {Vector2{}, 1, Size2{960, 600}, ViewportMode::Expand};
+    UiCanvas canvas;
+    CameraView worldView;
+    UiView uiView;
+    bool viewsReady = false;
+    bool titleDirty = true;
+    int uiClicks = 0;
+    int worldClicks = 0;
+    Vector2 marker = {100, 80};
 };
 }
 

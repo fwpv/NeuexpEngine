@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace Engine
@@ -23,6 +24,9 @@ enum class RenderError
     NoCurrentContext,
     InvalidTexture
 };
+
+// Читаемое описание кода ошибки для журналов и сообщений пользователю.
+const char* renderErrorMessage(RenderError error);
 
 enum class ShapeFill
 {
@@ -76,48 +80,58 @@ public:
     // Удаляет ресурсы без пользовательских ссылок и команд; также вызывается в beginFrame().
     void collectUnusedTextures();
     TextureStats textureStats() const;
-    // Размеры — фактические клиентские пиксели. Очищается весь цветовой буфер,
-    // включая поля. Вложенные кадры отклоняются.
-    bool beginFrame(int width, int height, Color clearColor, RenderError& error);
-    // Команды копируются в очередь активного вида. При смене вида/endFrame()
-    // выполняется стабильная сортировка по (layer, order), общая для непрозрачных
-    // и полупрозрачных фигур. При одинаковых ключах сохраняется порядок команд.
-    // Сортировка не пересекает границы видов: более поздний вид рисуется поверх
-    // предыдущего. Несколько мировых видов допустимы до первого beginUi().
-    bool beginWorld(const CameraView& view, RenderError& error);
-    // Один или несколько экранных видов рисуются после мира, поверх него.
-    // Виды должны быть получены из Camera2::createView / UiCanvas::createView.
-    bool beginUi(const UiView& view, RenderError& error);
-    // Дополнительное отсечение в клиентских пикселях: начало сверху слева,
-    // правая и нижняя границы исключены. Пересекается с viewport и окном;
-    // нулевой размер отсекает всё. nullopt снимает дополнительное отсечение.
-    // Каждый beginWorld/beginUi сбрасывает дополнительное отсечение.
-    bool setClip(const std::optional<Viewport>& clip, RenderError& error);
-    // Завершает кадр без показа: present() вызывается игровым циклом отдельно.
+    // Размеры — клиентские пиксели. Очищает весь буфер и сбрасывает ошибку. Вложенный кадр отклоняется.
+    void beginFrame(int width, int height, Color clear);
+    // Переключает активный вид внутри кадра; отдельного завершения вида нет.
+    // Мировые виды задаются до экранных. Смена вида сбрасывает отсечение.
+    void setWorldView(const CameraView& view);
+    void setUiView(const UiView& view);
+    // Отсечение в клиентских пикселях, начало сверху слева. Пересекается с viewport
+    // и окном. Нулевой размер скрывает всё; nullopt снимает отсечение.
+    void setClip(const std::optional<Viewport>& clip);
+    // После первой ошибки остальные команды пропускаются. Завершение закрывает
+    // начатый кадр и возвращает первую ошибку; следующий beginFrame начинает новый.
+    // Уже принятые команды выполняются; показ кадра выполняет цикл приложения.
     bool endFrame(RenderError& error);
 
-    // Рисование требует активного вида. Ошибка не завершает кадр и не рисует фигуру.
-    // Все координаты и коэффициенты преобразований конечны; компоненты цвета — [0, 1].
-    bool drawPoint(Vector2 point, const DrawOptions& options, RenderError& error);
-    // Рисует целую текстуру; использует общие преобразования, сортировку и отсечение.
-    bool drawTexture(const Texture& texture, const Rect& rectangle, const DrawOptions& options,
-        RenderError& error, const TextureSampling& sampling = {});
-    bool drawLine(Vector2 start, Vector2 end, const DrawOptions& options, RenderError& error);
-    bool drawRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options, RenderError& error);
-    // Вертикальный градиент в локальных координатах. Цвета умножаются на options.color.
-    bool drawGradientRectangle(const Rect& rectangle, Color top, Color bottom,
-        const DrawOptions& options, RenderError& error);
-    // Нулевые размеры прямоугольника/радиус окружности допустимы, заливка не рисуется.
-    // segments >= 3; аппроксимация окружности задаётся в локальных координатах.
-    bool drawCircle(const Circle& circle, ShapeFill fill, const DrawOptions& options,
-        RenderError& error, unsigned int segments = 48);
-    // Простой многоугольник без отверстий и самопересечений, любой обход, >= 3 вершин.
-    // Замыкающая копия первой вершины, соседние повторы и коллинеарные вершины допустимы.
-    // Вогнутая заливка выполняется триангуляцией; вырожденный контур отклоняется.
-    bool drawPolygon(const std::vector<Vector2>& vertices, ShapeFill fill,
-        const DrawOptions& options, RenderError& error);
+    // Настройки копируются в команду и не влияют на следующие фигуры.
+    // Внутри вида — стабильная сортировка по (layer, order). Более поздний вид
+    // рисуется поверх предыдущего независимо от ключей сортировки.
+    void drawPoint(Vector2 point, const DrawOptions& options = {});
+    void drawPoint(Vector2 point, Color color);
+    void drawLine(Vector2 start, Vector2 end, const DrawOptions& options = {});
+    void drawLine(Vector2 start, Vector2 end, Color color);
+    void drawRectangle(const Rect& bounds, const DrawOptions& options = {}, ShapeFill fill = ShapeFill::Filled);
+    void drawRectangle(const Rect& bounds, Color color, ShapeFill fill = ShapeFill::Filled);
+    // Нулевые размеры допустимы; segments >= 3 задаёт аппроксимацию окружности.
+    void drawCircle(const Circle& circle, const DrawOptions& options = {},
+        ShapeFill fill = ShapeFill::Filled, unsigned int segments = 48);
+    void drawCircle(const Circle& circle, Color color,
+        ShapeFill fill = ShapeFill::Filled, unsigned int segments = 48);
+    // radii задают неотрицательные полуоси в локальных координатах; segments >= 3.
+    void drawEllipse(Vector2 center, Vector2 radii, const DrawOptions& options = {},
+        ShapeFill fill = ShapeFill::Filled, unsigned int segments = 48);
+    void drawEllipse(Vector2 center, Vector2 radii, Color color,
+        ShapeFill fill = ShapeFill::Filled, unsigned int segments = 48);
+    // Простой многоугольник без отверстий и самопересечений, >= 3 вершин.
+    // Любой обход; соседние повторы, замыкающая вершина и коллинеарность допустимы.
+    void drawPolygon(const std::vector<Vector2>& vertices, const DrawOptions& options = {},
+        ShapeFill fill = ShapeFill::Filled);
+    void drawPolygon(const std::vector<Vector2>& vertices, Color color,
+        ShapeFill fill = ShapeFill::Filled);
+    void drawGradientRectangle(const Rect& bounds, Color top, Color bottom, const DrawOptions& options = {});
+    void drawTexture(const Texture& texture, const Rect& bounds, const DrawOptions& options = {},
+        const TextureSampling& sampling = {});
+    // Встроенный шрифт 3x5: ASCII A-Z, 0-9 и знаки - + /. Остальные байты дают пробел.
+    // pixel — размер пикселя глифа в локальных координатах, конечный и положительный.
+    void drawDebugText(std::string_view message, Vector2 position, const DrawOptions& options = {}, float pixel = 2);
+    void drawDebugText(std::string_view message, Vector2 position, Color color, float pixel = 2);
 
 private:
+    bool queueRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options, RenderError& error);
+
+    bool ready();
+
     enum class Stage
     {
         Idle,
@@ -147,6 +161,16 @@ private:
         TextureSampling sampling;
     };
 
+    bool selectView(const Viewport& area, const Affine2& transform, Stage next, RenderError& error);
+    bool prepareDraw(const DrawOptions& options, RenderError& error) const;
+    bool submit(Primitive primitive, const Vector2* vertices, std::size_t count,
+        const DrawOptions& options, RenderError& error);
+    void execute(Primitive primitive, const Vector2* vertices, std::size_t count, const DrawOptions& options,
+        const std::optional<std::array<Color, 2>>& gradient) const;
+    void flush();
+    void executeTexture(const Command& command) const;
+    void applyClip(const std::optional<Viewport>& area) const;
+
     bool initialized = false;
     Stage stage = Stage::Idle;
     int frameWidth = 0;
@@ -157,15 +181,6 @@ private:
     std::vector<Command> commands;
     std::vector<std::shared_ptr<Detail::TextureData>> textures;
     std::size_t textureBudget = 256 * 1024 * 1024;
-
-    bool beginView(const Viewport& area, const Affine2& transform, Stage next, RenderError& error);
-    bool prepareDraw(const DrawOptions& options, RenderError& error) const;
-    bool submit(Primitive primitive, const Vector2* vertices, std::size_t count,
-        const DrawOptions& options, RenderError& error);
-    void execute(Primitive primitive, const Vector2* vertices, std::size_t count, const DrawOptions& options,
-        const std::optional<std::array<Color, 2>>& gradient) const;
-    void flush();
-    void executeTexture(const Command& command) const;
-    void applyClip(const std::optional<Viewport>& area) const;
+    RenderError firstError = RenderError::None;
 };
 }

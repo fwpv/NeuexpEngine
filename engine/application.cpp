@@ -228,6 +228,34 @@ Renderer2D& Application::getRenderer()
     return graphics;
 }
 
+bool Application::initializeRenderer(Platform::Error& error)
+{
+    RenderError renderError;
+    const bool success = graphics.initialize(renderError);
+    return rendererResult("Renderer2D::initialize", success, renderError, error);
+}
+
+void Application::beginFrame(int width, int height, Color clear)
+{
+    graphics.beginFrame(width, height, clear);
+}
+
+bool Application::endFrame(Platform::Error& error)
+{
+    RenderError renderError;
+    const bool success = graphics.endFrame(renderError);
+    return rendererResult("Renderer2D::endFrame", success, renderError, error);
+}
+
+bool Application::rendererResult(const char* operation, bool success, RenderError error, Platform::Error& result) const
+{
+    result = {};
+    if (!success) {
+        result = { operation, renderErrorMessage(error), {} };
+    }
+    return success;
+}
+
 bool Application::onInput(const FrameInfo&, Platform::Error&)
 {
     return true;

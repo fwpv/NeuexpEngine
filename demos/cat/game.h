@@ -1,136 +1,189 @@
 #pragma once
 
+#include "renderer.h"
+#include "resources.h"
+#include "texture.h"
+#include "ui.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <vector>
 
 namespace Cat
 {
-constexpr int CanvasWidth = 935;
-constexpr int CanvasHeight = 700;
-constexpr double CatScale = 0.75;
-constexpr double SupportPointOffset = 135 * CatScale;
-constexpr double SupportMargin = 10;
-constexpr double CatScreenX = 450 - SupportPointOffset;
-constexpr double FeetOffset = 165 * CatScale;
-constexpr int PlatformWidth = 175;
-constexpr int PlatformHeight = 35;
-constexpr std::size_t PlatformLimit = 50;
+// Мировые координаты в пикселях: X вправо, Y вниз. Время — в секундах.
+struct Point
+{
+    double x;
+    double y;
+};
 
-enum class Art { Platform, MovingPlatform, GrassPlatform, Mushroom, Flowers, Grass,
-    Head1, Head2, Head3, Head4, Head5, Feet, Leaf1, Leaf2, Leaf3, Count };
+struct Vector
+{
+    double x;
+    double y;
+};
+
+enum Art : std::size_t
+{
+    Stone,
+    Lift,
+    Turf,
+    Mushroom,
+    Flowers,
+    Grass,
+    Leaf1,
+    Leaf2,
+    Leaf3,
+    Head,
+    Feet = Head + 5,
+    ArtCount = Feet + 12
+};
 
 struct Controls
 {
-    bool right = false;
-    bool left = false;
-    bool up = false;
-    bool down = false;
+    bool right;
+    bool left;
+    bool jump;
+    bool drop;
+};
+
+class Images
+{
+public:
+    bool load(Engine::Renderer2D& renderer, Engine::ResourceError& error);
+    void draw(Engine::Renderer2D& renderer, std::size_t image, Point screen,
+        double scale = 1, double angle = 0) const;
+
+private:
+    std::array<Engine::Texture, ArtCount> textures;
 };
 
 struct Decoration
 {
-    Art art = Art::Grass;
-    int x = 0;
-    int y = 0;
+    Art art;
+    Point offset;
 };
 
 struct Platform
 {
-    double x = 0;
-    double y = 0;
-    Art art = Art::Platform;
+    double prepareMotion(double duration);
+    void draw(Engine::Renderer2D& renderer, const Images& images, double camera, double width) const;
+
+    int id;
+    Point position;
+    Art art;
     std::vector<Decoration> decorations;
-    double speed = 0;
-    int bottom = 0;
-    int top = 0;
-    bool movingDown = false;
+    double speed; // Пиксели в секунду: положительная скорость направлена вниз.
+    double top;
+    double bottom;
+};
+
+class Cat
+{
+public:
+    Cat();
+    Point position() const;
+    bool standsOn(const Platform& platform) const;
+    // duration >= 0; кот и лифты продвигаются по одной шкале времени.
+    void advance(std::vector<Platform>& platforms, double duration, const Controls& controls);
+    void draw(Engine::Renderer2D& renderer, const Images& images, double camera) const;
+
+private:
+    struct Range
+    {
+        double left;
+        double right;
+    };
+
+    struct Probe
+    {
+        Probe(double x, double speed, double after = 0, bool allowEntry = true, bool ahead = false);
+
+        double x;
+        double speed;
+        double after;
+        bool allowEntry;
+        bool ahead;
+    };
+
+    std::optional<Range> supportRange(const Platform& platform, const std::vector<Platform>& platforms, Probe probe) const;
+    const Platform* findSupport(const std::vector<Platform>& platforms, int direction = 0, int excluded = -1) const;
+    void ignoreSupports(const std::vector<Platform>& platforms);
+    void leaveEdge(const Platform& platform, const std::vector<Platform>& platforms, double x);
+    double move(std::vector<Platform>& platforms, double duration, int direction);
+    void returnToTop();
+    void animate(double duration, int direction);
+
+    Point feet;
+    Vector velocity;
+    int support;
+    int entryDirection; // 0 — устойчивая опора, +1 — въезд слева, -1 — справа.
+    // Покинутые площадки снова участвуют в столкновениях после прохода сквозь них или приземления.
+    std::set<int> ignored;
+    double jumpBuffer;
+    Controls previousControls;
+    bool dropRequested;
+    int headFrame;
+    int feetFrame;
+    double animationTime;
+    double frameTime;
 };
 
 struct Leaf
 {
-    Art art = Art::Leaf1;
-    double x = 0;
-    double y = 0;
-    double angle = 0;
-    double speed = 0;
-    double spin = 0;
-    bool active = false;
-};
+    Leaf();
+    void draw(Engine::Renderer2D& renderer, const Images& images, double camera, double width) const;
 
-struct Player
-{
-    double x = CatScreenX;
-    double y = 100;
-    // Скорости в пикселях в секунду; положительная вертикальная скорость направлена вниз.
-    double velocityX = 0;
-    double velocityY = 0;
-    bool grounded = false;
-    int feet = 1;
-    int head = 3;
+    Art art;
+    Point position;
+    double angle; // Градусы.
+    double speed; // Пиксели в секунду.
+    double spin; // Градусы в секунду.
+    bool active;
 };
 
 class Game
 {
 public:
-    Game();
-    // Время кадра задаётся в секундах.
-    void update(double deltaTime, const Controls& controls);
-
-    Player player;
-    std::array<std::optional<Platform>, PlatformLimit> platforms;
-    std::array<Leaf, 50> leaves;
-    double cameraX = 0;
-    double viewWidth = CanvasWidth;
-    double time = 0;
+    Game(std::uint32_t routeSeed, std::uint32_t leavesSeed);
+    // Положительные размеры клиентской области; вид задаётся до первого рисования.
+    bool resize(int width, int height, Engine::UiError& error);
+    void update(double duration, const Controls& controls);
+    void draw(Engine::Renderer2D& renderer, const Images& images) const;
 
 private:
-    std::uint32_t randomState;
-    int generationMode = 1;
-    int nextModeX = 3000;
-    int lastX = 360;
-    int lastY = 400;
-    std::uint32_t leafRandomState;
-    double jumpBufferTime = 0;
-    bool jumpHeld = false;
-    bool downHeld = false;
-    bool dropRequested = false;
-    std::optional<std::size_t> support;
-    std::array<bool, PlatformLimit> ignoredPlatforms{};
-    int entryDirection = 0;
-    double feetTime = 0;
-    double headTime = 0;
+    enum class Pattern
+    {
+        Normal,
+        Lift,
+        Zigzag
+    };
 
-    int random();
-    int leafRandom();
-    std::size_t platformCount() const;
-    void addPlatform(int x, int y, Art art, int bottom = 0, int top = 0);
+    static int random(std::uint32_t& state);
+    void addPlatform(int x, int y, Art art, double top = 0, double bottom = 0);
     void decorate(Platform& platform);
     bool overlaps(int x, int y) const;
-    void generate();
-    void generateNormal(int type);
-    bool generateLift();
-    bool generateZigzag();
-    void generatePlatforms();
-    void updateLeaves(double deltaTime);
-    void updatePlayer(double deltaTime, const Controls& controls);
-    void updateAnimation(const Controls& controls);
-    struct SupportInterval
-    {
-        double left = 0;
-        double right = 0;
-    };
-    enum class SupportQuery { Contact, Approach };
+    void generate(double catX, double horizon);
+    void generateNormal(double catX, double horizon);
+    bool generateSpecial(double catX, bool zigzag);
+    void updateLeaves(double duration, double catX);
 
-    std::optional<SupportInterval> supportInterval(std::size_t index, double playerX,
-        double velocityX, double after = 0, bool allowEntry = true,
-        SupportQuery query = SupportQuery::Contact) const;
-    std::optional<std::size_t> findSupport(double playerX, double feetY, int direction = 0,
-        std::optional<std::size_t> excluded = std::nullopt) const;
-    void ignoreSupports(double playerX, double feetY);
-    double generationRight() const;
-    void respawn();
+    Cat cat;
+    std::vector<Platform> platforms;
+    std::array<Leaf, 50> leaves;
+    std::uint32_t routeRandom;
+    std::uint32_t leavesRandom;
+    int nextId;
+    Pattern pattern;
+    int nextPatternX;
+    int lastX;
+    int lastY;
+    double time;
+    Engine::UiView view;
+    double visibleWidth;
 };
 }

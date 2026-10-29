@@ -437,7 +437,7 @@ bool applyWindowTitle(const std::string& title, Error& error)
     return synchronize("setWindowTitle", error);
 }
 
-bool initializeLinux(const WindowOptions& options, Error& error)
+bool initializeX11(const WindowOptions& options, Error& error)
 {
     Detail::resetInput();
     const int width = options.width;
@@ -658,7 +658,7 @@ bool initialize(const WindowOptions& options, std::vector<Error>& errors)
         errors.push_back(error);
         return false;
     }
-    if (initializeLinux(options, error)) {
+    if (initializeX11(options, error)) {
         return true;
     }
     shutdown(errors);

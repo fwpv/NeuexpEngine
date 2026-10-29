@@ -1,0 +1,126 @@
+#pragma once
+
+#include "geometry.h"
+#include "renderer.h"
+#include "math2d.h"
+#include "transform.h"
+
+#include <array>
+#include <optional>
+
+namespace Game
+{
+using Engine::Affine2;
+using Engine::Circle;
+using Engine::Color;
+using Engine::Pi;
+using Engine::Rect;
+using Engine::Size2;
+using Engine::Transform2;
+using Engine::Vector2;
+
+using Engine::DrawOptions;
+using Engine::ShapeFill;
+
+// Игровые действия текущего кадра без системных кодов клавиш.
+struct InputState
+{
+    bool up;
+    bool down;
+    bool left;
+    bool right;
+    bool fire;
+};
+
+class Bolt
+{
+public:
+    Bolt(Vector2 start, Vector2 speed, float lifetime);
+    void update(float deltaTime);
+    bool isExpired(const Rect& bounds) const;
+    Vector2 position() const;
+    void draw(Engine::Renderer2D& renderer) const;
+
+private:
+    Vector2 location;
+    Vector2 velocity;
+    float secondsLeft;
+};
+
+class Shuttle
+{
+public:
+    Shuttle();
+    void update(const InputState& input, float deltaTime);
+    std::optional<Bolt> fire(bool requested, float time);
+    Vector2 position() const;
+    void teleport(Vector2 destination);
+    void draw(Engine::Renderer2D& renderer, float time) const;
+
+private:
+    Transform2 transform;
+    bool thrusting;
+    float nextShotTime;
+};
+
+class Drone
+{
+public:
+    explicit Drone(float startPhase);
+    void update(float time);
+    bool tryHit(Vector2 point, float time);
+    void draw(Engine::Renderer2D& renderer, float time) const;
+
+private:
+    Vector2 position(float time) const;
+
+    float phase;
+    float respawnTime;
+    bool active;
+};
+
+class Portal
+{
+public:
+    Portal(Vector2 entrance, Vector2 exit);
+    bool tryTeleport(Shuttle& shuttle) const;
+    void draw(Engine::Renderer2D& renderer, float time, bool open) const;
+
+private:
+    Vector2 position;
+    Vector2 destination;
+};
+
+class PortalPair
+{
+public:
+    PortalPair();
+    void update(Shuttle& shuttle, float time);
+    void draw(Engine::Renderer2D& renderer, float time) const;
+
+private:
+    const std::array<Portal, 2> portals;
+    float nextPortalTime;
+    bool open;
+};
+
+class Station
+{
+public:
+    Vector2 position() const;
+    Vector2 beaconPosition(float time) const;
+    bool locksTarget(Vector2 point) const;
+    void draw(Engine::Renderer2D& renderer, float time) const;
+};
+
+class Background
+{
+public:
+    void draw(Engine::Renderer2D& renderer, Size2 worldSize, float time) const;
+
+private:
+    void drawNebula(Engine::Renderer2D& renderer, float time) const;
+    void drawStars(Engine::Renderer2D& renderer, Size2 worldSize, float time) const;
+    void drawPlanet(Engine::Renderer2D& renderer, float time) const;
+};
+}

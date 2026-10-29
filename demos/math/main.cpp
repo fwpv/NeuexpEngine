@@ -1,41 +1,25 @@
 #include "entry_point.h"
 #include "application.h"
 #include "transform.h"
-#include "../common/painter.h"
+#include "renderer.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
+#include <optional>
 #include <vector>
 
 namespace
 {
-constexpr Engine::Rect LocalBounds = { 0, 0, 160, 100 };
-constexpr Engine::Color IdleColor = { 0.15F, 0.45F, 0.8F };
-constexpr Engine::Color HitColor = { 0.2F, 0.85F, 0.35F };
-constexpr Engine::Color BoundsColor = { 1, 0.6F, 0.2F };
-constexpr Engine::Color CursorColor = { 1, 1, 1 };
-constexpr Engine::Color CursorBoundsColor = { 1, 1, 0 };
-constexpr Engine::Color CursorHitColor = { 1, 0, 0 };
-constexpr Engine::Color DirectionColor = { 1, 1, 1 };
-constexpr Engine::Rect DirectionShaft = { 28, 44, 80, 12 };
-constexpr std::array<Engine::Vector2, 3> DirectionHead = {{ { 132, 50 }, { 108, 34 }, { 108, 66 } }};
-constexpr float MovementSpeed = 200;
-constexpr float RotationSpeed = Engine::Pi / 2;
+constexpr Engine::Rect LocalBounds = {0, 0, 160, 100};
 constexpr float CursorRadius = 12;
-constexpr int CircleSegments = 32;
 
 class MathApplication final : public Engine::Application
 {
 private:
-    Demo::Painter drawing{ getRenderer() };
-
     bool onStart(Platform::Error& error) override
     {
-        return drawing.initialize(error);
+        return initializeRenderer(error);
     }
-
-    Engine::Transform2 object = { { 400, 300 }, 0, { 1, 1 }, { 80, 50 } };
 
     bool onInput(const Engine::FrameInfo&, Platform::Error&) override
     {
@@ -43,14 +27,14 @@ private:
             requestExit();
         }
         if (Platform::isKeyPressed(Engine::Key::R)) {
-            object = { { 400, 300 }, 0, { 1, 1 }, { 80, 50 } };
+            object = Engine::Transform2{Engine::Vector2{400, 300}, 0, Engine::Vector2{1, 1}, Engine::Vector2{80, 50}};
         }
         if (Platform::isKeyPressed(Engine::Key::X)) {
             object.scale.x = -object.scale.x;
         }
         const float zoom = static_cast<float>(Platform::getInput().mouse().wheelY) * 0.1F;
         const float magnitude = std::clamp(std::abs(object.scale.x) + zoom, 0.25F, 3.0F);
-        object.scale = { std::copysign(magnitude, object.scale.x), magnitude };
+        object.scale = Engine::Vector2{std::copysign(magnitude, object.scale.x), magnitude};
         return true;
     }
 
@@ -69,12 +53,12 @@ private:
         if (Platform::isKeyDown(Engine::Key::ArrowDown)) {
             direction.y += 1;
         }
-        object.position += Engine::normalized(direction) * MovementSpeed * frame.deltaTime;
+        object.position += Engine::normalized(direction) * 200.0f * frame.deltaTime;
         if (Platform::isKeyDown(Engine::Key::Q)) {
-            object.rotation -= RotationSpeed * frame.deltaTime;
+            object.rotation -= (Engine::Pi / 2) * frame.deltaTime;
         }
         if (Platform::isKeyDown(Engine::Key::E)) {
-            object.rotation += RotationSpeed * frame.deltaTime;
+            object.rotation += (Engine::Pi / 2) * frame.deltaTime;
         }
         return true;
     }
@@ -85,11 +69,11 @@ private:
         Engine::Affine2 inverse;
         Engine::TransformError transformError;
         if (!forward.inverse(inverse, transformError)) {
-            error = { "Affine2::inverse", "Object transform is not invertible.", {} };
+            error = Platform::Error{"Affine2::inverse", "Object transform is not invertible.", std::optional<int>{}};
             return false;
         }
         const auto& mouse = Platform::getInput().mouse();
-        const Engine::Vector2 cursor = { static_cast<float>(mouse.x), static_cast<float>(mouse.y) };
+        const Engine::Vector2 cursor = {static_cast<float>(mouse.x), static_cast<float>(mouse.y)};
         // В демо масштаб равномерный по модулю: обратное преобразование сохраняет форму круга.
         const Engine::Circle localCursorCircle = {
             inverse.transformPoint(cursor), CursorRadius / std::abs(object.scale.x)
@@ -99,31 +83,37 @@ private:
 
         Engine::UiView view;
         Engine::UiError uiError;
-        if (!Engine::UiCanvas{}.createView({ 0, 0, frame.window.width, frame.window.height }, view, uiError)) {
-            error = { "UiCanvas::createView", "Could not calculate the math view.", {} };
+        if (!Engine::UiCanvas{}.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, view, uiError)) {
+            error = Platform::Error{"UiCanvas::createView", "Could not calculate the math view.", std::optional<int>{}};
             return false;
         }
-        drawing.beginFrame(frame, { 0.03F, 0.04F, 0.07F });
-        drawing.beginUi(view);
-        drawing.options.transform = forward;
-        drawing.rectangle(LocalBounds, inside ? HitColor : IdleColor);
-        drawing.rectangle(DirectionShaft, DirectionColor);
-        drawing.polygon({ DirectionHead.begin(), DirectionHead.end() });
-        drawing.options.transform = {};
-        drawing.rectangle(bounds, BoundsColor, false);
+        beginFrame(frame.window.width, frame.window.height, Engine::Color{0.03F, 0.04F, 0.07F});
+        drawing.setUiView(view);
+        Engine::DrawOptions shape;
+        shape.transform = forward;
+        shape.color = inside ? Engine::Color{0.2F, 0.85F, 0.35F} : Engine::Color{0.15F, 0.45F, 0.8F};
+        drawing.drawRectangle(LocalBounds, shape);
+        shape.color = Engine::Color{1, 1, 1};
+        drawing.drawRectangle(Engine::Rect{28, 44, 80, 12}, shape);
+        drawing.drawPolygon(std::vector<Engine::Vector2>{Engine::Vector2{132, 50},
+            Engine::Vector2{108, 34}, Engine::Vector2{108, 66}}, shape);
+        drawing.drawRectangle(bounds, Engine::Color{1, 0.6F, 0.2F}, Engine::ShapeFill::Outline);
 
         if (mouse.inside) {
-            Engine::Color cursorColor = CursorColor;
-            if (Engine::intersects(bounds, Engine::Circle{ cursor, CursorRadius })) {
-                cursorColor = CursorBoundsColor;
+            Engine::Color cursorColor = {1, 1, 1};
+            if (Engine::intersects(bounds, Engine::Circle{cursor, CursorRadius})) {
+                cursorColor = Engine::Color{1, 1, 0};
             }
             if (Engine::intersects(LocalBounds, localCursorCircle)) {
-                cursorColor = CursorHitColor;
+                cursorColor = Engine::Color{1, 0, 0};
             }
-            drawing.circle({ cursor, CursorRadius }, cursorColor, false, CircleSegments);
+            drawing.drawCircle(Engine::Circle{cursor, CursorRadius}, cursorColor, Engine::ShapeFill::Outline, 32);
         }
-        return drawing.endFrame(error);
+        return endFrame(error);
     }
+
+    Engine::Renderer2D& drawing = getRenderer();
+    Engine::Transform2 object = {Engine::Vector2{400, 300}, 0, Engine::Vector2{1, 1}, Engine::Vector2{80, 50}};
 };
 }
 
