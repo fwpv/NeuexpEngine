@@ -2,6 +2,8 @@
 #include "entry_point.h"
 #include "application.h"
 #include "entities.h"
+#include "input.h"
+#include "math2d.h"
 #include "platform.h"
 #include "scene.h"
 #include "renderer.h"

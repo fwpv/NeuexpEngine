@@ -1,7 +1,12 @@
 #include "entry_point.h"
 #include "application.h"
+#include "geometry.h"
+#include "input.h"
+#include "math2d.h"
+#include "platform.h"
 #include "transform.h"
 #include "renderer.h"
+#include "ui.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,9 +15,6 @@
 
 namespace
 {
-constexpr Engine::Rect LocalBounds = {0, 0, 160, 100};
-constexpr float CursorRadius = 12;
-
 class MathApplication final : public Engine::Application
 {
 private:
@@ -75,9 +77,11 @@ private:
         const auto& mouse = Platform::getInput().mouse();
         const Engine::Vector2 cursor = {static_cast<float>(mouse.x), static_cast<float>(mouse.y)};
         // В демо масштаб равномерный по модулю: обратное преобразование сохраняет форму круга.
+        constexpr float CursorRadius = 12;
         const Engine::Circle localCursorCircle = {
             inverse.transformPoint(cursor), CursorRadius / std::abs(object.scale.x)
         };
+        constexpr Engine::Rect LocalBounds = {0, 0, 160, 100};
         const bool inside = mouse.inside && Engine::contains(LocalBounds, localCursorCircle.center);
         const Engine::Rect bounds = forward.transformBounds(LocalBounds);
 

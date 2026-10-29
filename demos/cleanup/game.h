@@ -1,6 +1,7 @@
 #pragma once
 
 #include "geometry.h"
+#include "math2d.h"
 
 #include <array>
 #include <optional>
@@ -76,10 +77,9 @@ struct Trash
     float pickupDelay;
 };
 
-struct Game
+struct GameState
 {
-    Game();
-    void update(Vector2 direction, float deltaTime);
+    GameState();
 
     World world;
     Rules rules;
@@ -99,5 +99,16 @@ struct Game
     int lastDelivery;
     Outcome outcome;
     std::optional<Vector2> target;
+};
+
+class Game
+{
+public:
+    const GameState& state() const;
+    void setTarget(Vector2 position);
+    void update(Vector2 direction, float deltaTime);
+
+private:
+    GameState currentState;
 };
 }

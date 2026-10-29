@@ -1,7 +1,10 @@
 #include "game.h"
+#include "geometry.h"
+#include "math2d.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 
 namespace Cleanup
 {
@@ -97,7 +100,7 @@ Trash::Trash()
 {
 }
 
-Game::Game()
+GameState::GameState()
     : player(world.bounds.center())
     , heading(0)
     , coat(Coat::Dry)
@@ -131,36 +134,50 @@ Game::Game()
     }
 }
 
+const GameState& Game::state() const
+{
+    return currentState;
+}
+
+void Game::setTarget(Vector2 position)
+{
+    const auto& rules = currentState.rules;
+    const auto& bounds = currentState.world.bounds;
+    currentState.target = Engine::closestPoint(Rect{rules.playerRadius, rules.playerRadius,
+        bounds.size.width - 2 * rules.playerRadius, bounds.size.height - 2 * rules.playerRadius}, position);
+}
+
 void Game::update(Vector2 direction, float deltaTime)
 {
-    if (outcome != Outcome::Playing) {
+    GameState& game = currentState;
+    if (game.outcome != Outcome::Playing) {
         return;
     }
-    feedbackTime = std::max(0.0F, feedbackTime - deltaTime);
-    motivationDecayTime += deltaTime;
-    while (motivation > rules.passiveMotivationFloor && motivationDecayTime >= rules.motivationDecayInterval) {
-        --motivation;
-        motivationDecayTime -= rules.motivationDecayInterval;
+    game.feedbackTime = std::max(0.0F, game.feedbackTime - deltaTime);
+    game.motivationDecayTime += deltaTime;
+    while (game.motivation > game.rules.passiveMotivationFloor && game.motivationDecayTime >= game.rules.motivationDecayInterval) {
+        --game.motivation;
+        game.motivationDecayTime -= game.rules.motivationDecayInterval;
     }
-    if (motivation <= rules.passiveMotivationFloor) {
+    if (game.motivation <= game.rules.passiveMotivationFloor) {
         // Потеря груза может опустить мотивацию ниже порога; время её не восстанавливает.
-        motivationDecayTime = 0;
+        game.motivationDecayTime = 0;
     }
-    for (Trash& item : trash) {
+    for (Trash& item : game.trash) {
         item.pickupDelay = std::max(0.0F, item.pickupDelay - deltaTime);
     }
 
-    const float speed = 260.0f * (1 - 0.4F * static_cast<float>(carried) / static_cast<float>(rules.glueCapacity));
-    const Vector2 previousPosition = player;
+    const float speed = 260.0f * (1 - 0.4F * static_cast<float>(game.carried) / static_cast<float>(game.rules.glueCapacity));
+    const Vector2 previousPosition = game.player;
     Vector2 movement;
     if (direction != Vector2{}) {
-        target.reset();
+        game.target.reset();
         direction = Engine::normalized(direction);
-    } else if (target) {
-        const Vector2 offset = *target - player;
+    } else if (game.target) {
+        const Vector2 offset = *game.target - game.player;
         if (Engine::length(offset) <= speed * deltaTime) {
             movement = offset;
-            target.reset();
+            game.target.reset();
         } else {
             direction = Engine::normalized(offset);
         }
@@ -168,105 +185,105 @@ void Game::update(Vector2 direction, float deltaTime)
     if (direction != Vector2{}) {
         movement = direction * speed * deltaTime;
     }
-    player = movePlayer(world, rules, player, movement, washed < rules.homeGoal);
+    game.player = movePlayer(game.world, game.rules, game.player, movement, game.washed < game.rules.homeGoal);
     if (movement != Vector2{}) {
-        heading = std::atan2(movement.y, movement.x);
+        game.heading = std::atan2(movement.y, movement.x);
     }
-    if (player == previousPosition && movement != Vector2{}) {
-        target.reset();
+    if (game.player == previousPosition && movement != Vector2{}) {
+        game.target.reset();
     }
 
     bool inOrange = false;
     bool inBlue = false;
-    for (const Puddle& puddle : world.puddles) {
-        if (Engine::intersects(puddle.shape, Circle{player, rules.playerRadius})) {
+    for (const Puddle& puddle : game.world.puddles) {
+        if (Engine::intersects(puddle.shape, Circle{game.player, game.rules.playerRadius})) {
             inOrange = inOrange || puddle.sticky;
             inBlue = inBlue || !puddle.sticky;
         }
     }
     if (inBlue) {
-        if (carried > 0) {
-            for (Trash& item : trash) {
+        if (game.carried > 0) {
+            for (Trash& item : game.trash) {
                 if (item.state == TrashState::Carried) {
                     item.state = TrashState::Washed;
                 }
             }
-            lastDelivery = carried;
+            game.lastDelivery = game.carried;
             // За доставку партии от пяти предметов начисляется дополнительная награда.
-            const int reward = carried * rules.deliveryReward + (carried >= 5 ? carried : 0);
-            const int previousMotivation = motivation;
-            motivation = std::min(rules.maximumMotivation, motivation + reward);
-            motivationChange = motivation - previousMotivation;
-            feedbackTime = 2;
-            washed += carried;
-            carried = 0;
+            const int reward = game.carried * game.rules.deliveryReward + (game.carried >= 5 ? game.carried : 0);
+            const int previousMotivation = game.motivation;
+            game.motivation = std::min(game.rules.maximumMotivation, game.motivation + reward);
+            game.motivationChange = game.motivation - previousMotivation;
+            game.feedbackTime = 2;
+            game.washed += game.carried;
+            game.carried = 0;
         }
-        coat = Coat::Clean;
-        glue = 0;
-        cargoAge = 0;
-        nextDropTime = rules.glueLifetime;
-    } else if (inOrange && coat != Coat::Sticky) {
-        coat = Coat::Sticky;
-        glue = rules.glueCapacity;
-        cargoAge = 0;
-        nextDropTime = rules.glueLifetime;
+        game.coat = Coat::Clean;
+        game.glue = 0;
+        game.cargoAge = 0;
+        game.nextDropTime = game.rules.glueLifetime;
+    } else if (inOrange && game.coat != Coat::Sticky) {
+        game.coat = Coat::Sticky;
+        game.glue = game.rules.glueCapacity;
+        game.cargoAge = 0;
+        game.nextDropTime = game.rules.glueLifetime;
     }
 
-    if (coat == Coat::Sticky && glue > 0 && cargoAge < rules.glueLifetime) {
-        const float pickupRadius = rules.playerRadius + static_cast<float>(carried);
-        for (Trash& item : trash) {
-            if (glue == 0) {
+    if (game.coat == Coat::Sticky && game.glue > 0 && game.cargoAge < game.rules.glueLifetime) {
+        const float pickupRadius = game.rules.playerRadius + static_cast<float>(game.carried);
+        for (Trash& item : game.trash) {
+            if (game.glue == 0) {
                 break;
             }
             if (item.state == TrashState::Ground && item.pickupDelay == 0
-                && Engine::intersects(Circle{player, pickupRadius}, Circle{item.position, rules.trashRadius})) {
+                && Engine::intersects(Circle{game.player, pickupRadius}, Circle{item.position, game.rules.trashRadius})) {
                 item.state = TrashState::Carried;
-                item.attachment = Engine::rotated(Vector2{rules.playerRadius + 9.0f + 4.0f * std::sqrt(static_cast<float>(carried)), 0},
-                    static_cast<float>(carried) * 2.39996323F);
-                ++carried;
-                --glue;
+                item.attachment = Engine::rotated(Vector2{game.rules.playerRadius + 9.0f + 4.0f * std::sqrt(static_cast<float>(game.carried)), 0},
+                    static_cast<float>(game.carried) * 2.39996323F);
+                ++game.carried;
+                --game.glue;
             }
         }
     }
 
-    if (carried > 0) {
-        cargoAge += deltaTime;
-        while (cargoAge >= nextDropTime && carried > 0) {
-            for (Trash& item : trash) {
+    if (game.carried > 0) {
+        game.cargoAge += deltaTime;
+        while (game.cargoAge >= game.nextDropTime && game.carried > 0) {
+            for (Trash& item : game.trash) {
                 if (item.state == TrashState::Carried) {
                     item.state = TrashState::Ground;
-                    item.position = Engine::closestPoint(Rect{rules.trashRadius, rules.trashRadius,
-                        world.bounds.size.width - 2 * rules.trashRadius, world.bounds.size.height - 2 * rules.trashRadius},
-                        player + Engine::rotated(item.attachment, heading));
+                    item.position = Engine::closestPoint(Rect{game.rules.trashRadius, game.rules.trashRadius,
+                        game.world.bounds.size.width - 2 * game.rules.trashRadius, game.world.bounds.size.height - 2 * game.rules.trashRadius},
+                        game.player + Engine::rotated(item.attachment, game.heading));
                     // Упавший предмет остаётся доступен для повторного сбора.
-                    if (blocked(world, item.position, rules.trashRadius + rules.playerRadius, washed < rules.homeGoal)) {
-                        item.position = player;
+                    if (blocked(game.world, item.position, game.rules.trashRadius + game.rules.playerRadius, game.washed < game.rules.homeGoal)) {
+                        item.position = game.player;
                     }
-                    for (const Puddle& puddle : world.puddles) {
-                        if (!puddle.sticky && Engine::intersects(puddle.shape, Circle{item.position, rules.trashRadius})) {
-                            item.position = player;
+                    for (const Puddle& puddle : game.world.puddles) {
+                        if (!puddle.sticky && Engine::intersects(puddle.shape, Circle{item.position, game.rules.trashRadius})) {
+                            item.position = game.player;
                         }
                     }
                     item.pickupDelay = 4;
-                    --carried;
+                    --game.carried;
                     break;
                 }
             }
-            const int previousMotivation = motivation;
-            motivation = std::max(0, motivation - rules.dropPenalty);
-            motivationChange = motivation - previousMotivation;
-            feedbackTime = 2;
-            nextDropTime += 3.0f;
-            if (motivation == 0) {
-                outcome = Outcome::Lost;
-                target.reset();
+            const int previousMotivation = game.motivation;
+            game.motivation = std::max(0, game.motivation - game.rules.dropPenalty);
+            game.motivationChange = game.motivation - previousMotivation;
+            game.feedbackTime = 2;
+            game.nextDropTime += 3.0f;
+            if (game.motivation == 0) {
+                game.outcome = Outcome::Lost;
+                game.target.reset();
                 return;
             }
         }
     }
-    if (washed >= rules.homeGoal && Engine::contains(world.homeBounds, player)) {
-        outcome = Outcome::Won;
-        target.reset();
+    if (game.washed >= game.rules.homeGoal && Engine::contains(game.world.homeBounds, game.player)) {
+        game.outcome = Outcome::Won;
+        game.target.reset();
     }
 }
 }

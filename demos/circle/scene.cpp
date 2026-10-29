@@ -1,5 +1,6 @@
 #include "scene.h"
 #include "entities.h"
+#include "geometry.h"
 #include "math2d.h"
 #include "renderer.h"
 #include "transform.h"
@@ -89,13 +90,13 @@ void Scene::drawHud(Engine::Renderer2D& renderer, float time) const
 void Hud::drawFrame(Engine::Renderer2D& renderer) const
 {
     constexpr Color HudFrameColor = {0.15f, 0.72f, 0.92f, 0.55f};
-    constexpr float FrameCornerLength = 50.0f;
     constexpr Rect Frame = {22, 22, 756, 500};
 
     const Vector2 start = Frame.position;
     const Vector2 end = start + Vector2{Frame.size.width, Frame.size.height};
     renderer.drawLine(start, Vector2{end.x, start.y}, HudFrameColor);
     renderer.drawLine(Vector2{start.x, end.y}, end, HudFrameColor);
+    constexpr float FrameCornerLength = 50.0f;
     renderer.drawLine(start, start + Vector2{0, FrameCornerLength}, HudFrameColor);
     renderer.drawLine(Vector2{end.x, start.y}, Vector2{end.x, start.y + FrameCornerLength}, HudFrameColor);
 }
@@ -104,7 +105,6 @@ void Hud::drawRadar(Engine::Renderer2D& renderer, const HudState& state, float t
 {
     constexpr Color RadarColor = {0.2f, 0.65f, 0.82f, 0.7f};
     constexpr Vector2 RadarCenter = {720, 470};
-    constexpr float BlipRadius = 2.5f;
 
     renderer.drawEllipse(RadarCenter, Vector2{44.0f, 22.0f}, RadarColor, ShapeFill::Outline);
     renderer.drawEllipse(RadarCenter, Vector2{28.0f, 14.0f}, RadarColor, ShapeFill::Outline);
@@ -115,6 +115,7 @@ void Hud::drawRadar(Engine::Renderer2D& renderer, const HudState& state, float t
     const Affine2 radar = Transform2{RadarCenter, 0,
         Vector2{0.2f, 0.2f}, state.stationPosition}.toAffine();
     const Vector2 shuttleBlip = radar.transformPoint(state.shuttlePosition);
+    constexpr float BlipRadius = 2.5f;
     renderer.drawCircle(Circle{shuttleBlip, BlipRadius}, Color{0.3f, 0.95f, 1.0f, 1.0f}, ShapeFill::Filled, 8);
     const Vector2 beaconBlip = radar.transformPoint(state.beaconPosition);
     renderer.drawCircle(Circle{beaconBlip, BlipRadius}, Color{1.0f, 0.6f, 0.22f, 1.0f}, ShapeFill::Filled, 8);
@@ -123,10 +124,10 @@ void Hud::drawRadar(Engine::Renderer2D& renderer, const HudState& state, float t
 void Hud::drawStatusBars(Engine::Renderer2D& renderer) const
 {
     constexpr int BarCellCount = 12;
-    constexpr float BarCellSize = 9.0f;
 
     float cellX = 35.0f;
     for (int cell = 0; cell < BarCellCount; ++cell) {
+        constexpr float BarCellSize = 9.0f;
         Color shield{0.14f, 0.82f, 0.95f, 0.9f};
         shield.alpha = cell < 10 ? shield.alpha : HudInactiveAlpha;
         renderer.drawRectangle(Rect{cellX, 546.0f, BarCellSize, BarCellSize}, shield);
@@ -152,13 +153,12 @@ void Hud::drawScore(Engine::Renderer2D& renderer, int score) const
 
 void Hud::drawTarget(Engine::Renderer2D& renderer, Vector2 position, bool locked) const
 {
-    constexpr float TargetMarkInner = 33.0f;
-    constexpr float TargetMarkOuter = 48.0f;
-
     Color color{1.0f, 0.55f, 0.2f, 1.0f};
     color.alpha = locked ? color.alpha : 0.45f;
     renderer.drawCircle(Circle{position, 38.0f}, color, ShapeFill::Outline);
     if (locked) {
+        constexpr float TargetMarkInner = 33.0f;
+        constexpr float TargetMarkOuter = 48.0f;
         const float x = position.x;
         const float y = position.y;
         renderer.drawLine(Vector2{x - TargetMarkOuter, y}, Vector2{x - TargetMarkInner, y}, color);

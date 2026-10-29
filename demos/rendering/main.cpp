@@ -1,12 +1,21 @@
 #include "entry_point.h"
 #include "application.h"
+#include "camera.h"
+#include "geometry.h"
+#include "input.h"
+#include "math2d.h"
+#include "platform.h"
 #include "renderer.h"
+#include "transform.h"
+#include "ui.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -17,35 +26,18 @@ constexpr Color Ink = {0.06F, 0.10F, 0.14F};
 constexpr Color White = {0.92F, 0.97F, 1};
 constexpr Color Mint = {0.42F, 0.95F, 0.72F};
 constexpr Color Gold = {1, 0.73F, 0.3F};
-constexpr float WalkSpeed = 180;
 constexpr Vector2 ParkHalfSize = {510, 330};
 
-constexpr int PathLayer = -15;
-constexpr int LandscapeLayer = -10;
-constexpr int LandscapeDetailLayer = -9;
 constexpr int ShadowLayer = -2;
 constexpr int ActorLayer = 0;
-constexpr int RotorLayer = 1;
-constexpr int GlassFrameLayer = 6;
 
 constexpr int HudHeaderHeight = 94;
 constexpr int HudFooterHeight = 150;
 
 constexpr std::array<Vector2, 5> TourPositions = {Vector2{-240, 70}, Vector2{180, 70},
     Vector2{-340, -140}, Vector2{0, 120}, Vector2{0, 120}};
-constexpr std::array<const char*, 5> TourTitles = {"1 / WALK BEHIND AND IN FRONT OF TREES",
-    "2 / WALK UNDER THE GLASS CANOPY", "3 / WATCH THE WINDMILL BLADES",
-    "4 / MOVE AND ZOOM THE WORLD", "5 / WATCH THE PARCEL WINDOW"};
-constexpr std::array<const char*, 5> TourHints = {"Y TOGGLE SORTING / O REVERSE COMMANDS",
-    "G TOGGLE GLASS / MOVE THROUGH THE BLUE AREA", "P PAUSE ROTATION / BLADES SHARE ONE PIVOT",
-    "F FOLLOW CAMERA / WHEEL ZOOM / CLICK TO WALK", "C TOGGLE CLIPPING / L RESTART RENDERER"};
-constexpr std::array<const char*, 5> TourExplanations = {"FEET SET THE ORDER / LOWER FEET APPEAR IN FRONT",
-    "WORLD SHOWS THROUGH GLASS / FRAME STAYS ABOVE IT",
-    "LOCAL SHAPES ROTATE AND SCALE AROUND THE HUB",
-    "MAP IS A SECOND VIEW / HUD STAYS FIXED ON SCREEN",
-    "MOVING PARCELS ARE CUT AT THE WINDOW EDGES"};
 
-DrawOptions paint(Color color, int layer = 0, float order = 0, const Transform2& transform = {})
+DrawOptions paint(Color color, int layer = 0, float order = 0, const Transform2& transform = Transform2{})
 {
     DrawOptions options;
     options.color = color;
@@ -68,7 +60,7 @@ private:
         const int height = frame.window.height;
         CameraError cameraError;
         UiError uiError;
-        Camera2 mapCamera = {Vector2{}, 1, Size2{1150, 800}, ViewportMode::Fit};
+        const Camera2 mapCamera = {Vector2{}, 1, Size2{1150, 800}, ViewportMode::Fit};
         if (!camera.createView(Viewport{0, HudHeaderHeight, width, height - HudHeaderHeight - HudFooterHeight - 14}, world, cameraError)
             || !mapCamera.createView(Viewport{width - 232, 110, 216, 150}, map, cameraError)
             || !UiCanvas{}.createView(Viewport{0, 0, width, height}, ui, uiError)) {
@@ -87,13 +79,27 @@ private:
     bool onInput(const FrameInfo& frame, Platform::Error& error) override
     {
         const auto& input = Platform::getInput();
-        if (input.key(Key::Escape).pressed) { requestExit(); }
-        if (input.key(Key::P).pressed) { setPaused(!isPaused()); }
-        if (input.key(Key::Y).pressed) { sorting = !sorting; }
-        if (input.key(Key::O).pressed) { reverse = !reverse; }
-        if (input.key(Key::G).pressed) { glass = !glass; }
-        if (input.key(Key::C).pressed) { clipping = !clipping; }
-        if (input.key(Key::F).pressed) { follow = !follow; }
+        if (input.key(Key::Escape).pressed) {
+            requestExit();
+        }
+        if (input.key(Key::P).pressed) {
+            setPaused(!isPaused());
+        }
+        if (input.key(Key::Y).pressed) {
+            sorting = !sorting;
+        }
+        if (input.key(Key::O).pressed) {
+            reverse = !reverse;
+        }
+        if (input.key(Key::G).pressed) {
+            glass = !glass;
+        }
+        if (input.key(Key::C).pressed) {
+            clipping = !clipping;
+        }
+        if (input.key(Key::F).pressed) {
+            follow = !follow;
+        }
         if (input.key(Key::Tab).pressed) {
             tour = (tour + 1) % static_cast<int>(TourPositions.size());
             player = TourPositions[static_cast<std::size_t>(tour)];
@@ -135,12 +141,21 @@ private:
 
     bool onUpdate(const FrameInfo& frame, Platform::Error&) override
     {
+        constexpr float WalkSpeed = 180;
         animation += frame.deltaTime;
         Vector2 direction;
-        if (Platform::isKeyDown(Key::A)) { direction.x -= 1; }
-        if (Platform::isKeyDown(Key::D)) { direction.x += 1; }
-        if (Platform::isKeyDown(Key::W)) { direction.y -= 1; }
-        if (Platform::isKeyDown(Key::S)) { direction.y += 1; }
+        if (Platform::isKeyDown(Key::A)) {
+            direction.x -= 1;
+        }
+        if (Platform::isKeyDown(Key::D)) {
+            direction.x += 1;
+        }
+        if (Platform::isKeyDown(Key::W)) {
+            direction.y -= 1;
+        }
+        if (Platform::isKeyDown(Key::S)) {
+            direction.y += 1;
+        }
         if (direction.x != 0 || direction.y != 0) {
             walking = false;
         } else if (walking) {
@@ -157,7 +172,9 @@ private:
         }
         player.x = std::clamp(player.x, -ParkHalfSize.x, ParkHalfSize.x);
         player.y = std::clamp(player.y, -ParkHalfSize.y, ParkHalfSize.y);
-        if (follow) { camera.position = player; }
+        if (follow) {
+            camera.position = player;
+        }
         return true;
     }
 
@@ -196,8 +213,11 @@ private:
     {
         renderer.setWorldView(view);
         renderer.drawRectangle(Rect{-560, -380, 1120, 760}, paint(Color{0.18F, 0.32F, 0.27F}, -20));
+        constexpr int PathLayer = -15;
         renderer.drawRectangle(Rect{-540, 60, 1080, 80}, paint(Color{0.59F, 0.54F, 0.39F}, PathLayer));
         renderer.drawRectangle(Rect{-40, -350, 80, 700}, paint(Color{0.59F, 0.54F, 0.39F}, PathLayer));
+        constexpr int LandscapeLayer = -10;
+        constexpr int LandscapeDetailLayer = -9;
         renderer.drawRectangle(Rect{85, -35, 255, 195}, paint(Color{0.29F, 0.39F, 0.39F}, LandscapeLayer));
         renderer.drawRectangle(Rect{105, -15, 215, 155}, paint(Color{0.39F, 0.48F, 0.47F}, LandscapeDetailLayer));
         renderer.drawCircle(Circle{Vector2{345, -220}, 85}, paint(Color{0.15F, 0.43F, 0.52F}, LandscapeLayer));
@@ -233,6 +253,7 @@ private:
         renderer.drawPolygon(roof, paint(Color{0.62F, 0.31F, 0.22F}, ActorLayer, MillSortY), ShapeFill::Filled);
         const float stretch = 1 + 0.12F * std::sin(animation);
         const Transform2 rotor = {Vector2{-340, -175}, animation * 0.7F, Vector2{stretch, stretch}, Vector2{}};
+        constexpr int RotorLayer = 1;
         for (int blade = 0; blade < 4; ++blade) {
             Transform2 transform = rotor;
             transform.rotation += static_cast<float>(blade) * Pi / 2;
@@ -242,6 +263,7 @@ private:
         if (glass) {
             renderer.drawRectangle(Rect{95, -80, 235, 190}, paint(Color{0.3F, 0.8F, 0.95F, 0.38F}, 5));
         }
+        constexpr int GlassFrameLayer = 6;
         renderer.drawRectangle(Rect{95, -80, 235, 190}, paint(Color{0.65F, 0.92F, 0.98F}, GlassFrameLayer), ShapeFill::Outline);
         renderer.drawRectangle(Rect{95, -80, 8, 190}, paint(White, GlassFrameLayer));
         renderer.drawRectangle(Rect{322, -80, 8, 190}, paint(White, GlassFrameLayer));
@@ -259,6 +281,17 @@ private:
         renderer.drawDebugText("YOU ARE THE COURIER", Vector2{width - 264, 20}, Gold);
         renderer.drawDebugText(isPaused() ? "PAUSED / P RESUME" : "P PAUSE / RESUME", Vector2{width - 264, 45}, White);
         renderer.drawRectangle(Rect{0, bottom, width, HudFooterHeight}, paint(Ink));
+        constexpr std::array<std::string_view, 5> TourTitles = {"1 / WALK BEHIND AND IN FRONT OF TREES",
+            "2 / WALK UNDER THE GLASS CANOPY", "3 / WATCH THE WINDMILL BLADES",
+            "4 / MOVE AND ZOOM THE WORLD", "5 / WATCH THE PARCEL WINDOW"};
+        constexpr std::array<std::string_view, 5> TourExplanations = {"FEET SET THE ORDER / LOWER FEET APPEAR IN FRONT",
+            "WORLD SHOWS THROUGH GLASS / FRAME STAYS ABOVE IT",
+            "LOCAL SHAPES ROTATE AND SCALE AROUND THE HUB",
+            "MAP IS A SECOND VIEW / HUD STAYS FIXED ON SCREEN",
+            "MOVING PARCELS ARE CUT AT THE WINDOW EDGES"};
+        constexpr std::array<std::string_view, 5> TourHints = {"Y TOGGLE SORTING / O REVERSE COMMANDS",
+            "G TOGGLE GLASS / MOVE THROUGH THE BLUE AREA", "P PAUSE ROTATION / BLADES SHARE ONE PIVOT",
+            "F FOLLOW CAMERA / WHEEL ZOOM / CLICK TO WALK", "C TOGGLE CLIPPING / L RESTART RENDERER"};
         renderer.drawDebugText(TourTitles[static_cast<std::size_t>(tour)], Vector2{22, bottom + 16}, Mint);
         renderer.drawDebugText(TourExplanations[static_cast<std::size_t>(tour)], Vector2{22, bottom + 40}, White, 1.5F);
         renderer.drawDebugText(TourHints[static_cast<std::size_t>(tour)], Vector2{22, bottom + 62}, Gold, 1.5F);
@@ -330,7 +363,9 @@ int Engine::applicationMain()
     options.window.minimumHeight = 650;
     std::vector<Platform::Error> errors;
     if (!application.run(options, errors)) {
-        for (const auto& error : errors) { Platform::reportError(error); }
+        for (const auto& error : errors) {
+            Platform::reportError(error);
+        }
         return 1;
     }
     return 0;

@@ -263,7 +263,6 @@ void Station::draw(Engine::Renderer2D& renderer, float time) const
     constexpr int ModuleCount = 4;
     constexpr int ModuleColumns = 2;
     constexpr Vector2 ModuleSpacing = {70.0f, 27.0f};
-    constexpr Vector2 ModuleRadii = {18.0f, 9.0f};
     const int moduleRows = ModuleCount / ModuleColumns;
     const float firstModuleX = StationPosition.x - static_cast<float>(ModuleColumns - 1) * 0.5f * ModuleSpacing.x;
     float moduleY = StationPosition.y - static_cast<float>(moduleRows - 1) * 0.5f * ModuleSpacing.y;
@@ -272,6 +271,7 @@ void Station::draw(Engine::Renderer2D& renderer, float time) const
         float moduleX = firstModuleX;
         for (int column = 0; column < ModuleColumns && module < ModuleCount; ++column) {
             const Vector2 center = {moduleX, moduleY};
+            constexpr Vector2 ModuleRadii = {18.0f, 9.0f};
             renderer.drawEllipse(center, ModuleRadii, Color{0.1f, 0.3f, 0.43f, 1.0f}, ShapeFill::Filled, 8);
             renderer.drawEllipse(center, ModuleRadii, Color{0.25f, 0.82f, 1.0f, 1.0f}, ShapeFill::Outline, 8);
             renderer.drawCircle(Circle{center, 3.0f}, Color{1.0f, 0.66f, 0.23f, 1.0f}, ShapeFill::Filled, 8);
@@ -332,7 +332,6 @@ void Background::drawPlanet(Engine::Renderer2D& renderer, float time) const
 {
     constexpr Vector2 PlanetPosition = {655.0f, 340.0f};
     constexpr int PlanetBandCount = 7;
-    constexpr float PlanetBandHalfWidth = 115.0f;
 
     renderer.drawCircle(Circle{PlanetPosition, 145.0f}, Color{0.15f, 0.65f, 1.0f, 0.16f}, ShapeFill::Filled, 32);
     renderer.drawCircle(Circle{PlanetPosition, 126.0f}, Color{0.08f, 0.28f, 0.58f, 1.0f}, ShapeFill::Filled, 32);
@@ -346,6 +345,7 @@ void Background::drawPlanet(Engine::Renderer2D& renderer, float time) const
     options.color = Color{0.35f, 0.72f, 1.0f, 0.2f};
     for (int band = 0; band < PlanetBandCount; ++band) {
         options.color.alpha = 0.2f + 0.08f * std::sin(bandPhase);
+        constexpr float PlanetBandHalfWidth = 115.0f;
         renderer.drawLine(Vector2{PlanetPosition.x - PlanetBandHalfWidth, bandY},
             Vector2{PlanetPosition.x + PlanetBandHalfWidth, bandY}, options);
         bandY += 27.0f;

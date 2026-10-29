@@ -1,8 +1,15 @@
 #include "game.h"
+#include "geometry.h"
 #include "math2d.h"
+#include "renderer.h"
+#include "resources.h"
+#include "texture.h"
 #include "transform.h"
+#include "ui.h"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -12,7 +19,6 @@ namespace Cat
 {
 bool Images::load(Engine::Renderer2D& renderer, Engine::ResourceError& error)
 {
-    constexpr int FeetFrames = ArtCount - Feet;
     Engine::ResourceFiles files;
     if (!files.initialize(error)) {
         return false;
@@ -37,6 +43,7 @@ bool Images::load(Engine::Renderer2D& renderer, Engine::ResourceError& error)
         constexpr int FeetWidth = 180;
         constexpr int FeetHeight = 53;
         constexpr int FeetColumns = 2;
+        constexpr int FeetFrames = ArtCount - Feet;
         if ((leaf && (source.width > LeafTextureSize || source.height > LeafTextureSize))
             || (index == Feet && (source.width < FeetColumns * FeetWidth
                 || source.height < FeetFrames / FeetColumns * FeetHeight))) {

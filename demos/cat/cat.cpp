@@ -1,19 +1,21 @@
 #include "game.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <initializer_list>
 #include <iterator>
+#include <optional>
+#include <vector>
 
 namespace Cat
 {
 namespace
 {
-constexpr std::size_t PlatformLimit = 50;
 constexpr int NoPlatform = -1;
 
 constexpr int HeadFrames = Feet - Head;
-constexpr int FeetFrames = ArtCount - Feet;
 constexpr double PositionTolerance = 1e-6;
 constexpr double TimeTolerance = 1e-9;
 constexpr double Gravity = 1500;
@@ -105,6 +107,7 @@ void Cat::animate(double duration, int direction)
     animationTime += duration;
     const int steps = direction == 0 ? 0 : static_cast<int>((animationTime - frameTime) / AnimationFrameDuration);
     headFrame = std::clamp(headFrame + direction * steps, 0, HeadFrames - 1);
+    constexpr int FeetFrames = ArtCount - Feet;
     feetFrame = ((feetFrame + direction * (steps % FeetFrames)) % FeetFrames + FeetFrames) % FeetFrames;
     frameTime = direction == 0 ? animationTime : frameTime + steps * AnimationFrameDuration;
 }
@@ -182,6 +185,7 @@ std::optional<Cat::Range> Cat::supportRange(const Platform& platform, const std:
     const bool left = probe.speed < -PositionTolerance || (continuing && entryDirection < 0);
     const Range central{platform.position.x - 10.0 - (probe.allowEntry && right ? 10.0 : 0),
         platform.position.x + 175 + 10.0 + (probe.allowEntry && left ? 10.0 : 0)};
+    constexpr std::size_t PlatformLimit = 50;
     std::array<Range, PlatformLimit + 1> ranges{};
     ranges[0] = central;
     std::size_t count = 1;

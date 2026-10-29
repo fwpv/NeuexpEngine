@@ -1,5 +1,10 @@
 #include "entry_point.h"
 #include "application.h"
+#include "camera.h"
+#include "geometry.h"
+#include "input.h"
+#include "math2d.h"
+#include "platform.h"
 #include "ui.h"
 #include "renderer.h"
 
@@ -8,6 +13,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -17,7 +23,6 @@ using namespace Engine;
 constexpr Color Grid = {0.17F, 0.25F, 0.28F};
 constexpr Color Panel = {0.035F, 0.055F, 0.08F};
 constexpr Color White = {0.91F, 0.96F, 1};
-constexpr Color Orange = {1, 0.65F, 0.28F};
 constexpr Color Blue = {0.4F, 0.86F, 1};
 constexpr Rect UiPanel = {12, 12, 232, 152};
 constexpr Rect UiMinus = {80, 44, 24, 24};
@@ -27,7 +32,6 @@ constexpr Rect ZoomMinus = {80, 76, 24, 24};
 constexpr Rect ZoomPlus = {110, 76, 24, 24};
 constexpr Rect ZoomReset = {144, 76, 90, 24};
 constexpr Rect ClickButton = {20, 108, 214, 24};
-constexpr float ScaleStep = 0.25F;
 constexpr float MinimumScale = 0.5F;
 constexpr float MaximumScale = 2.5F;
 
@@ -74,6 +78,7 @@ private:
 
     bool onInput(const FrameInfo& frame, Platform::Error& error) override
     {
+        constexpr float ScaleStep = 0.25F;
         const auto& input = Platform::getInput();
         if (input.key(Key::Escape).pressed) {
             requestExit();
@@ -138,10 +143,18 @@ private:
     bool onUpdate(const FrameInfo& frame, Platform::Error&) override
     {
         Vector2 direction;
-        if (Platform::isKeyDown(Key::A)) { direction.x -= 1; }
-        if (Platform::isKeyDown(Key::D)) { direction.x += 1; }
-        if (Platform::isKeyDown(Key::W)) { direction.y -= 1; }
-        if (Platform::isKeyDown(Key::S)) { direction.y += 1; }
+        if (Platform::isKeyDown(Key::A)) {
+            direction.x -= 1;
+        }
+        if (Platform::isKeyDown(Key::D)) {
+            direction.x += 1;
+        }
+        if (Platform::isKeyDown(Key::W)) {
+            direction.y -= 1;
+        }
+        if (Platform::isKeyDown(Key::S)) {
+            direction.y += 1;
+        }
         camera.position += normalized(direction) * (260.0f * frame.deltaTime);
         return true;
     }
@@ -192,6 +205,7 @@ private:
         }
         drawing.drawRectangle(Rect{-160, -90, 100, 160}, Blue);
         drawing.drawRectangle(Rect{150, -180, 170, 80}, Color{0.35F, 0.95F, 0.55F});
+        constexpr Color Orange = {1, 0.65F, 0.28F};
         drawing.drawCircle(Circle{Vector2{}, 40}, Orange, Engine::ShapeFill::Filled, 40);
         drawing.drawCircle(Circle{marker, 13}, White, Engine::ShapeFill::Filled, 40);
         drawing.drawCircle(Circle{marker, 8}, Orange, Engine::ShapeFill::Filled, 40);

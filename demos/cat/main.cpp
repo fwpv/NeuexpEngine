@@ -1,7 +1,11 @@
 #include "application.h"
 #include "entry_point.h"
 #include "game.h"
+#include "input.h"
 #include "platform.h"
+#include "renderer.h"
+#include "resources.h"
+#include "ui.h"
 
 #include <cmath>
 #include <optional>
@@ -49,6 +53,9 @@ bool CatApplication::onStart(Host::Error& error)
     {
         Host::Error syncError;
         verticalSync = setVSync(true, syncError);
+        if (!verticalSync) {
+            Host::reportError(syncError, false);
+        }
     }
     Engine::ResourceError resourceError;
     if (!images.load(getRenderer(), resourceError)) {
@@ -72,6 +79,8 @@ bool CatApplication::onInput(const Engine::FrameInfo& frame, Host::Error& error)
         Host::Error syncError;
         if (setVSync(!verticalSync, syncError)) {
             verticalSync = !verticalSync;
+        } else {
+            Host::reportError(syncError, false);
         }
     }
     return true;

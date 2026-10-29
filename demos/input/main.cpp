@@ -2,10 +2,14 @@
 #include "platform.h"
 #include "events.h"
 #include "application.h"
+#include "geometry.h"
+#include "input.h"
 #include "math2d.h"
 #include "renderer.h"
+#include "ui.h"
 
 #include <array>
+#include <cstddef>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -14,14 +18,6 @@
 namespace
 {
 using Engine::Color;
-
-constexpr int Columns = 16;
-constexpr float GridLeft = 20;
-constexpr float CellStep = 48;
-constexpr float CellSize = 40;
-constexpr float CursorSize = 8;
-
-constexpr double FlashDurationSeconds = 0.2;
 
 class InputApplication final : public Engine::Application
 {
@@ -39,6 +35,7 @@ private:
         }
         // Вспышки используют реальные часы, а переходы сохраняются
         // даже в кадре без отрисовки.
+        constexpr double FlashDurationSeconds = 0.2;
         for (std::size_t index = 1; index < pressedUntil.size(); ++index) {
             const auto state = input.key(static_cast<Engine::Key>(index));
             if (state.pressed) {
@@ -85,6 +82,10 @@ private:
             }
             beginFrame(frame.window.width, frame.window.height, Color{0.04F, 0.05F, 0.08F});
             drawing.setUiView(view);
+            constexpr int Columns = 16;
+            constexpr float GridLeft = 20;
+            constexpr float CellStep = 48;
+            constexpr float CellSize = 40;
             for (std::size_t index = 1; index < pressedUntil.size(); ++index) {
                 const auto state = input.key(static_cast<Engine::Key>(index));
                 const float x = GridLeft + static_cast<float>((index - 1) % Columns) * CellStep;
@@ -103,6 +104,7 @@ private:
                     state.pressed ? 1.0F : 0.3F, state.down ? 1.0F : 0.4F};
                 drawing.drawRectangle(Engine::Rect{GridLeft + static_cast<float>(index - 1) * CellStep, 420.0f, CellSize, CellSize}, color);
             }
+            constexpr float CursorSize = 8;
             drawing.drawRectangle(Engine::Rect{static_cast<float>(mouse.x) - CursorSize / 2, static_cast<float>(mouse.y) - CursorSize / 2,
                 CursorSize, CursorSize}, Color{1, 1, 1});
             return endFrame(error);
