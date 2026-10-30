@@ -64,25 +64,36 @@ public:
     // Завершение после текущего обработчика, без следующих стадий кадра.
     void requestExit();
 
-protected:
-    // Рендерер принадлежит приложению. initialize() вызывается из onStart(); после
-    // onStop() цикл автоматически вызывает shutdown(), пока контекст ещё существует.
-    Renderer2D& getRenderer();
-    virtual bool onStart(Platform::Error& error);
-    // Вызывается и на паузе, и при сворачивании. deltaTime и elapsedTime здесь
-    // относятся к предыдущему обновлению; текущий dT вычисляется после onInput().
-    virtual bool onInput(const FrameInfo& frame, Platform::Error& error);
-    virtual bool onUpdate(const FrameInfo& frame, Platform::Error& error);
-    // Подготовка и рисование вызываются и на явной паузе, но не при сворачивании.
-    virtual bool onPrepareFrame(const FrameInfo& frame, Platform::Error& error);
-    virtual bool onRender(const FrameInfo& frame, Platform::Error& error) = 0;
-    virtual void onStop(std::vector<Platform::Error>& errors);
-
 private:
+    bool rendererResult(const char* operation, bool success, RenderError error, Platform::Error& result) const;
+
     Renderer2D graphics;
     bool paused = false;
     bool exitRequested = false;
     bool started = false;
     bool verticalSyncEnabled = false;
+
+protected:
+    // Рендерер принадлежит приложению. initialize() вызывается из onStart(); после
+    // onStop() цикл автоматически вызывает shutdown(), пока контекст ещё существует.
+    Renderer2D& getRenderer();
+    // Инициализация и завершение кадра переводят RenderError в ошибку приложения.
+    bool initializeRenderer(Platform::Error& error);
+    // Пара beginFrame/endFrame управляет кадром getRenderer(); показ выполняет цикл.
+    // Ошибки начала и рисования возвращаются при завершении кадра.
+    void beginFrame(int width, int height, Color clear);
+    bool endFrame(Platform::Error& error);
+    virtual bool onStart(Platform::Error& error);
+    // Вызывается и на паузе, и при сворачивании. deltaTime и elapsedTime здесь
+    // относятся к предыдущему обновлению; текущий dT вычисляется после onInput().
+    virtual bool onInput(const FrameInfo& frame, Platform::Error& error);
+    virtual bool onUpdate(const FrameInfo& frame, Platform::Error& error);
+    // Подготовка отображения: расчёт видов, обновление заголовка и прочие действия
+    // перед рисованием. Вызывается и на явной паузе, но не при сворачивании.
+    virtual bool onPrepareFrame(const FrameInfo& frame, Platform::Error& error);
+    // Формирование и завершение кадра рендерера. После успешного возврата цикл
+    // показывает кадр. Вызывается после onPrepareFrame, в том числе на явной паузе.
+    virtual bool onRender(const FrameInfo& frame, Platform::Error& error) = 0;
+    virtual void onStop(std::vector<Platform::Error>& errors);
 };
 }

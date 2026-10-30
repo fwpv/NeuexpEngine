@@ -99,6 +99,10 @@ int main()
             return view.viewport.width == saved.viewport.width && view.worldBounds == saved.worldBounds
                 && near(view.worldToScreen(camera.position), saved.worldToScreen(camera.position));
         };
+        camera.mode = static_cast<ViewportMode>(-1);
+        require(!camera.createView(Viewport{0, 0, 800, 600}, view, error)
+            && error == CameraError::InvalidCamera && unchanged(), "Unknown viewport mode accepted or changed output.");
+        camera.mode = ViewportMode::Expand;
         require(!camera.createView({ 0, 0, 0, 600 }, view, error) && error == CameraError::InvalidViewport && unchanged(), "Zero viewport accepted.");
         require(!camera.createView({ 0, 0, 800, -1 }, view, error) && error == CameraError::InvalidViewport && unchanged(), "Negative viewport accepted.");
         require(!camera.createView({ std::numeric_limits<int>::max(), 0, 100, 100 }, view, error)

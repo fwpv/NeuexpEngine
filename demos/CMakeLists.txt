@@ -1,5 +1,7 @@
 add_executable(circle
     circle/game.cpp
+    circle/entities.cpp
+    circle/scene.cpp
 )
 
 if(WIN32)
@@ -38,13 +40,6 @@ endif()
 target_link_libraries(dpi_demo PRIVATE engine_entry_point engine_application engine_ui project_warnings)
 set_target_properties(dpi_demo PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 
-add_executable(cat cat/main.cpp cat/game.cpp)
-if(WIN32)
-    set_target_properties(cat PROPERTIES WIN32_EXECUTABLE TRUE)
-endif()
-target_link_libraries(cat PRIVATE engine_entry_point engine_application engine_renderer project_warnings)
-set_target_properties(cat PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
-
 add_executable(rendering_demo rendering/main.cpp)
 if(WIN32)
     set_target_properties(rendering_demo PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -58,4 +53,4 @@ if(CMAKE_CONFIGURATION_TYPES)
 endif()
 add_custom_target(demo_assets ALL
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${PROJECT_SOURCE_DIR}/assets" "${DEMO_ASSET_DIRECTORY}")
-add_dependencies(cat demo_assets)
+add_subdirectory(cat)

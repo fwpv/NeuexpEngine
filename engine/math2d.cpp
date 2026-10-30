@@ -20,13 +20,13 @@ Vector2 normalized(Vector2 value)
     if (magnitude == 0) {
         return {};
     }
-    return { static_cast<float>(value.x / magnitude), static_cast<float>(value.y / magnitude) };
+    return {static_cast<float>(value.x / magnitude), static_cast<float>(value.y / magnitude)};
 }
 
 Vector2 rotated(Vector2 value, float radians)
 {
     const float cosine = std::cos(radians);
     const float sine = std::sin(radians);
-    return { cosine * value.x - sine * value.y, sine * value.x + cosine * value.y };
+    return {cosine * value.x - sine * value.y, sine * value.x + cosine * value.y};
 }
 }

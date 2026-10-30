@@ -6,6 +6,7 @@
 #include <exception>
 #include <iterator>
 #include <thread>
+#include <utility>
 
 namespace Engine
 {
@@ -25,12 +26,12 @@ bool Application::run(const ApplicationOptions& options, std::vector<Platform::E
 {
     errors.clear();
     if (started) {
-        errors.push_back({ "Application::run", "Application has already been started.", {} });
+        errors.push_back(Platform::Error{"Application::run", "Application has already been started.", std::nullopt});
         return false;
     }
     if (!std::isfinite(options.maxDeltaTime) || options.maxDeltaTime <= 0 ||
         !std::isfinite(options.targetFramesPerSecond) || options.targetFramesPerSecond < 0) {
-        errors.push_back({ "Application::run", "Invalid frame timing options.", {} });
+        errors.push_back(Platform::Error{"Application::run", "Invalid frame timing options.", std::nullopt});
         return false;
     }
     started = true;
@@ -170,9 +171,9 @@ bool Application::run(const ApplicationOptions& options, std::vector<Platform::E
             }
         }
     } catch (const std::exception& exception) {
-        errors.push_back({ "Application::run", exception.what(), {} });
+        errors.push_back(Platform::Error{"Application::run", exception.what(), std::nullopt});
     } catch (...) {
-        errors.push_back({ "Application::run", "Unknown exception in application callback.", {} });
+        errors.push_back(Platform::Error{"Application::run", "Unknown exception in application callback.", std::nullopt});
     }
 
     std::vector<Platform::Error> cleanupErrors;
@@ -181,9 +182,9 @@ bool Application::run(const ApplicationOptions& options, std::vector<Platform::E
             onStop(cleanupErrors);
         }
     } catch (const std::exception& exception) {
-        cleanupErrors.push_back({ "Application::onStop", exception.what(), {} });
+        cleanupErrors.push_back(Platform::Error{"Application::onStop", exception.what(), std::nullopt});
     } catch (...) {
-        cleanupErrors.push_back({ "Application::onStop", "Unknown exception during cleanup.", {} });
+        cleanupErrors.push_back(Platform::Error{"Application::onStop", "Unknown exception during cleanup.", std::nullopt});
     }
     errors.insert(errors.end(), std::make_move_iterator(cleanupErrors.begin()),
         std::make_move_iterator(cleanupErrors.end()));
@@ -226,6 +227,34 @@ bool Application::onStart(Platform::Error&)
 Renderer2D& Application::getRenderer()
 {
     return graphics;
+}
+
+bool Application::initializeRenderer(Platform::Error& error)
+{
+    RenderError renderError;
+    const bool success = graphics.initialize(renderError);
+    return rendererResult("Renderer2D::initialize", success, renderError, error);
+}
+
+void Application::beginFrame(int width, int height, Color clear)
+{
+    graphics.beginFrame(width, height, clear);
+}
+
+bool Application::endFrame(Platform::Error& error)
+{
+    RenderError renderError;
+    const bool success = graphics.endFrame(renderError);
+    return rendererResult("Renderer2D::endFrame", success, renderError, error);
+}
+
+bool Application::rendererResult(const char* operation, bool success, RenderError error, Platform::Error& result) const
+{
+    result = {};
+    if (!success) {
+        result = {operation, renderErrorMessage(error), std::nullopt};
+    }
+    return success;
 }
 
 bool Application::onInput(const FrameInfo&, Platform::Error&)

@@ -11,6 +11,7 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <utility>
 
 #ifndef WM_DPICHANGED
@@ -73,7 +74,7 @@ Function loadWglFunction(const char* name)
 
 Error windowsError(const char* operation, const char* message, DWORD code = ERROR_SUCCESS)
 {
-    Error error = { operation, message, std::nullopt };
+    Error error = {operation, message, std::nullopt};
     if (code != ERROR_SUCCESS) {
         error.nativeCode = static_cast<int>(code);
         // Буфер FormatMessageW освобождается через LocalFree.
@@ -81,6 +82,7 @@ Error windowsError(const char* operation, const char* message, DWORD code = ERRO
         const DWORD descriptionLength = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER
             | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
             nullptr, code, 0, reinterpret_cast<LPWSTR>(&description), 0, nullptr);
+        const std::unique_ptr<wchar_t, decltype(&LocalFree)> descriptionOwner(description, LocalFree);
         if (descriptionLength != 0) {
             const int length = WideCharToMultiByte(CP_UTF8, 0, description,
                 static_cast<int>(descriptionLength), nullptr, 0, nullptr, nullptr);
@@ -92,9 +94,6 @@ Error windowsError(const char* operation, const char* message, DWORD code = ERRO
                     error.message += utf8Description;
                 }
             }
-        }
-        if (description) {
-            LocalFree(description);
         }
     }
     return error;
@@ -135,8 +134,8 @@ DWORD windowStyle()
 
 bool updateMinimumTrackSize(UINT dpi, Error& error)
 {
-    RECT bounds = { 0, 0, windowOptions.resizable ? windowOptions.minimumWidth : windowOptions.width,
-        windowOptions.resizable ? windowOptions.minimumHeight : windowOptions.height };
+    RECT bounds = {0, 0, windowOptions.resizable ? windowOptions.minimumWidth : windowOptions.width,
+        windowOptions.resizable ? windowOptions.minimumHeight : windowOptions.height};
     if (!adjustDpiFrame(&bounds, windowStyle(), FALSE, 0, dpi)) {
         error = windowsError("AdjustWindowRectExForDpi", "Could not calculate the minimum frame size.", GetLastError());
         return false;
@@ -188,10 +187,10 @@ bool convertTitle(const std::string& title, std::wstring& wideTitle, Error& erro
 Engine::Modifiers readModifiers()
 {
     const auto held = [](Key key) { return heldKeys[static_cast<std::size_t>(key)]; };
-    return { held(Key::LeftShift) || held(Key::RightShift),
+    return {held(Key::LeftShift) || held(Key::RightShift),
         held(Key::LeftControl) || held(Key::RightControl),
         held(Key::LeftAlt) || held(Key::RightAlt), held(Key::LeftSuper) || held(Key::RightSuper),
-        (GetKeyState(VK_CAPITAL) & 1) != 0, (GetKeyState(VK_NUMLOCK) & 1) != 0 };
+        (GetKeyState(VK_CAPITAL) & 1) != 0, (GetKeyState(VK_NUMLOCK) & 1) != 0};
 }
 
 void changeFocus(bool focused)
@@ -330,14 +329,14 @@ bool handleInput(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
         }
         if (inside) {
             // Уведомление TME_LEAVE одноразовое; запрос повторяется после входа.
-            TRACKMOUSEEVENT tracking = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, handle, 0 };
+            TRACKMOUSEEVENT tracking = {sizeof(TRACKMOUSEEVENT), TME_LEAVE, handle, 0};
             if (!TrackMouseEvent(&tracking)) {
                 recordInputError("TrackMouseEvent", "Could not track the mouse leaving the window.", GetLastError());
             }
         }
         event.type = EventType::MouseMoved;
     } else if (message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL) {
-        POINT position = { event.x, event.y };
+        POINT position = {event.x, event.y};
         // Колесо, в отличие от кнопок, использует экранные координаты.
         if (!ScreenToClient(handle, &position)) {
             recordInputError("ScreenToClient", "Could not convert the mouse wheel position to client coordinates.");
@@ -507,7 +506,7 @@ LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARA
 bool requireWindow(const char* operation, Error& error)
 {
     if (!initialized || !window) {
-        error = { operation, "The window is not initialized or has been destroyed.", std::nullopt };
+        error = {operation, "The window is not initialized or has been destroyed.", std::nullopt};
         return false;
     }
     return true;
@@ -526,7 +525,7 @@ bool initializeWindows(const WindowOptions& options, Error& error)
         return false;
     }
     const DWORD style = windowStyle();
-    RECT bounds = { 0, 0, options.width, options.height };
+    RECT bounds = {0, 0, options.width, options.height};
     if (!adjustDpiFrame(&bounds, style, FALSE, 0, 96)) {
         error = windowsError("AdjustWindowRectExForDpi", "Could not calculate the window frame size.", GetLastError());
         return false;
@@ -577,7 +576,7 @@ bool initializeWindows(const WindowOptions& options, Error& error)
         return false;
     }
     if (dpi != 96) {
-        bounds = { 0, 0, options.width, options.height };
+        bounds = {0, 0, options.width, options.height};
         if (!adjustDpiFrame(&bounds, style, FALSE, 0, dpi)) {
             error = windowsError("AdjustWindowRectExForDpi", "Could not calculate the initial DPI frame size.", GetLastError());
             return false;
@@ -645,9 +644,9 @@ bool initializeWindows(const WindowOptions& options, Error& error)
         error = windowsError("GetClientRect", "Could not read the initial client dimensions.", GetLastError());
         return false;
     }
-    windowState = { static_cast<int>(clientBounds.right - clientBounds.left),
+    windowState = {static_cast<int>(clientBounds.right - clientBounds.left),
         static_cast<int>(clientBounds.bottom - clientBounds.top), GetFocus() == window, IsIconic(window) != FALSE,
-        static_cast<float>(dpi) / 96 };
+        static_cast<float>(dpi) / 96};
     viewportNeedsUpdate = true;
     initialized = true;
     return processEvents(error);
@@ -682,7 +681,7 @@ bool initialize(const WindowOptions& options, std::vector<Error>& errors)
 {
     errors.clear();
     if (initialized || windowClassRegistered || window || openGLContext) {
-        errors.push_back({ "initialize", "Call shutdown before initializing again.", std::nullopt });
+        errors.push_back(Error{"initialize", "Call shutdown before initializing again.", std::nullopt});
         return false;
     }
     Error error;
@@ -702,7 +701,7 @@ bool initialize(const WindowOptions& options, std::vector<Error>& errors)
 bool getWindowState(WindowState& state, Error& error)
 {
     if (!initialized) {
-        error = { "getWindowState", "The platform is not initialized.", std::nullopt };
+        error = {"getWindowState", "The platform is not initialized.", std::nullopt};
         return false;
     }
     state = windowState;
@@ -741,7 +740,7 @@ bool setVSync(bool enabled, Error& error)
     }
     const auto swapInterval = loadWglFunction<SwapInterval>("wglSwapIntervalEXT");
     if (!Detail::hasExtension(extensions, "WGL_EXT_swap_control") || !swapInterval) {
-        error = { "setVSync", "VSync control is unavailable: WGL_EXT_swap_control is not supported.", std::nullopt };
+        error = {"setVSync", "VSync control is unavailable: WGL_EXT_swap_control is not supported.", std::nullopt};
         return false;
     }
     if (!swapInterval(enabled ? 1 : 0)) {
@@ -814,7 +813,7 @@ void shutdown(std::vector<Error>& errors)
         // Multimedia API возвращает собственный код, а не GetLastError.
         const MMRESULT result = timeEndPeriod(1);
         if (result != TIMERR_NOERROR) {
-            errors.push_back({ "timeEndPeriod", "Could not restore the timer resolution.", static_cast<int>(result) });
+            errors.push_back(Error{"timeEndPeriod", "Could not restore the timer resolution.", static_cast<int>(result)});
         }
         timerResolutionEnabled = false;
     }

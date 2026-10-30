@@ -64,7 +64,7 @@ constexpr Vector2 operator+(Vector2 value)
 
 constexpr Vector2 operator-(Vector2 value)
 {
-    return { -value.x, -value.y };
+    return {-value.x, -value.y};
 }
 
 constexpr Vector2 operator+(Vector2 first, Vector2 second)

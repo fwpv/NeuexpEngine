@@ -8,7 +8,7 @@ namespace Engine
 {
 Rect Viewport::bounds() const
 {
-    return { static_cast<float>(x), static_cast<float>(y), static_cast<float>(width), static_cast<float>(height) };
+    return {static_cast<float>(x), static_cast<float>(y), static_cast<float>(width), static_cast<float>(height)};
 }
 
 Vector2 CameraView::worldToScreen(Vector2 point) const
@@ -16,13 +16,18 @@ Vector2 CameraView::worldToScreen(Vector2 point) const
     return worldToScreenTransform.transformPoint(point);
 }
 
+bool Viewport::contains(Vector2 point) const
+{
+    const Rect screen = bounds();
+    return std::isfinite(point.x) && std::isfinite(point.y)
+        && point.x >= screen.position.x && point.y >= screen.position.y
+        && point.x < screen.position.x + screen.size.width
+        && point.y < screen.position.y + screen.size.height;
+}
+
 bool CameraView::screenToWorld(Vector2 point, Vector2& result) const
 {
-    const Rect screen = viewport.bounds();
-    if (!std::isfinite(point.x) || !std::isfinite(point.y)
-        || point.x < screen.position.x || point.y < screen.position.y
-        || point.x >= screen.position.x + screen.size.width
-        || point.y >= screen.position.y + screen.size.height) {
+    if (!viewport.contains(point)) {
         return false;
     }
     result = screenToWorldTransform.transformPoint(point);
@@ -39,7 +44,8 @@ bool Camera2::createView(const Viewport& area, CameraView& result, CameraError& 
     }
     if (!std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(zoom) || zoom <= 0
         || !std::isfinite(referenceSize.width) || !std::isfinite(referenceSize.height)
-        || referenceSize.width <= 0 || referenceSize.height <= 0) {
+        || referenceSize.width <= 0 || referenceSize.height <= 0
+        || (mode != ViewportMode::Expand && mode != ViewportMode::Fit)) {
         error = CameraError::InvalidCamera;
         return false;
     }
@@ -62,7 +68,7 @@ bool Camera2::createView(const Viewport& area, CameraView& result, CameraError& 
         error = CameraError::NonInvertible;
         return false;
     }
-    const Transform2 transform = { candidate.viewport.bounds().center(), 0, { pixelsPerUnit, pixelsPerUnit }, position };
+    const Transform2 transform = {candidate.viewport.bounds().center(), 0, Vector2{pixelsPerUnit, pixelsPerUnit}, position};
     candidate.worldToScreenTransform = transform.toAffine();
     TransformError transformError;
     if (!candidate.worldToScreenTransform.inverse(candidate.screenToWorldTransform, transformError)) {

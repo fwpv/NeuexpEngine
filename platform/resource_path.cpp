@@ -18,7 +18,7 @@ bool executableDirectory(std::filesystem::path& result, ResourceError& error)
     for (;;) {
         const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
         if (length == 0) {
-            error = { ResourceErrorCode::Io, "Cannot locate the executable (GetModuleFileNameW)." };
+            error = {ResourceErrorCode::Io, "Cannot locate the executable (GetModuleFileNameW)."};
             return false;
         }
         if (length < buffer.size()) {
@@ -32,7 +32,7 @@ bool executableDirectory(std::filesystem::path& result, ResourceError& error)
     for (;;) {
         const auto length = readlink("/proc/self/exe", buffer.data(), buffer.size());
         if (length < 0) {
-            error = { ResourceErrorCode::Io, "Cannot locate the executable (/proc/self/exe)." };
+            error = {ResourceErrorCode::Io, "Cannot locate the executable (/proc/self/exe)."};
             return false;
         }
         if (static_cast<std::size_t>(length) < buffer.size()) {

@@ -44,6 +44,7 @@ enum class Failure
     Start,
     StartException,
     Render,
+    Drawing,
     RenderException,
     StopException,
     Initialize
@@ -66,22 +67,20 @@ public:
     bool rejectedAfterStop()
     {
         RenderError error;
-        return !getRenderer().beginFrame(96, 96, Black, error) && error == RenderError::InvalidState;
+        getRenderer().beginFrame(96, 96, Black);
+        return !getRenderer().endFrame(error) && error == RenderError::InvalidState;
     }
 
 private:
     void queueFrame()
     {
-        RenderError error;
-        auto& renderer = getRenderer();
-        require(renderer.beginFrame(96, 96, Black, error) && renderer.beginWorld(view(), error),
-            "Could not begin a lifecycle test frame.");
+        auto& drawing = getRenderer();
+        beginFrame(96, 96, Black);
+        drawing.setWorldView(view());
         DrawOptions draw;
         draw.color = { 1, 0, 0, 0.5F };
-        require(renderer.drawRectangle({ -40, -40, 80, 80 }, ShapeFill::Filled, draw, error),
-            "Could not queue lifecycle geometry.");
-        require(renderer.drawTexture(texture, { -20, -20, 40, 40 }, {}, error),
-            "Could not queue lifecycle texture.");
+        drawing.drawRectangle({ -40, -40, 80, 80 }, draw);
+        drawing.drawTexture(texture, { -20, -20, 40, 40 });
     }
 
     bool onStart(Platform::Error& error) override
@@ -98,15 +97,16 @@ private:
             const GLXContext context = glXGetCurrentContext();
             require(glXMakeCurrent(display, 0, nullptr) != False, "Could not detach test context.");
 #endif
-            const bool rejected = !getRenderer().initialize(renderError)
-                && renderError == RenderError::NoCurrentContext && !rendererReady();
+            const bool rejected = !initializeRenderer(error) && !rendererReady();
 #ifdef _WIN32
             require(wglMakeCurrent(surface, context) != FALSE, "Could not restore test context.");
 #else
             require(glXMakeCurrent(display, drawable, context) != False, "Could not restore test context.");
 #endif
             require(rejected, "Renderer initialized without a current context.");
-            error = { "renderer.initialize", "Expected initialization failure.", {} };
+            require(error.operation == "Renderer2D::initialize"
+                && error.message == renderErrorMessage(RenderError::NoCurrentContext),
+                "Initialization lost its rendering diagnostic.");
             return false;
         }
         require(getRenderer().initialize(renderError), "Renderer initialization failed.");
@@ -136,8 +136,11 @@ private:
             error = { "onRender", "Expected rendering failure.", {} };
             return false;
         }
-        RenderError renderError;
-        require(getRenderer().endFrame(renderError), "Frame end failed.");
+        if (failure == Failure::Drawing) {
+            getRenderer().drawCircle({ {}, -1 });
+            return endFrame(error);
+        }
+        require(endFrame(error), "Frame end failed.");
         requestExit();
         return true;
     }
@@ -170,7 +173,7 @@ int main()
         standalone.shutdown();
         standalone.shutdown();
         for (Failure failure : { Failure::None, Failure::Start, Failure::StartException,
-            Failure::Render, Failure::RenderException, Failure::StopException, Failure::Initialize }) {
+            Failure::Render, Failure::Drawing, Failure::RenderException, Failure::StopException, Failure::Initialize }) {
             LifecycleApplication app;
             app.failure = failure;
             ApplicationOptions options;
@@ -181,6 +184,11 @@ int main()
             const bool succeeded = app.run(options, errors);
             require(succeeded == (failure == Failure::None), "Unexpected application result.");
             require(errors.size() == (succeeded ? 0U : 1U), "Application lost or duplicated lifecycle errors.");
+            if (failure == Failure::Drawing) {
+                require(errors.front().operation == "Renderer2D::endFrame"
+                    && errors.front().message == renderErrorMessage(RenderError::InvalidGeometry),
+                    "Frame completion lost its rendering diagnostic.");
+            }
             require(app.stops == 1 && app.stopHadContext, "Cleanup did not run before context destruction.");
             require(app.stopHadRenderer == (failure != Failure::Initialize), "Renderer lifetime ended before onStop.");
             require(!app.rendererReady() && app.rejectedAfterStop(), "Application left a live renderer after shutdown.");
@@ -196,9 +204,13 @@ int main()
         require(Platform::initialize(window, errors), "Standalone context initialization failed.");
         for (int restart = 0; restart < 2; ++restart) {
             require(standalone.initialize(error), "Renderer restart failed.");
-            require(standalone.beginFrame(96, 96, Black, error), "Restarted renderer could not begin a frame.");
-            require(standalone.beginWorld(view(), error), "Restarted world view failed.");
-            require(standalone.drawCircle({ {}, 10 }, ShapeFill::Filled, {}, error), "Restarted draw failed.");
+            standalone.beginFrame(96, 96, Black);
+            standalone.setWorldView(view());
+            standalone.drawCircle({ {}, 10 }, DrawOptions{});
+            require(standalone.endFrame(error), "Restarted draw failed.");
+            standalone.beginFrame(96, 96, Black);
+            standalone.setWorldView(view());
+            standalone.drawCircle({ {}, 10 }, DrawOptions{});
             standalone.shutdown();
             require(!standalone.isInitialized(), "Renderer shutdown failed.");
         }

@@ -7,7 +7,10 @@
 
 namespace Engine
 {
-namespace Detail { struct TextureData; }
+namespace Detail
+{
+struct TextureData;
+}
 
 // Общая ссылка на ресурс одного рендерера. Копирование не копирует GPU-данные.
 // shutdown() рендерера делает все его ссылки недействительными; их уничтожение
@@ -29,8 +32,16 @@ private:
     friend class Renderer2D;
 };
 
-enum class TextureFilter { Nearest, Linear };
-enum class TextureWrap { Clamp, Repeat };
+enum class TextureFilter
+{
+    Nearest,
+    Linear
+};
+enum class TextureWrap
+{
+    Clamp,
+    Repeat
+};
 
 struct TextureSampling
 {
@@ -38,7 +49,7 @@ struct TextureSampling
     TextureWrap wrapX = TextureWrap::Clamp;
     TextureWrap wrapY = TextureWrap::Clamp;
     // Число повторений целого изображения по осям; конечные положительные значения.
-    Vector2 repeats = { 1, 1 };
+    Vector2 repeats = {1, 1};
 };
 
 struct TextureStats

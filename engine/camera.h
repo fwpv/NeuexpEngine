@@ -14,6 +14,8 @@ struct Viewport
     int height = 0;
 
     Rect bounds() const;
+    // Клиентские пиксели; правая и нижняя границы исключены.
+    bool contains(Vector2 point) const;
 };
 
 enum class ViewportMode
@@ -54,7 +56,7 @@ struct Camera2
     Vector2 position;
     // Положительный масштаб: увеличение приближает мир; масштаб интерфейса независим.
     float zoom = 1;
-    Size2 referenceSize = { 800, 600 };
+    Size2 referenceSize = {800, 600};
     ViewportMode mode = ViewportMode::Expand;
 
     // Пересчитывается после изменения камеры или размеров окна; не обращается к ОС/OpenGL.

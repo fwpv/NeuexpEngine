@@ -4,30 +4,31 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <initializer_list>
 
 namespace Engine
 {
 Vector2 Affine2::transformPoint(Vector2 point) const
 {
-    return { m00 * point.x + m01 * point.y + m02, m10 * point.x + m11 * point.y + m12 };
+    return {m00 * point.x + m01 * point.y + m02, m10 * point.x + m11 * point.y + m12};
 }
 
 Vector2 Affine2::transformVector(Vector2 vector) const
 {
-    return { m00 * vector.x + m01 * vector.y, m10 * vector.x + m11 * vector.y };
+    return {m00 * vector.x + m01 * vector.y, m10 * vector.x + m11 * vector.y};
 }
 
 Rect Affine2::transformBounds(const Rect& rectangle) const
 {
     const Vector2 first = transformPoint(rectangle.position);
-    const Vector2 second = transformPoint({ rectangle.position.x + rectangle.size.width, rectangle.position.y });
-    const Vector2 third = transformPoint({ rectangle.position.x, rectangle.position.y + rectangle.size.height });
-    const Vector2 fourth = transformPoint({ rectangle.position.x + rectangle.size.width,
-        rectangle.position.y + rectangle.size.height });
-    const float x = std::min({ first.x, second.x, third.x, fourth.x });
-    const float y = std::min({ first.y, second.y, third.y, fourth.y });
-    return { x, y, std::max({ first.x, second.x, third.x, fourth.x }) - x,
-        std::max({ first.y, second.y, third.y, fourth.y }) - y };
+    const Vector2 second = transformPoint(Vector2{rectangle.position.x + rectangle.size.width, rectangle.position.y});
+    const Vector2 third = transformPoint(Vector2{rectangle.position.x, rectangle.position.y + rectangle.size.height});
+    const Vector2 fourth = transformPoint(Vector2{rectangle.position.x + rectangle.size.width,
+        rectangle.position.y + rectangle.size.height});
+    const float x = std::min(std::initializer_list<float>{first.x, second.x, third.x, fourth.x});
+    const float y = std::min(std::initializer_list<float>{first.y, second.y, third.y, fourth.y});
+    return {x, y, std::max(std::initializer_list<float>{first.x, second.x, third.x, fourth.x}) - x,
+        std::max(std::initializer_list<float>{first.y, second.y, third.y, fourth.y}) - y};
 }
 
 bool Affine2::inverse(Affine2& result, TransformError& error) const

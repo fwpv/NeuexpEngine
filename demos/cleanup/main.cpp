@@ -2,13 +2,22 @@
 #include "application.h"
 #include "camera.h"
 #include "game.h"
-#include "../common/painter.h"
+#include "geometry.h"
+#include "input.h"
+#include "math2d.h"
+#include "platform.h"
+#include "renderer.h"
+#include "transform.h"
+#include "ui.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Cleanup
@@ -21,31 +30,20 @@ using Engine::Color;
 using Engine::Rect;
 using Engine::Vector2;
 
-constexpr float GridStep = 100;
-constexpr int CircleSegments = 32;
-constexpr int Margin = 16;
-constexpr int MapPadding = 7;
-
-constexpr Color OutsideColor = { 0.025F, 0.035F, 0.055F };
-constexpr Color GroundColor = { 0.10F, 0.15F, 0.16F };
-constexpr Color GridColor = { 0.16F, 0.22F, 0.23F };
-constexpr Color BorderColor = { 0.46F, 0.65F, 0.62F };
-constexpr Color OrangePoolColor = { 0.76F, 0.25F, 0.035F };
-constexpr Color BluePoolColor = { 0.035F, 0.28F, 0.68F };
-constexpr Color DryPlayerColor = { 0.84F, 0.78F, 0.97F };
-constexpr Color StickyPlayerColor = { 1, 0.65F, 0.28F };
-constexpr Color CleanPlayerColor = { 0.40F, 0.86F, 1 };
-constexpr Color WhiteColor = { 0.95F, 0.98F, 1 };
-constexpr Color PanelColor = { 0.04F, 0.06F, 0.09F };
-constexpr Color GoalColor = { 0.35F, 0.95F, 0.55F };
-constexpr Color WarningColor = { 1, 0.25F, 0.20F };
-constexpr Color ExhaustedColor = { 0.40F, 0.44F, 0.49F };
-constexpr Color HouseColor = { 0.58F, 0.44F, 0.28F };
-constexpr Color ObstacleColor = { 0.26F, 0.31F, 0.34F };
-constexpr Color ObstacleBorderColor = { 0.49F, 0.54F, 0.56F };
-constexpr std::array<Color, 3> TrashColors = {{
-    { 0.94F, 0.84F, 0.43F }, { 0.75F, 0.55F, 0.85F }, { 0.67F, 0.78F, 0.81F }
-}};
+constexpr Color OutsideColor = {0.025F, 0.035F, 0.055F};
+constexpr Color GridColor = {0.16F, 0.22F, 0.23F};
+constexpr Color BorderColor = {0.46F, 0.65F, 0.62F};
+constexpr Color OrangePoolColor = {0.76F, 0.25F, 0.035F};
+constexpr Color StickyPlayerColor = {1, 0.65F, 0.28F};
+constexpr Color CleanPlayerColor = {0.40F, 0.86F, 1};
+constexpr Color WhiteColor = {0.95F, 0.98F, 1};
+constexpr Color PanelColor = {0.04F, 0.06F, 0.09F};
+constexpr Color GoalColor = {0.35F, 0.95F, 0.55F};
+constexpr Color WarningColor = {1, 0.25F, 0.20F};
+constexpr Color ExhaustedColor = {0.40F, 0.44F, 0.49F};
+constexpr std::array<Color, 3> TrashColors = {
+    Color{0.94F, 0.84F, 0.43F}, Color{0.75F, 0.55F, 0.85F}, Color{0.67F, 0.78F, 0.81F}
+};
 
 Color playerColor(Coat coat)
 {
@@ -55,83 +53,74 @@ Color playerColor(Coat coat)
     case Coat::Clean:
         return CleanPlayerColor;
     default:
-        return DryPlayerColor;
+        return Color{0.84F, 0.78F, 0.97F};
     }
 }
 
-class WorldPainter final : public Demo::Painter
+class CleanupApplication final : public Engine::Application
 {
-public:
-    using Demo::Painter::Painter;
-
-    void circle(const Circle& shape, Color color, bool filled = true)
+private:
+    void drawHome(const GameState& game)
     {
-        Demo::Painter::circle(shape, color, filled, CircleSegments);
+        const bool ready = game.washed >= game.rules.homeGoal;
+        const float progress = std::min(1.0F, static_cast<float>(game.washed) / static_cast<float>(game.rules.homeGoal));
+        drawing.drawRectangle(game.world.homeLotBounds, Color{0.14F + 0.03F * progress, 0.16F + 0.16F * progress, 0.14F});
+        drawing.drawRectangle(game.world.homeLotBounds, ready ? GoalColor : BorderColor, Engine::ShapeFill::Outline);
+        drawing.drawRectangle(game.world.homeBounds, BorderColor, Engine::ShapeFill::Outline);
+        constexpr Color HouseColor = {0.58F, 0.44F, 0.28F};
+        if (game.washed >= game.rules.homeGoal / 4) {
+            drawing.drawRectangle(Rect{2570, 1810, 260, 24}, HouseColor);
+        }
+        if (game.washed >= game.rules.homeGoal / 2) {
+            drawing.drawRectangle(game.world.homeBounds, HouseColor);
+            drawing.drawRectangle(Rect{2610, 1680, 45, 45}, CleanPlayerColor);
+            drawing.drawRectangle(Rect{2745, 1680, 45, 45}, CleanPlayerColor);
+        }
+        if (game.washed >= game.rules.homeGoal * 3 / 4) {
+            drawing.drawRectangle(Rect{2560, 1620, 280, 30}, OrangePoolColor);
+            drawing.drawRectangle(Rect{2600, 1600, 200, 20}, OrangePoolColor);
+        }
+        drawing.drawRectangle(Rect{2676, 1760, 48, 70}, ready ? GoalColor : WarningColor);
+        drawing.drawDebugText(ready ? "HOME OPEN" : "HOME LOCKED", Vector2{2560, 1870}, ready ? GoalColor : WhiteColor, 4);
+        drawing.drawRectangle(Rect{2580, 1910, game.world.homeBounds.size.width, 9}, PanelColor);
+        drawing.drawRectangle(Rect{2580, 1910, game.world.homeBounds.size.width * progress, 9}, GoalColor);
     }
 
-    void number(int value, Vector2 position, Color color)
+    void drawWorld(const GameState& game, float time)
     {
-        text(std::to_string(value), position, color, 6);
-    }
-
-    void drawHome(const Game& game)
-    {
-        const bool ready = game.washed >= HomeGoal;
-        const float progress = std::min(1.0F, static_cast<float>(game.washed) / HomeGoal);
-        rectangle(HomeLotBounds, { 0.14F + 0.03F * progress, 0.16F + 0.16F * progress, 0.14F });
-        rectangle(HomeLotBounds, ready ? GoalColor : BorderColor, false);
-        rectangle(HomeBounds, BorderColor, false);
-        if (game.washed >= HomeGoal / 4) {
-            rectangle({ 2570, 1810, 260, 24 }, HouseColor);
+        drawing.drawRectangle(game.world.bounds, Color{0.10F, 0.15F, 0.16F});
+        Engine::DrawOptions gridOptions;
+        gridOptions.color = GridColor;
+        constexpr float GridStep = 100;
+        for (float x = GridStep; x < game.world.bounds.size.width; x += GridStep) {
+            drawing.drawLine(Vector2{x, 0}, Vector2{x, game.world.bounds.size.height}, gridOptions);
         }
-        if (game.washed >= HomeGoal / 2) {
-            rectangle(HomeBounds, HouseColor);
-            rectangle({ 2610, 1680, 45, 45 }, CleanPlayerColor);
-            rectangle({ 2745, 1680, 45, 45 }, CleanPlayerColor);
+        for (float y = GridStep; y < game.world.bounds.size.height; y += GridStep) {
+            drawing.drawLine(Vector2{0, y}, Vector2{game.world.bounds.size.width, y}, gridOptions);
         }
-        if (game.washed >= HomeGoal * 3 / 4) {
-            rectangle({ 2560, 1620, 280, 30 }, OrangePoolColor);
-            rectangle({ 2600, 1600, 200, 20 }, OrangePoolColor);
-        }
-        rectangle({ 2676, 1760, 48, 70 }, ready ? GoalColor : WarningColor);
-        text(ready ? "HOME OPEN" : "HOME LOCKED", { 2560, 1870 }, ready ? GoalColor : WhiteColor, 4);
-        rectangle({ 2580, 1910, HomeBounds.size.width, 9 }, PanelColor);
-        rectangle({ 2580, 1910, HomeBounds.size.width * progress, 9 }, GoalColor);
-    }
-
-    void drawWorld(const Game& game, float time)
-    {
-        rectangle(WorldBounds, GroundColor);
-        options.color = GridColor;
-        for (float x = GridStep; x < WorldBounds.size.width; x += GridStep) {
-            line({ x, 0 }, { x, WorldBounds.size.height });
-        }
-        for (float y = GridStep; y < WorldBounds.size.height; y += GridStep) {
-            line({ 0, y }, { WorldBounds.size.width, y });
-        }
-        rectangle(WorldBounds, BorderColor, false);
+        drawing.drawRectangle(game.world.bounds, BorderColor, Engine::ShapeFill::Outline);
         drawHome(game);
-        for (const Rect& obstacle : Obstacles) {
-            rectangle(obstacle, ObstacleColor);
-            rectangle(obstacle, ObstacleBorderColor, false);
+        for (const Rect& obstacle : game.world.obstacles) {
+            drawing.drawRectangle(obstacle, Color{0.26F, 0.31F, 0.34F});
+            drawing.drawRectangle(obstacle, Color{0.49F, 0.54F, 0.56F}, Engine::ShapeFill::Outline);
         }
-        for (const Puddle& puddle : Puddles) {
-            circle(puddle.shape, puddle.sticky ? OrangePoolColor : BluePoolColor);
-            circle({ puddle.shape.center, puddle.shape.radius - 12 }, puddle.sticky ? StickyPlayerColor : CleanPlayerColor, false);
+        for (const Puddle& puddle : game.world.puddles) {
+            drawing.drawCircle(puddle.shape, puddle.sticky ? OrangePoolColor : Color{0.035F, 0.28F, 0.68F}, Engine::ShapeFill::Filled, 32);
+            drawing.drawCircle(Circle{puddle.shape.center, puddle.shape.radius - 12}, puddle.sticky ? StickyPlayerColor : CleanPlayerColor, Engine::ShapeFill::Outline, 32);
         }
         if (game.target) {
-            circle({ *game.target, 14 }, WhiteColor, false);
-            circle({ *game.target, 4 }, WhiteColor);
+            drawing.drawCircle(Circle{*game.target, 14}, WhiteColor, Engine::ShapeFill::Outline, 32);
+            drawing.drawCircle(Circle{*game.target, 4}, WhiteColor, Engine::ShapeFill::Filled, 32);
         }
 
-        const bool warning = game.carried > 0 && game.cargoAge >= GlueWarningTime && game.outcome == Outcome::Playing;
-        const bool blink = warning && std::sin(time * 12) > 0;
+        const bool warning = game.carried > 0 && game.cargoAge >= game.rules.glueWarningTime && game.outcome == Outcome::Playing;
+        const bool blink = warning && std::sin(time * 12.0f) > 0;
         const Color bodyColor = game.outcome == Outcome::Lost ? ExhaustedColor : playerColor(game.coat);
-        circle({ game.player, PlayerRadius + 3 }, blink ? WarningColor : WhiteColor);
-        circle({ game.player, PlayerRadius }, bodyColor);
-        const Affine2 playerTransform = Engine::Transform2{ game.player, game.heading, { 1, 1 }, {} }.toAffine();
-        circle({ playerTransform.transformPoint({ 8, -6 }), 3 }, PanelColor);
-        circle({ playerTransform.transformPoint({ 8, 6 }), 3 }, PanelColor);
+        drawing.drawCircle(Circle{game.player, game.rules.playerRadius + 3}, blink ? WarningColor : WhiteColor, Engine::ShapeFill::Filled, 32);
+        drawing.drawCircle(Circle{game.player, game.rules.playerRadius}, bodyColor, Engine::ShapeFill::Filled, 32);
+        const Affine2 playerTransform = Engine::Transform2{game.player, game.heading, Vector2{1, 1}, Vector2{}}.toAffine();
+        drawing.drawCircle(Circle{playerTransform.transformPoint(Vector2{8, -6}), 3}, PanelColor, Engine::ShapeFill::Filled, 32);
+        drawing.drawCircle(Circle{playerTransform.transformPoint(Vector2{8, 6}), 3}, PanelColor, Engine::ShapeFill::Filled, 32);
         for (std::size_t index = 0; index < game.trash.size(); ++index) {
             const Trash& item = game.trash[index];
             if (item.state == TrashState::Washed) {
@@ -140,62 +129,60 @@ public:
             Vector2 position = item.state == TrashState::Carried
                 ? playerTransform.transformPoint(item.attachment) : item.position;
             if (warning && item.state == TrashState::Carried) {
-                position.x += std::sin(time * 25) * 2;
+                position.x += std::sin(time * 25.0f) * 2.0f;
             }
             const Color color = TrashColors[index % TrashColors.size()];
             if (index % 3 == 0) {
-                circle({ position, TrashRadius }, color);
+                drawing.drawCircle(Circle{position, game.rules.trashRadius}, color, Engine::ShapeFill::Filled, 32);
             } else {
-                const float width = index % 3 == 1 ? TrashRadius * 2 : TrashRadius;
-                rectangle({ position.x - width / 2, position.y - TrashRadius, width, TrashRadius * 2 }, color);
+                const float width = index % 3 == 1 ? game.rules.trashRadius * 2 : game.rules.trashRadius;
+                drawing.drawRectangle(Rect{position.x - width / 2, position.y - game.rules.trashRadius, width, game.rules.trashRadius * 2}, color);
             }
         }
     }
-};
-
-class CleanupApplication final : public Engine::Application
-{
-private:
-    WorldPainter drawing{ getRenderer() };
-    CameraView panelView;
-    Engine::UiView hudView;
 
     bool onStart(Platform::Error& error) override
     {
-        return drawing.initialize(error);
+        return initializeRenderer(error);
     }
-
-    Game game;
-    Camera2 camera = { WorldBounds.center(), 1, { 960, 600 }, Engine::ViewportMode::Expand };
-    Camera2 minimap = { WorldBounds.center(), 1, WorldBounds.size, Engine::ViewportMode::Fit };
-    CameraView mainView;
-    CameraView mapView;
-    Rect mapPanel;
-    bool viewsReady = false;
-    bool titleDirty = true;
 
     bool updateViews(const Engine::FrameInfo& frame, Platform::Error& error)
     {
+        const GameState& state = game.state();
         viewsReady = false;
         if (frame.window.width <= 0 || frame.window.height <= 0) {
             return true;
         }
         const int mapWidth = std::clamp(frame.window.width / 4, 180, 300);
         const int mapHeight = mapWidth * 7 / 10;
+        constexpr int Margin = 16;
         const int mapX = frame.window.width - mapWidth - Margin;
         const int mapY = frame.window.height - mapHeight - Margin;
-        mapPanel = { static_cast<float>(mapX - MapPadding), static_cast<float>(mapY - MapPadding),
-            static_cast<float>(mapWidth + 2 * MapPadding), static_cast<float>(mapHeight + 2 * MapPadding) };
-        camera.position = game.player;
+        mapPanel = Rect{static_cast<float>(mapX - 7), static_cast<float>(mapY - 7),
+            static_cast<float>(mapWidth + 2 * 7), static_cast<float>(mapHeight + 2 * 7)};
+        camera.position = state.player;
         Engine::CameraError cameraError;
+        const Engine::Size2 screenSize = {static_cast<float>(frame.window.width), static_cast<float>(frame.window.height)};
+        const Camera2 panelCamera = {Vector2{screenSize.width / 2, screenSize.height / 2}, 1, screenSize, Engine::ViewportMode::Expand};
+        if (!camera.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, mainView, cameraError)) {
+            error = Platform::Error{"Camera2::createView",
+                "Could not calculate the main view. CameraError: " + std::to_string(static_cast<int>(cameraError)), std::nullopt};
+            return false;
+        }
+        if (!minimap.createView(Engine::Viewport{mapX, mapY, mapWidth, mapHeight}, mapView, cameraError)) {
+            error = Platform::Error{"Camera2::createView",
+                "Could not calculate the minimap view. CameraError: " + std::to_string(static_cast<int>(cameraError)), std::nullopt};
+            return false;
+        }
+        if (!panelCamera.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, panelView, cameraError)) {
+            error = Platform::Error{"Camera2::createView",
+                "Could not calculate the panel view. CameraError: " + std::to_string(static_cast<int>(cameraError)), std::nullopt};
+            return false;
+        }
         Engine::UiError uiError;
-        const Engine::Size2 screenSize = { static_cast<float>(frame.window.width), static_cast<float>(frame.window.height) };
-        const Camera2 panelCamera = { { screenSize.width / 2, screenSize.height / 2 }, 1, screenSize, Engine::ViewportMode::Expand };
-        if (!camera.createView({ 0, 0, frame.window.width, frame.window.height }, mainView, cameraError)
-            || !minimap.createView({ mapX, mapY, mapWidth, mapHeight }, mapView, cameraError)
-            || !panelCamera.createView({ 0, 0, frame.window.width, frame.window.height }, panelView, cameraError)
-            || !Engine::UiCanvas{}.createView({ 0, 0, frame.window.width, frame.window.height }, hudView, uiError)) {
-            error = { "Camera2::createView", "Could not calculate the camera viewport.", {} };
+        if (!Engine::UiCanvas{}.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, hudView, uiError)) {
+            error = Platform::Error{"UiCanvas::createView",
+                "Could not calculate the interface view. UiError: " + std::to_string(static_cast<int>(uiError)), std::nullopt};
             return false;
         }
         viewsReady = true;
@@ -204,6 +191,7 @@ private:
 
     bool onInput(const Engine::FrameInfo& frame, Platform::Error& error) override
     {
+        const GameState& state = game.state();
         const auto& input = Platform::getInput();
         if (input.key(Engine::Key::Escape).pressed) {
             requestExit();
@@ -214,7 +202,7 @@ private:
             camera.zoom = 1;
             titleDirty = true;
         }
-        if (input.key(Engine::Key::P).pressed && game.outcome == Outcome::Playing) {
+        if (input.key(Engine::Key::P).pressed && state.outcome == Outcome::Playing) {
             setPaused(!isPaused());
             titleDirty = true;
         }
@@ -229,15 +217,14 @@ private:
         if (!updateViews(frame, error)) {
             return false;
         }
-        if (viewsReady && game.outcome == Outcome::Playing) {
+        if (viewsReady && state.outcome == Outcome::Playing) {
             for (const Engine::Event& event : Platform::getEvents()) {
                 if (event.type == Engine::EventType::MousePressed && event.button == Engine::MouseButton::Left) {
-                    const Vector2 screen = { static_cast<float>(event.x), static_cast<float>(event.y) };
+                    const Vector2 screen = {static_cast<float>(event.x), static_cast<float>(event.y)};
                     Vector2 world;
                     const bool onMap = Engine::contains(mapPanel, screen);
                     if ((onMap ? mapView : mainView).screenToWorld(screen, world)) {
-                        game.target = Engine::closestPoint({ PlayerRadius, PlayerRadius,
-                            WorldBounds.size.width - 2 * PlayerRadius, WorldBounds.size.height - 2 * PlayerRadius }, world);
+                        game.setTarget(world);
                     }
                 }
             }
@@ -247,6 +234,7 @@ private:
 
     bool onUpdate(const Engine::FrameInfo& frame, Platform::Error&) override
     {
+        const GameState& state = game.state();
         Vector2 direction;
         if (Platform::isKeyDown(Engine::Key::A) || Platform::isKeyDown(Engine::Key::ArrowLeft)) {
             direction.x -= 1;
@@ -260,30 +248,31 @@ private:
         if (Platform::isKeyDown(Engine::Key::S) || Platform::isKeyDown(Engine::Key::ArrowDown)) {
             direction.y += 1;
         }
-        const Coat previousCoat = game.coat;
-        const int previousCarried = game.carried;
-        const int previousWashed = game.washed;
-        const int previousMotivation = game.motivation;
-        const Outcome previousOutcome = game.outcome;
+        const Coat previousCoat = state.coat;
+        const int previousCarried = state.carried;
+        const int previousWashed = state.washed;
+        const int previousMotivation = state.motivation;
+        const Outcome previousOutcome = state.outcome;
         game.update(direction, frame.deltaTime);
-        titleDirty = titleDirty || previousCoat != game.coat || previousCarried != game.carried
-            || previousWashed != game.washed || previousMotivation != game.motivation || previousOutcome != game.outcome;
+        titleDirty = titleDirty || previousCoat != state.coat || previousCarried != state.carried
+            || previousWashed != state.washed || previousMotivation != state.motivation || previousOutcome != state.outcome;
         return true;
     }
 
     bool onPrepareFrame(const Engine::FrameInfo& frame, Platform::Error& error) override
     {
+        const GameState& state = game.state();
         if (!updateViews(frame, error)) {
             return false;
         }
         if (titleDirty || frame.fpsUpdated) {
-            const char* coat = game.coat == Coat::Sticky ? "sticky" : (game.coat == Coat::Clean ? "clean" : "dry");
-            const char* state = game.outcome == Outcome::Won ? "won" : (game.outcome == Outcome::Lost ? "lost" : "playing");
+            const std::string_view coat = state.coat == Coat::Sticky ? "sticky" : (state.coat == Coat::Clean ? "clean" : "dry");
+            const std::string_view outcome = state.outcome == Outcome::Won ? "won" : (state.outcome == Outcome::Lost ? "lost" : "playing");
             std::ostringstream title;
-            title << "Cleanup | coat=" << coat << " carry=" << game.carried << " washed=" << game.washed << '/' << TrashCount
-                << " motivation=" << game.motivation << " glue=" << game.glue
-                << " age=" << static_cast<int>(game.cargoAge) << " state=" << state
-                << (game.washed >= HomeGoal ? " | HOME OPEN" : " | HOME LOCKED") << " goal=" << HomeGoal
+            title << "Cleanup | coat=" << coat << " carry=" << state.carried << " washed=" << state.washed << '/' << state.trash.size()
+                << " motivation=" << state.motivation << " glue=" << state.glue
+                << " age=" << static_cast<int>(state.cargoAge) << " state=" << outcome
+                << (state.washed >= state.rules.homeGoal ? " | HOME OPEN" : " | HOME LOCKED") << " goal=" << state.rules.homeGoal
                 << (isPaused() ? " | PAUSED" : "")
                 << " | WASD/click, wheel: zoom, P: pause, F: "
                 << (camera.mode == Engine::ViewportMode::Fit ? "fit" : "expand") << ", R: restart";
@@ -297,111 +286,119 @@ private:
 
     void renderView(const CameraView& view, bool map, float time)
     {
-        const auto& viewport = view.viewport;
-        drawing.beginWorld(view);
+        const GameState& state = game.state();
+        drawing.setWorldView(view);
         const Rect& bounds = view.worldBounds;
-        drawing.rectangle(bounds, OutsideColor);
-        drawing.drawWorld(game, time);
+        drawing.drawRectangle(bounds, OutsideColor);
+        drawWorld(state, time);
         if (map) {
             Rect visible;
-            if (Engine::intersection(mainView.worldBounds, WorldBounds, visible)) {
-                drawing.rectangle(visible, WhiteColor, false);
+            if (Engine::intersection(mainView.worldBounds, state.world.bounds, visible)) {
+                drawing.drawRectangle(visible, WhiteColor, Engine::ShapeFill::Outline);
             }
             // Метки остаются различимыми и на маленькой миникарте.
-            const float unitsPerPixel = bounds.size.width / static_cast<float>(viewport.width);
-            for (std::size_t index = 0; index < game.trash.size(); ++index) {
-                if (game.trash[index].state == TrashState::Ground) {
-                    drawing.circle({ game.trash[index].position, 2 * unitsPerPixel }, TrashColors[index % TrashColors.size()]);
+            const float unitsPerPixel = bounds.size.width / static_cast<float>(view.viewport.width);
+            for (std::size_t index = 0; index < state.trash.size(); ++index) {
+                if (state.trash[index].state == TrashState::Ground) {
+                    drawing.drawCircle(Circle{state.trash[index].position, 2 * unitsPerPixel}, TrashColors[index % TrashColors.size()], Engine::ShapeFill::Filled, 32);
                 }
             }
-            drawing.circle({ game.player, 4 * unitsPerPixel }, WhiteColor);
-            drawing.circle({ game.player, 3 * unitsPerPixel }, game.outcome == Outcome::Lost ? ExhaustedColor : playerColor(game.coat));
+            drawing.drawCircle(Circle{state.player, 4 * unitsPerPixel}, WhiteColor, Engine::ShapeFill::Filled, 32);
+            drawing.drawCircle(Circle{state.player, 3 * unitsPerPixel}, state.outcome == Outcome::Lost ? ExhaustedColor : playerColor(state.coat), Engine::ShapeFill::Filled, 32);
         }
     }
 
     bool onRender(const Engine::FrameInfo& frame, Platform::Error& error) override
     {
+        const GameState& state = game.state();
         if (!viewsReady) {
             return true;
         }
-        drawing.beginFrame(frame, OutsideColor);
+        beginFrame(frame.window.width, frame.window.height, OutsideColor);
         const float time = static_cast<float>(frame.elapsedTime);
         renderView(mainView, false, time);
-        drawing.beginWorld(panelView);
-        drawing.rectangle(mapPanel, PanelColor);
-        drawing.rectangle(mapPanel, BorderColor, false);
+        drawing.setWorldView(panelView);
+        drawing.drawRectangle(mapPanel, PanelColor);
+        drawing.drawRectangle(mapPanel, BorderColor, Engine::ShapeFill::Outline);
         renderView(mapView, true, time);
-        drawing.beginUi(hudView);
-        const Vector2 homeMarker = mapView.worldToScreen(HomeBounds.center());
-        drawing.text("HOME", homeMarker + Vector2{ -12, 8 }, game.washed >= HomeGoal ? GoalColor : WhiteColor, 1.5F);
-        const Color moodColor = game.motivation <= 20 ? WarningColor : GoalColor;
-        drawing.rectangle({ 16, 16, 235, 78 }, PanelColor);
-        drawing.text("MOTIVATION", { 28, 25 }, WhiteColor);
-        drawing.text("-1/" + std::to_string(static_cast<int>(MotivationDecayInterval)) + "S TO " + std::to_string(PassiveMotivationFloor),
-            { 28, 45 }, BorderColor);
-        drawing.number(game.motivation, { 170, 44 }, moodColor);
-        drawing.rectangle({ 28, 65, 130, 9 }, GridColor);
-        drawing.rectangle({ 28, 65, 130 * static_cast<float>(game.motivation) / MaximumMotivation, 9 }, moodColor);
+        drawing.setUiView(hudView);
+        const Vector2 homeMarker = mapView.worldToScreen(state.world.homeBounds.center());
+        drawing.drawDebugText("HOME", homeMarker + Vector2{-12, 8}, state.washed >= state.rules.homeGoal ? GoalColor : WhiteColor, 1.5F);
+        const Color moodColor = state.motivation <= 20 ? WarningColor : GoalColor;
+        drawing.drawRectangle(Rect{16, 16, 235, 78}, PanelColor);
+        drawing.drawDebugText("MOTIVATION", Vector2{28, 25}, WhiteColor);
+        drawing.drawDebugText("-1/" + std::to_string(static_cast<int>(state.rules.motivationDecayInterval)) + "S TO " + std::to_string(state.rules.passiveMotivationFloor), Vector2{28, 45}, BorderColor);
+        drawing.drawDebugText(std::to_string(state.motivation), Vector2{170, 44}, moodColor, 6);
+        drawing.drawRectangle(Rect{28, 65, 130, 9}, GridColor);
+        drawing.drawRectangle(Rect{28, 65, 130 * static_cast<float>(state.motivation) / static_cast<float>(state.rules.maximumMotivation), 9}, moodColor);
 
-        drawing.rectangle({ 260, 16, 116, 78 }, PanelColor);
-        drawing.text("CARGO", { 272, 25 }, WhiteColor);
-        drawing.number(game.carried, { 272, 44 }, StickyPlayerColor);
-        drawing.circle({ { 349, 61 }, 13 }, game.outcome == Outcome::Lost ? ExhaustedColor : playerColor(game.coat));
+        drawing.drawRectangle(Rect{260, 16, 116, 78}, PanelColor);
+        drawing.drawDebugText("CARGO", Vector2{272, 25}, WhiteColor);
+        drawing.drawDebugText(std::to_string(state.carried), Vector2{272, 44}, StickyPlayerColor, 6);
+        drawing.drawCircle(Circle{Vector2{349, 61}, 13}, state.outcome == Outcome::Lost ? ExhaustedColor : playerColor(state.coat), Engine::ShapeFill::Filled, 32);
 
-        const bool homeReady = game.washed >= HomeGoal;
-        const float homeProgress = std::min(1.0F, static_cast<float>(game.washed) / HomeGoal);
-        drawing.rectangle({ 385, 16, 235, 78 }, PanelColor);
-        drawing.text(homeReady ? "HOME OPEN" : "HOME MATERIAL", { 397, 25 }, homeReady ? GoalColor : WhiteColor);
-        drawing.number(game.washed, { 397, 44 }, CleanPlayerColor);
-        drawing.text("/", { 451, 49 }, WhiteColor, 4);
-        drawing.number(HomeGoal, { 475, 44 }, WhiteColor);
-        drawing.rectangle({ 397, 82, 211, 6 }, GridColor);
-        drawing.rectangle({ 397, 82, 211 * homeProgress, 6 }, GoalColor);
+        const bool homeReady = state.washed >= state.rules.homeGoal;
+        const float homeProgress = std::min(1.0F, static_cast<float>(state.washed) / static_cast<float>(state.rules.homeGoal));
+        drawing.drawRectangle(Rect{385, 16, 235, 78}, PanelColor);
+        drawing.drawDebugText(homeReady ? "HOME OPEN" : "HOME MATERIAL", Vector2{397, 25}, homeReady ? GoalColor : WhiteColor);
+        drawing.drawDebugText(std::to_string(state.washed), Vector2{397, 44}, CleanPlayerColor, 6);
+        drawing.drawDebugText("/", Vector2{451, 49}, WhiteColor, 4);
+        drawing.drawDebugText(std::to_string(state.rules.homeGoal), Vector2{475, 44}, WhiteColor, 6);
+        drawing.drawRectangle(Rect{397, 82, 211, 6}, GridColor);
+        drawing.drawRectangle(Rect{397, 82, 211 * homeProgress, 6}, GoalColor);
 
         const float bottom = static_cast<float>(frame.window.height);
-        drawing.rectangle({ 16, bottom - 118, 360, 102 }, PanelColor);
-        drawing.text("GLUE", { 28, bottom - 108 }, StickyPlayerColor);
-        for (int index = 0; index < GlueCapacity; ++index) {
-            drawing.rectangle({ 86 + static_cast<float>(index) * 17, bottom - 108, 13, 10 },
-                index < game.glue ? StickyPlayerColor : GridColor);
+        drawing.drawRectangle(Rect{16, bottom - 118, 360, 102}, PanelColor);
+        drawing.drawDebugText("GLUE", Vector2{28, bottom - 108}, StickyPlayerColor);
+        for (int index = 0; index < state.rules.glueCapacity; ++index) {
+            drawing.drawRectangle(Rect{86 + static_cast<float>(index) * 17, bottom - 108, 13, 10}, index < state.glue ? StickyPlayerColor : GridColor);
         }
-        const bool aging = game.carried > 0 && game.cargoAge < GlueLifetime;
+        const bool aging = state.carried > 0 && state.cargoAge < state.rules.glueLifetime;
         if (aging) {
-            drawing.text("WASH IN " + std::to_string(static_cast<int>(std::ceil(GlueLifetime - game.cargoAge))) + " S",
-                { 28, bottom - 86 }, game.cargoAge >= GlueWarningTime ? WarningColor : WhiteColor);
+            drawing.drawDebugText("WASH IN " + std::to_string(static_cast<int>(std::ceil(state.rules.glueLifetime - state.cargoAge))) + " S", Vector2{28, bottom - 86}, state.cargoAge >= state.rules.glueWarningTime ? WarningColor : WhiteColor);
         } else {
-            drawing.text(game.coat != Coat::Sticky ? "VISIT ORANGE" : (game.glue == 0 || game.cargoAge >= GlueLifetime ? "WASH FIRST" : "COLLECT TRASH"),
-                { 28, bottom - 86 }, WhiteColor);
+            drawing.drawDebugText(state.coat != Coat::Sticky ? "VISIT ORANGE" : (state.glue == 0 || state.cargoAge >= state.rules.glueLifetime ? "WASH FIRST" : "COLLECT TRASH"), Vector2{28, bottom - 86}, WhiteColor);
         }
-        drawing.text("LOST ITEM -" + std::to_string(DropPenalty) + "  DELIVERED ITEM +" + std::to_string(DeliveryReward),
-            { 28, bottom - 64 }, BorderColor);
-        drawing.text("ORANGE - TRASH - BLUE - HOME", { 28, bottom - 42 }, WhiteColor);
+        drawing.drawDebugText("LOST ITEM -" + std::to_string(state.rules.dropPenalty) + "  DELIVERED ITEM +" + std::to_string(state.rules.deliveryReward), Vector2{28, bottom - 64}, BorderColor);
+        drawing.drawDebugText("ORANGE - TRASH - BLUE - HOME", Vector2{28, bottom - 42}, WhiteColor);
 
-        if (game.feedbackTime > 0) {
-            drawing.rectangle({ 16, 104, 360, 28 }, PanelColor);
-            const std::string message = game.motivationChange < 0 ? "LOST CARGO " + std::to_string(game.motivationChange)
-                : "DELIVERED " + std::to_string(game.lastDelivery) + "  +" + std::to_string(game.motivationChange);
-            drawing.text(message, { 28, 113 }, game.motivationChange < 0 ? WarningColor : GoalColor);
+        if (state.feedbackTime > 0) {
+            drawing.drawRectangle(Rect{16, 104, 360, 28}, PanelColor);
+            const std::string message = state.motivationChange < 0 ? "LOST CARGO " + std::to_string(state.motivationChange)
+                : "DELIVERED " + std::to_string(state.lastDelivery) + "  +" + std::to_string(state.motivationChange);
+            drawing.drawDebugText(message, Vector2{28, 113}, state.motivationChange < 0 ? WarningColor : GoalColor);
         } else if (homeReady) {
-            drawing.rectangle({ 16, 104, 360, 28 }, PanelColor);
-            drawing.text("HOME IS OPEN - GO TO GREEN DOOR", { 28, 113 }, GoalColor);
+            drawing.drawRectangle(Rect{16, 104, 360, 28}, PanelColor);
+            drawing.drawDebugText("HOME IS OPEN - GO TO GREEN DOOR", Vector2{28, 113}, GoalColor);
         }
 
-        if (game.outcome != Outcome::Playing || isPaused()) {
-            const Vector2 center = { static_cast<float>(frame.window.width) / 2, bottom / 2 };
-            const bool won = game.outcome == Outcome::Won;
-            const std::string_view heading = won ? "HOME AT LAST" : (game.outcome == Outcome::Lost ? "NO MOTIVATION" : "PAUSED");
-            const Color color = won ? GoalColor : (game.outcome == Outcome::Lost ? WarningColor : WhiteColor);
-            drawing.rectangle({ center.x - 190, center.y - 65, 380, 130 }, PanelColor);
-            drawing.rectangle({ center.x - 190, center.y - 65, 380, 130 }, color, false);
-            drawing.text(heading, { center.x - static_cast<float>(heading.size()) * 6, center.y - 38 }, color, 3);
-            if (game.outcome == Outcome::Lost) {
-                drawing.text("REST AND TRY AGAIN", { center.x - 72, center.y - 4 }, WhiteColor);
+        if (state.outcome != Outcome::Playing || isPaused()) {
+            const Vector2 center = {static_cast<float>(frame.window.width) / 2, bottom / 2};
+            const bool won = state.outcome == Outcome::Won;
+            const std::string_view heading = won ? "HOME AT LAST" : (state.outcome == Outcome::Lost ? "NO MOTIVATION" : "PAUSED");
+            const Color color = won ? GoalColor : (state.outcome == Outcome::Lost ? WarningColor : WhiteColor);
+            drawing.drawRectangle(Rect{center.x - 190, center.y - 65, 380, 130}, PanelColor);
+            drawing.drawRectangle(Rect{center.x - 190, center.y - 65, 380, 130}, color, Engine::ShapeFill::Outline);
+            drawing.drawDebugText(heading, Vector2{center.x - static_cast<float>(heading.size()) * 6, center.y - 38}, color, 3);
+            if (state.outcome == Outcome::Lost) {
+                drawing.drawDebugText("REST AND TRY AGAIN", Vector2{center.x - 72, center.y - 4}, WhiteColor);
             }
-            drawing.text(game.outcome == Outcome::Playing ? "P TO CONTINUE" : "R TO RESTART", { center.x - 52, center.y + 25 }, WhiteColor);
+            drawing.drawDebugText(state.outcome == Outcome::Playing ? "P TO CONTINUE" : "R TO RESTART", Vector2{center.x - 52, center.y + 25}, WhiteColor);
         }
-        return drawing.endFrame(error);
+        return endFrame(error);
     }
+
+    Engine::Renderer2D& drawing = getRenderer();
+    CameraView panelView;
+    Engine::UiView hudView;
+    Game game;
+    Camera2 camera = {game.state().world.bounds.center(), 1, Engine::Size2{960, 600}, Engine::ViewportMode::Expand};
+    Camera2 minimap = {game.state().world.bounds.center(), 1, game.state().world.bounds.size, Engine::ViewportMode::Fit};
+    CameraView mainView;
+    CameraView mapView;
+    Rect mapPanel;
+    bool viewsReady = false;
+    bool titleDirty = true;
 };
 }
 
