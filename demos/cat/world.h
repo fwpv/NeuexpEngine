@@ -26,11 +26,15 @@ struct Decoration
 
 struct Platform
 {
+    Platform(int id, Engine::Vector2 position, Art art);
     float prepareMotion(float duration);
     void draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const;
 
+    static constexpr Engine::Size2 DefaultSize{175, 35};
+
     int id = -1;
     Engine::Vector2 position;
+    Engine::Size2 size;
     Art art = Stone;
     std::vector<Decoration> decorations;
     float speed = 0; // Пиксели в секунду: положительная скорость направлена вниз.

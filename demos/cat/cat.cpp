@@ -97,7 +97,7 @@ void Cat::retireIgnoredPlatforms(const std::vector<Platform>& platforms)
 {
     for (auto iterator = ignored.begin(); iterator != ignored.end();) {
         const auto* platform = findPlatform(platforms, *iterator);
-        iterator = !platform || feet.y > platform->position.y + 35 ? ignored.erase(iterator) : std::next(iterator);
+        iterator = !platform || feet.y > platform->position.y + platform->size.height ? ignored.erase(iterator) : std::next(iterator);
     }
 }
 
@@ -140,7 +140,7 @@ std::vector<Cat::Range> Cat::supportRanges(const Platform& platform, const std::
     const bool right = probe.speed > PositionTolerance || (continuing && entryDirection > 0);
     const bool left = probe.speed < -PositionTolerance || (continuing && entryDirection < 0);
     const Range central{platform.position.x - 10.0F - (probe.allowEntry && right ? 10.0F : 0),
-        platform.position.x + 175 + 10.0F + (probe.allowEntry && left ? 10.0F : 0)};
+        platform.position.x + platform.size.width + 10.0F + (probe.allowEntry && left ? 10.0F : 0)};
     std::vector<Range> ranges;
     ranges.reserve(platforms.size() + 1);
     ranges.push_back(central);
@@ -153,6 +153,8 @@ std::vector<Cat::Range> Cat::supportRanges(const Platform& platform, const std::
         }
         const float leftX = std::min(platform.position.x, neighbor.position.x);
         const float rightX = std::max(platform.position.x, neighbor.position.x);
+        const float leftWidth = platform.position.x <= neighbor.position.x ? platform.size.width : neighbor.size.width;
+        const float rightWidth = platform.position.x <= neighbor.position.x ? neighbor.size.width : platform.size.width;
         // Границы лап заданы относительно стоп кота; перекрытие с каждой площадкой — хотя бы 3 пикселя.
         constexpr float MinimumPawOverlap = 3;
         constexpr float LeftPawLeft = -60.75F;
@@ -162,10 +164,10 @@ std::vector<Cat::Range> Cat::supportRanges(const Platform& platform, const std::
         constexpr float BridgeMargin = 5;
         Range bridge{std::max(std::initializer_list<float>{leftX + MinimumPawOverlap - LeftPawRight,
             rightX + MinimumPawOverlap - RightPawRight,
-            leftX + 175}) - BridgeMargin,
-            std::min(std::initializer_list<float>{leftX + 175 - MinimumPawOverlap - LeftPawLeft,
-                rightX + 175 - MinimumPawOverlap - RightPawLeft, rightX}) + BridgeMargin};
-        if (leftX + 175 >= rightX || bridge.left > bridge.right) {
+            leftX + leftWidth}) - BridgeMargin,
+            std::min(std::initializer_list<float>{leftX + leftWidth - MinimumPawOverlap - LeftPawLeft,
+                rightX + rightWidth - MinimumPawOverlap - RightPawLeft, rightX}) + BridgeMargin};
+        if (leftX + leftWidth >= rightX || bridge.left > bridge.right) {
             continue;
         }
         if (probe.allowEntry && right && bridge.right < central.left) {
@@ -236,7 +238,7 @@ void Cat::ignoreSupports(const std::vector<Platform>& platforms)
 void Cat::leaveEdge(const Platform& platform, const std::vector<Platform>& platforms, float x)
 {
     feet.x = x;
-    const int direction = x > platform.position.x + 175 / 2.0F ? 1 : -1;
+    const int direction = x > platform.position.x + platform.size.width / 2.0F ? 1 : -1;
     if (const auto* next = findSupport(platforms, direction, platform.id)) {
         support = next->id;
         feet.y = next->position.y;
@@ -314,7 +316,8 @@ void Cat::limitSupportedMotion(const std::vector<Platform>& platforms, const Pla
     // Мост может исчезнуть раньше достижения горизонтального края.
     constexpr float WidestBridge = 119.5F;
     for (const auto& neighbor : platforms) {
-        const float gap = std::abs(neighbor.position.x - standing.position.x) - 175;
+        const float leftWidth = neighbor.position.x < standing.position.x ? neighbor.size.width : standing.size.width;
+        const float gap = std::abs(neighbor.position.x - standing.position.x) - leftWidth;
         const float relativeSpeed = neighbor.speed - standing.speed;
         if (neighbor.id == support || ignored.count(neighbor.id) != 0
             || gap <= 0 || gap > WidestBridge || relativeSpeed == 0) {
@@ -329,7 +332,7 @@ void Cat::limitSupportedMotion(const std::vector<Platform>& platforms, const Pla
     }
     float destination = motion.positionAt(contact.time).x;
     if (entering) {
-        const float boundary = standing.position.x + (entryDirection > 0 ? -10.0F : 175 + 10.0F);
+        const float boundary = standing.position.x + (entryDirection > 0 ? -10.0F : standing.size.width + 10.0F);
         const auto settled = *supportRange(standing, platforms, Probe{boundary, 0, 0, false});
         const float entryX = entryDirection > 0 ? settled.left : settled.right;
         if ((entryDirection > 0 && destination >= entryX) || (entryDirection < 0 && destination <= entryX)) {
@@ -382,13 +385,13 @@ void Cat::findAirborneContact(const std::vector<Platform>& platforms, const Moti
             ? 0 : travelTime(velocity.x, motion.acceleration.x, entryX - feet.x);
         const Engine::Vector2 speed = velocity + motion.acceleration * time;
         if (time < 0 || time > contact.time || (contact.platform && time >= contact.time - TimeTolerance)
-            || (platform.position.x + 175 / 2.0F - entryX) * speed.x <= PositionTolerance
+            || (platform.position.x + platform.size.width / 2.0F - entryX) * speed.x <= PositionTolerance
             || speed.y - platform.speed < -PositionTolerance
             || !supportRange(platform, platforms, Probe{entryX, speed.x, time})) {
             continue;
         }
         const bool bridging = (entryX < platform.position.x - 10.0F
-            || entryX > platform.position.x + 175 + 10.0F)
+            || entryX > platform.position.x + platform.size.width + 10.0F)
             && supportRange(platform, platforms, Probe{entryX, 0, time, false});
         const float clearance = motion.positionAt(time).y - (platform.position.y + platform.speed * time);
         if (clearance >= -PositionTolerance && clearance <= 5.0F * (bridging ? 2 : 1) + PositionTolerance) {

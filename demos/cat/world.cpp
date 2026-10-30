@@ -23,6 +23,14 @@ int random(std::uint32_t& state)
 }
 }
 
+Platform::Platform(int id, Engine::Vector2 position, Art art)
+    : id(id)
+    , position(position)
+    , size(DefaultSize)
+    , art(art)
+{
+}
+
 World::World(std::uint32_t seed)
     : routeRandom(seed)
 {
@@ -31,8 +39,7 @@ World::World(std::uint32_t seed)
 
 void World::addPlatform(int x, int y, Art art, float top, float bottom)
 {
-    Platform platform{nextId++, Engine::Vector2{static_cast<float>(x), static_cast<float>(y)}, art,
-        std::vector<Decoration>{}, 0, 0, 0};
+    Platform platform{nextId++, Engine::Vector2{static_cast<float>(x), static_cast<float>(y)}, art};
     if (art == Lift) {
         const float catX = cat.position().x - 101.25F;
         platform.speed = -std::min(400.0F,
@@ -110,10 +117,10 @@ void World::decorate(Platform& platform)
 
 bool World::overlaps(int x, int y) const
 {
-    const Engine::Rect candidate{static_cast<float>(x), static_cast<float>(y), 175, 35};
+    const Engine::Rect candidate{Engine::Vector2{static_cast<float>(x), static_cast<float>(y)}, Platform::DefaultSize};
     return std::any_of(platforms.begin(), platforms.end(), [&](const Platform& platform) {
-        const Engine::Rect bounds{static_cast<float>(static_cast<int>(platform.position.x)),
-            static_cast<float>(static_cast<int>(platform.position.y)), 175, 35};
+        const Engine::Rect bounds{Engine::Vector2{static_cast<float>(static_cast<int>(platform.position.x)),
+            static_cast<float>(static_cast<int>(platform.position.y))}, platform.size};
         Engine::Rect overlap;
         // Касание краями допустимо при генерации площадок.
         return Engine::intersection(candidate, bounds, overlap)
@@ -125,7 +132,7 @@ void World::generateNormal(float catX, float horizon)
 {
     const bool variedHeights = random(routeRandom) % 2 == 0;
     // Расстояния возрастают с пройденным путём; радиус достижимости — 200 пикселей.
-    const int gap = static_cast<int>((1 - std::pow(25.0F, -catX / 100000.0F)) * 275 + 175);
+    const int gap = static_cast<int>((1 - std::pow(25.0F, -catX / 100000.0F)) * 275 + Platform::DefaultSize.width);
     const int span = catX > 100000.0F ? 460
         : static_cast<int>(static_cast<float>(gap + 40) - 30 * catX / 100000.0F);
     while (static_cast<float>(lastX) < horizon && platforms.size() < PlatformLimit) {
@@ -227,7 +234,7 @@ void World::update(float duration, const Controls& controls, float visibleWidth)
     const float catX = cat.position().x - 101.25F;
     const float camera = cat.position().x - 450.0F;
     constexpr float GenerationDistance = 1024;
-    const float horizon = std::max(catX + GenerationDistance, camera + visibleWidth + 175);
+    const float horizon = std::max(catX + GenerationDistance, camera + visibleWidth + Platform::DefaultSize.width);
     platforms.erase(std::remove_if(platforms.begin(), platforms.end(), [&](const Platform& platform) {
         return platform.position.x < catX - GenerationDistance && !cat.standsOn(platform);
     }), platforms.end());
