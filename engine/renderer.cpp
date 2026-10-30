@@ -220,6 +220,11 @@ bool Renderer2D::endFrame(RenderError& error)
     if (stage != Stage::Idle) {
         flush();
         glDisable(GL_SCISSOR_TEST);
+        while (glGetError() != GL_NO_ERROR) {
+            if (firstError == RenderError::None) {
+                firstError = RenderError::Graphics;
+            }
+        }
         stage = Stage::Idle;
         clip.reset();
     } else if (firstError == RenderError::None) {
@@ -257,7 +262,8 @@ bool Renderer2D::submit(Primitive primitive, const Vector2* vertices, std::size_
     }
     DrawOptions screenOptions = options;
     screenOptions.transform = viewTransform * options.transform;
-    commands.push_back({ primitive, std::vector<Vector2>(vertices, vertices + count), screenOptions, clip, std::nullopt, {}, {} });
+    commands.push_back(Command{primitive, std::vector<Vector2>(vertices, vertices + count),
+        screenOptions, clip, std::nullopt, Texture{}, TextureSampling{}});
     return true;
 }
 
@@ -333,7 +339,7 @@ void Renderer2D::drawLine(Vector2 start, Vector2 end, const DrawOptions& options
         firstError = RenderError::InvalidGeometry;
         return;
     }
-    const std::array<Vector2, 2> vertices = { start, end };
+    const std::array<Vector2, 2> vertices = {start, end};
     submit(Primitive::Lines, vertices.data(), vertices.size(), options, firstError);
 }
 
@@ -346,9 +352,9 @@ bool Renderer2D::queueRectangle(const Rect& rectangle, ShapeFill fill, const Dra
     }
     const std::array<Vector2, 4> vertices = {
         rectangle.position,
-        rectangle.position + Vector2{ rectangle.size.width, 0 },
-        rectangle.position + Vector2{ rectangle.size.width, rectangle.size.height },
-        rectangle.position + Vector2{ 0, rectangle.size.height }
+        rectangle.position + Vector2{rectangle.size.width, 0},
+        rectangle.position + Vector2{rectangle.size.width, rectangle.size.height},
+        rectangle.position + Vector2{0, rectangle.size.height}
     };
     return submit(fill == ShapeFill::Filled ? Primitive::Quads : Primitive::LineLoop,
         vertices.data(), vertices.size(), options, error);
@@ -369,7 +375,7 @@ void Renderer2D::drawGradientRectangle(const Rect& rectangle, Color top, Color b
         return;
     }
     if (commands.size() > previousSize) {
-        commands.back().gradient = std::array<Color, 2>{ top, bottom };
+        commands.back().gradient = std::array<Color, 2>{top, bottom};
     }
 }
 
@@ -394,10 +400,10 @@ void Renderer2D::drawCircle(const Circle& circle, const DrawOptions& options, Sh
     }
     for (unsigned int index = 0; index < segments; ++index) {
         const float angle = 2 * Pi * (static_cast<float>(index) / static_cast<float>(segments));
-        vertices.push_back(circle.center + Vector2{ std::cos(angle), std::sin(angle) } * circle.radius);
+        vertices.push_back(circle.center + Vector2{std::cos(angle), std::sin(angle)} * circle.radius);
     }
     if (fill == ShapeFill::Filled) {
-        vertices.push_back(circle.center + Vector2{ circle.radius, 0 });
+        vertices.push_back(circle.center + Vector2{circle.radius, 0});
     }
     submit(fill == ShapeFill::Filled ? Primitive::TriangleFan : Primitive::LineLoop,
         vertices.data(), vertices.size(), options, firstError);

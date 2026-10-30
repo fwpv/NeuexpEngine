@@ -22,6 +22,7 @@
 #include <utility>
 #include <cmath>
 #include <locale>
+#include <memory>
 #include <sstream>
 
 namespace Platform
@@ -58,9 +59,9 @@ bool takeError(const char* operation, Error& error);
 
 Engine::Modifiers readModifiers(unsigned int state)
 {
-    return { (state & ShiftMask) != 0, (state & ControlMask) != 0,
+    return {(state & ShiftMask) != 0, (state & ControlMask) != 0,
         (state & altMask) != 0, (state & superMask) != 0,
-        (lockedModifiers & LockMask) != 0, (lockedModifiers & numLockMask) != 0 };
+        (lockedModifiers & LockMask) != 0, (lockedModifiers & numLockMask) != 0};
 }
 
 void changeFocus(bool focused)
@@ -104,7 +105,7 @@ bool readPhysicalKeys(Error& error)
             XkbFreeKeyboard(keyboard, XkbAllComponentsMask, True);
         }
         if (keyboardSucceeded) {
-            error = { "XkbGetKeyboard", "Physical keyboard names are unavailable.", std::nullopt };
+            error = {"XkbGetKeyboard", "Physical keyboard names are unavailable.", std::nullopt};
         }
         return false;
     }
@@ -304,9 +305,9 @@ bool takeError(const char* operation, Error& error)
     }
     // Название текущей операции — точка обнаружения. request/minor/serial указывают
     // исходный запрос, который мог быть отправлен раньше и обработан асинхронно.
-    error = { operation, description + " (X11 request "
+    error = {operation, description + " (X11 request "
         + std::to_string(event.request_code) + "." + std::to_string(event.minor_code)
-        + ", serial " + std::to_string(event.serial) + ")", event.error_code };
+        + ", serial " + std::to_string(event.serial) + ")", event.error_code};
     return false;
 }
 
@@ -365,7 +366,7 @@ bool updateSystemScale(Error& error)
 bool requireWindow(const char* operation, Error& error)
 {
     if (!initialized || !window) {
-        error = { operation, "The window is not initialized or has been destroyed.", std::nullopt };
+        error = {operation, "The window is not initialized or has been destroyed.", std::nullopt};
         return false;
     }
     return true;
@@ -392,7 +393,7 @@ bool updateMinimizedState(Error& error)
         return false;
     }
     if (result != Success) {
-        error = { "XGetWindowProperty (WM_STATE)", "Could not read the window state.", result };
+        error = {"XGetWindowProperty (WM_STATE)", "Could not read the window state.", result};
         return false;
     }
     if (windowState.minimized != minimized) {
@@ -416,11 +417,11 @@ bool readInitialWindowState(Error& error)
         return false;
     }
     if (!attributesRead) {
-        error = { "XGetWindowAttributes", "Could not read the initial client dimensions.", std::nullopt };
+        error = {"XGetWindowAttributes", "Could not read the initial client dimensions.", std::nullopt};
         return false;
     }
-    windowState = { attributes.width, attributes.height,
-        focusedWindow == window && attributes.map_state == IsViewable, false };
+    windowState = {attributes.width, attributes.height,
+        focusedWindow == window && attributes.map_state == IsViewable, false};
     return updateMinimizedState(error);
 }
 
@@ -445,7 +446,7 @@ bool initializeX11(const WindowOptions& options, Error& error)
 
     display = XOpenDisplay(nullptr);
     if (!display) {
-        error = { "XOpenDisplay", "Could not connect to the X server. Check DISPLAY and access to an X11 or XWayland session.", std::nullopt };
+        error = {"XOpenDisplay", "Could not connect to the X server. Check DISPLAY and access to an X11 or XWayland session.", std::nullopt};
         return false;
     }
     // Глобальные обработчики Xlib восстанавливаются после XCloseDisplay.
@@ -460,15 +461,13 @@ bool initializeX11(const WindowOptions& options, Error& error)
         return false;
     }
 
-    int attributes[] = { GLX_RGBA, GLX_DOUBLEBUFFER, None };
-    XVisualInfo* visual = glXChooseVisual(display, DefaultScreen(display), attributes);
+    int attributes[] = {GLX_RGBA, GLX_DOUBLEBUFFER, None};
+    std::unique_ptr<XVisualInfo, decltype(&XFree)> visual(
+        glXChooseVisual(display, DefaultScreen(display), attributes), XFree);
     const bool visualSucceeded = synchronize("glXChooseVisual", error);
     if (!visual || !visualSucceeded) {
-        if (visual) {
-            XFree(visual);
-        }
         if (visualSucceeded) {
-            error = { "glXChooseVisual", "No compatible OpenGL visual was found.", std::nullopt };
+            error = {"glXChooseVisual", "No compatible OpenGL visual was found.", std::nullopt};
         }
         return false;
     }
@@ -477,9 +476,8 @@ bool initializeX11(const WindowOptions& options, Error& error)
     const bool colorMapSucceeded = synchronize("XCreateColormap", error);
     if (!colorMap || !colorMapSucceeded) {
         colorMap = 0;
-        XFree(visual);
         if (colorMapSucceeded) {
-            error = { "XCreateColormap", "Could not create the window color map.", std::nullopt };
+            error = {"XCreateColormap", "Could not create the window color map.", std::nullopt};
         }
         return false;
     }
@@ -495,9 +493,8 @@ bool initializeX11(const WindowOptions& options, Error& error)
     const bool windowSucceeded = synchronize("XCreateWindow", error);
     if (!window || !windowSucceeded) {
         window = 0;
-        XFree(visual);
         if (windowSucceeded) {
-            error = { "XCreateWindow", "Could not create the application window.", std::nullopt };
+            error = {"XCreateWindow", "Could not create the application window.", std::nullopt};
         }
         return false;
     }
@@ -515,12 +512,10 @@ bool initializeX11(const WindowOptions& options, Error& error)
     XSetWMNormalHints(display, window, &hints);
     stateMessage = XInternAtom(display, "WM_STATE", False);
     if (!synchronize("XSetWMNormalHints", error)) {
-        XFree(visual);
         return false;
     }
 
     if (!applyWindowTitle(options.title, error)) {
-        XFree(visual);
         return false;
     }
     protocolsMessage = XInternAtom(display, "WM_PROTOCOLS", False);
@@ -528,9 +523,8 @@ bool initializeX11(const WindowOptions& options, Error& error)
     const Status protocolsSet = XSetWMProtocols(display, window, &closeMessage, 1);
     const bool protocolsSucceeded = synchronize("XSetWMProtocols", error);
     if (!protocolsSet || closeMessage == None || protocolsMessage == None || !protocolsSucceeded) {
-        XFree(visual);
         if (protocolsSucceeded) {
-            error = { "XSetWMProtocols", "Could not configure the window close protocol.", std::nullopt };
+            error = {"XSetWMProtocols", "Could not configure the window close protocol.", std::nullopt};
         }
         return false;
     }
@@ -544,9 +538,8 @@ bool initializeX11(const WindowOptions& options, Error& error)
     const bool querySucceeded = takeError("XkbQueryExtension", error);
     if (!keyboardAvailable || !querySucceeded) {
         if (querySucceeded) {
-            error = { "XkbQueryExtension", "A compatible XKB extension is unavailable.", std::nullopt };
+            error = {"XkbQueryExtension", "A compatible XKB extension is unavailable.", std::nullopt};
         }
-        XFree(visual);
         return false;
     }
     // XKB доставляет изменения locked_mods отдельными уведомлениями.
@@ -555,13 +548,11 @@ bool initializeX11(const WindowOptions& options, Error& error)
     const bool selectionSucceeded = synchronize("XkbSelectEventDetails", error);
     if (!eventsSelected || !selectionSucceeded) {
         if (selectionSucceeded) {
-            error = { "XkbSelectEventDetails", "Could not subscribe to keyboard lock state changes.", std::nullopt };
+            error = {"XkbSelectEventDetails", "Could not subscribe to keyboard lock state changes.", std::nullopt};
         }
-        XFree(visual);
         return false;
     }
     if (!readPhysicalKeys(error)) {
-        XFree(visual);
         return false;
     }
     // Detectable autorepeat не создаёт KeyRelease перед повторным KeyPress.
@@ -583,31 +574,28 @@ bool initializeX11(const WindowOptions& options, Error& error)
             XNClientWindow, window, XNFocusWindow, window, nullptr);
     }
     if (!inputContext) {
-        error = { "XCreateIC", "Could not create the Unicode input context. Check LC_CTYPE and XIM.", std::nullopt };
-        XFree(visual);
+        error = {"XCreateIC", "Could not create the Unicode input context. Check LC_CTYPE and XIM.", std::nullopt};
         return false;
     }
     // Маска XNFilterEvents дополняет подписку окна для XFilterEvent.
     long filterMask = 0;
     const char* failedAttribute = XGetICValues(inputContext, XNFilterEvents, &filterMask, nullptr);
     if (failedAttribute) {
-        error = { "XGetICValues", std::string("Could not read input context attribute: ") + failedAttribute, std::nullopt };
-        XFree(visual);
+        error = {"XGetICValues", std::string("Could not read input context attribute: ") + failedAttribute, std::nullopt};
         return false;
     }
     XSelectInput(display, window, settings.event_mask | filterMask);
     if (!synchronize("XSelectInput", error)) {
-        XFree(visual);
         return false;
     }
 
-    openGLContext = glXCreateContext(display, visual, nullptr, True);
-    XFree(visual);
+    openGLContext = glXCreateContext(display, visual.get(), nullptr, True);
+    visual.reset();
     const bool contextSucceeded = synchronize("glXCreateContext", error);
     if (!openGLContext || !contextSucceeded) {
         openGLContext = nullptr;
         if (contextSucceeded) {
-            error = { "glXCreateContext", "Could not create the OpenGL context.", std::nullopt };
+            error = {"glXCreateContext", "Could not create the OpenGL context.", std::nullopt};
         }
         return false;
     }
@@ -615,7 +603,7 @@ bool initializeX11(const WindowOptions& options, Error& error)
     const bool activationSucceeded = synchronize("glXMakeCurrent", error);
     if (!activated || !activationSucceeded) {
         if (activationSucceeded) {
-            error = { "glXMakeCurrent", "Could not activate the OpenGL context.", std::nullopt };
+            error = {"glXMakeCurrent", "Could not activate the OpenGL context.", std::nullopt};
         }
         return false;
     }
@@ -650,7 +638,7 @@ bool initialize(const WindowOptions& options, std::vector<Error>& errors)
 {
     errors.clear();
     if (display || initialized) {
-        errors.push_back({ "initialize", "Call shutdown before initializing again.", std::nullopt });
+        errors.push_back(Error{"initialize", "Call shutdown before initializing again.", std::nullopt});
         return false;
     }
     Error error;
@@ -669,7 +657,7 @@ bool initialize(const WindowOptions& options, std::vector<Error>& errors)
 bool getWindowState(WindowState& state, Error& error)
 {
     if (!initialized) {
-        error = { "getWindowState", "The platform is not initialized.", std::nullopt };
+        error = {"getWindowState", "The platform is not initialized.", std::nullopt};
         return false;
     }
     state = windowState;
@@ -716,7 +704,7 @@ bool setVSync(bool enabled, Error& error)
                     return false;
                 }
                 if (result != 0) {
-                    error = { "glXSwapIntervalMESA", "Could not change VSync.", result };
+                    error = {"glXSwapIntervalMESA", "Could not change VSync.", result};
                     return false;
                 }
                 return true;
@@ -733,14 +721,14 @@ bool setVSync(bool enabled, Error& error)
                 return false;
             }
             if (result != 0) {
-                error = { "glXSwapIntervalSGI", "Could not enable VSync.", result };
+                error = {"glXSwapIntervalSGI", "Could not enable VSync.", result};
                 return false;
             }
             return true;
         }
     }
-    error = { "setVSync", enabled ? "VSync control is unavailable." :
-        "Disabling VSync requires GLX_EXT_swap_control or GLX_MESA_swap_control.", std::nullopt };
+    error = {"setVSync", enabled ? "VSync control is unavailable." :
+        "Disabling VSync requires GLX_EXT_swap_control or GLX_MESA_swap_control.", std::nullopt};
     return false;
 }
 
@@ -915,7 +903,7 @@ void shutdown(std::vector<Error>& errors)
             if (!synchronize("XCloseIM", error)) {
                 errors.push_back(error);
             } else if (!closed) {
-                errors.push_back({ "XCloseIM", "Could not close the input method.", std::nullopt });
+                errors.push_back(Error{"XCloseIM", "Could not close the input method.", std::nullopt});
             }
         }
         if (openGLContext) {
@@ -924,7 +912,7 @@ void shutdown(std::vector<Error>& errors)
             if (!detachSucceeded) {
                 errors.push_back(error);
             } else if (!detached) {
-                errors.push_back({ "glXMakeCurrent (detach)", "Could not detach the OpenGL context.", std::nullopt });
+                errors.push_back(Error{"glXMakeCurrent (detach)", "Could not detach the OpenGL context.", std::nullopt});
             }
             glXDestroyContext(display, openGLContext);
             if (!synchronize("glXDestroyContext", error)) {

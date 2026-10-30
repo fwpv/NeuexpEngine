@@ -41,7 +41,7 @@ struct Transform2
     Vector2 position;
     // Радианы; положительный поворот направляет +x к +y.
     float rotation = 0;
-    Vector2 scale = { 1, 1 };
+    Vector2 scale = {1, 1};
     // Локальная точка, которая после преобразования попадает в position.
     Vector2 origin;
 

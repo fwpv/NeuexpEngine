@@ -56,7 +56,7 @@ struct Camera2
     Vector2 position;
     // Положительный масштаб: увеличение приближает мир; масштаб интерфейса независим.
     float zoom = 1;
-    Size2 referenceSize = { 800, 600 };
+    Size2 referenceSize = {800, 600};
     ViewportMode mode = ViewportMode::Expand;
 
     // Пересчитывается после изменения камеры или размеров окна; не обращается к ОС/OpenGL.

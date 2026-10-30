@@ -40,7 +40,7 @@ bool valid(const TextureSampling& sampling)
 bool Renderer2D::setTextureBudget(std::size_t bytes, ResourceError& error)
 {
     if (initialized) {
-        error = { ResourceErrorCode::InvalidState, "Set the texture budget before renderer initialization." };
+        error = {ResourceErrorCode::InvalidState, "Set the texture budget before renderer initialization."};
         return false;
     }
     textureBudget = bytes;
@@ -77,7 +77,7 @@ void Renderer2D::collectUnusedTextures()
 bool Renderer2D::createTexture(const Image& image, Texture& result, ResourceError& error, bool keepPixels)
 {
     if (!initialized) {
-        error = { ResourceErrorCode::InvalidState, "Initialize the renderer before creating textures." };
+        error = {ResourceErrorCode::InvalidState, "Initialize the renderer before creating textures."};
         return false;
     }
     if (!validateImage(image, error)) {
@@ -93,7 +93,7 @@ bool Renderer2D::createTexture(const Image& image, Texture& result, ResourceErro
     collectUnusedTextures();
     const auto used = textureStats().gpuBytes;
     if (width > maximum || height > maximum || bytes > textureBudget || used > textureBudget - bytes) {
-        error = { ResourceErrorCode::LimitExceeded, "Texture exceeds the GPU dimensions or memory budget." };
+        error = {ResourceErrorCode::LimitExceeded, "Texture exceeds the GPU dimensions or memory budget."};
         return false;
     }
     try {
@@ -127,10 +127,10 @@ bool Renderer2D::createTexture(const Image& image, Texture& result, ResourceErro
         glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
         glPushAttrib(GL_PIXEL_MODE_BIT);
         glPixelTransferi(GL_MAP_COLOR, GL_FALSE);
-        for (GLenum parameter : std::array<GLenum, 4>{ GL_RED_SCALE, GL_GREEN_SCALE, GL_BLUE_SCALE, GL_ALPHA_SCALE }) {
+        for (GLenum parameter : std::array<GLenum, 4>{GL_RED_SCALE, GL_GREEN_SCALE, GL_BLUE_SCALE, GL_ALPHA_SCALE}) {
             glPixelTransferf(parameter, 1);
         }
-        for (GLenum parameter : std::array<GLenum, 4>{ GL_RED_BIAS, GL_GREEN_BIAS, GL_BLUE_BIAS, GL_ALPHA_BIAS }) {
+        for (GLenum parameter : std::array<GLenum, 4>{GL_RED_BIAS, GL_GREEN_BIAS, GL_BLUE_BIAS, GL_ALPHA_BIAS}) {
             glPixelTransferf(parameter, 0);
         }
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -150,13 +150,13 @@ bool Renderer2D::createTexture(const Image& image, Texture& result, ResourceErro
         glPopAttrib();
         if (failure != GL_NO_ERROR || texture->id == 0) {
             glDeleteTextures(1, &texture->id);
-            error = { ResourceErrorCode::Graphics, "Cannot upload texture (OpenGL error " + std::to_string(failure) + ")." };
+            error = {ResourceErrorCode::Graphics, "Cannot upload texture (OpenGL error " + std::to_string(failure) + ")."};
             return false;
         }
         textures.push_back(texture);
         result.data = std::move(texture);
     } catch (const std::bad_alloc&) {
-        error = { ResourceErrorCode::LimitExceeded, "Not enough memory to prepare texture pixels." };
+        error = {ResourceErrorCode::LimitExceeded, "Not enough memory to prepare texture pixels."};
         return false;
     }
     error = {};
@@ -167,7 +167,7 @@ bool Renderer2D::loadTexture(const ResourceFiles& files, const std::string& name
     ResourceError& error, bool keepPixels)
 {
     if (!initialized) {
-        error = { ResourceErrorCode::InvalidState, "Initialize the renderer before loading textures." };
+        error = {ResourceErrorCode::InvalidState, "Initialize the renderer before loading textures."};
         return false;
     }
     std::filesystem::path path;
@@ -179,7 +179,7 @@ bool Renderer2D::loadTexture(const ResourceFiles& files, const std::string& name
         if (texture->path == path || (!texture->path.empty()
             && std::filesystem::equivalent(texture->path, path, pathError) && !pathError)) {
             if (keepPixels && !texture->image) {
-                error = { ResourceErrorCode::InvalidState, "CPU pixels were not retained on the first load: " + name };
+                error = {ResourceErrorCode::InvalidState, "CPU pixels were not retained on the first load: " + name};
                 return false;
             }
             result.data = texture;
@@ -243,7 +243,7 @@ void Renderer2D::executeTexture(const Command& command) const
     // текселей сохраняет внутреннюю интерполяцию и повторяет край без расширений.
     struct Axis
     {
-        std::array<float, 4> positions = { 0, 1, 1, 1 };
+        std::array<float, 4> positions = {0, 1, 1, 1};
         int count = 2;
         float halfPixel = 0;
         float repeats = 1;
@@ -261,8 +261,8 @@ void Renderer2D::executeTexture(const Command& command) const
         result.repeats = repeats;
         result.clamp = wrap == TextureWrap::Clamp;
         if (result.clamp) {
-            result.positions = { 0, std::min(result.halfPixel / repeats, 1.0F),
-                std::min((1 - result.halfPixel) / repeats, 1.0F), 1 };
+            result.positions = {0, std::min(result.halfPixel / repeats, 1.0F),
+                std::min((1 - result.halfPixel) / repeats, 1.0F), 1};
             result.count = 4;
         }
         return result;
@@ -278,7 +278,7 @@ void Renderer2D::executeTexture(const Command& command) const
             const float right = horizontal.positions[static_cast<std::size_t>(x)];
             const float top = vertical.positions[static_cast<std::size_t>(y - 1)];
             const float bottom = vertical.positions[static_cast<std::size_t>(y)];
-            const std::array<Vector2, 4> positions = { Vector2{left, top}, {right, top}, {right, bottom}, {left, bottom} };
+            const std::array<Vector2, 4> positions = {Vector2{left, top}, Vector2{right, top}, Vector2{right, bottom}, Vector2{left, bottom}};
             for (const auto position : positions) {
                 glTexCoord2f(horizontal.coordinate(position.x), vertical.coordinate(position.y));
                 const auto point = command.options.transform.transformPoint(origin + Vector2{extent.x * position.x, extent.y * position.y});

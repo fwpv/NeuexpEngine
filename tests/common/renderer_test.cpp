@@ -597,6 +597,12 @@ void frameErrors()
     Renderer2D renderer;
     RenderError error;
     check(renderer.initialize(error), error);
+    // Ошибка текущего контекста не должна превращаться в успешное завершение кадра.
+    glEnable(static_cast<GLenum>(0xffffffffU));
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    require(!renderer.endFrame(error) && error == RenderError::Graphics, "OpenGL error was silently ignored.");
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    check(renderer.endFrame(error), error);
     renderer.drawPoint({}, White);
     require(!renderer.endFrame(error) && error == RenderError::InvalidState, "Renderer accepted drawing outside a frame.");
     renderer.beginFrame(0, ImageSize, Black);

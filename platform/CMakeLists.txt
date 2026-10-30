@@ -10,6 +10,8 @@ else()
     message(FATAL_ERROR "This project currently supports Windows and Linux/X11.")
 endif()
 
+target_sources(platform PRIVATE window_validation.cpp)
+
 add_library(engine_input STATIC ../engine/input.cpp ../engine/detail/platform_input.cpp)
 target_include_directories(engine_input PUBLIC "${PROJECT_SOURCE_DIR}/engine")
 target_link_libraries(engine_input PRIVATE project_warnings)

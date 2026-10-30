@@ -26,7 +26,7 @@ struct Rect
 
     constexpr Vector2 center() const
     {
-        return { position.x + size.width / 2, position.y + size.height / 2 };
+        return {position.x + size.width / 2, position.y + size.height / 2};
     }
 };
 

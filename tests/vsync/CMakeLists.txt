@@ -1,4 +1,5 @@
 add_executable(platform_vsync_test platform_vsync_test.cpp)
+target_sources(platform_vsync_test PRIVATE "${PROJECT_SOURCE_DIR}/platform/window_validation.cpp")
 target_include_directories(platform_vsync_test PRIVATE "${PROJECT_SOURCE_DIR}/engine")
 target_link_libraries(platform_vsync_test PRIVATE engine_input project_warnings)
 if(WIN32)

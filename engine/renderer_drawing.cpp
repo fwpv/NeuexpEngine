@@ -27,6 +27,7 @@ const char* renderErrorMessage(RenderError error)
         case RenderError::InvalidOptions: return "The drawing options are invalid.";
         case RenderError::NoCurrentContext: return "No current OpenGL context is available.";
         case RenderError::InvalidTexture: return "The texture is invalid or belongs to another renderer.";
+        case RenderError::Graphics: return "OpenGL reported an error while rendering the frame.";
     }
     return "Unknown rendering error.";
 }
@@ -96,8 +97,8 @@ void Renderer2D::drawEllipse(Vector2 center, Vector2 radii, const DrawOptions& o
         return;
     }
     DrawOptions transformed = options;
-    transformed.transform = options.transform * Transform2{ center, 0, radii, {} }.toAffine();
-    drawCircle({ {}, 1 }, transformed, fill, segments);
+    transformed.transform = options.transform * Transform2{center, 0, radii, Vector2{}}.toAffine();
+    drawCircle(Circle{Vector2{}, 1}, transformed, fill, segments);
 }
 
 void Renderer2D::drawEllipse(Vector2 center, Vector2 radii, Color color, ShapeFill fill, unsigned int segments)
@@ -125,8 +126,8 @@ void Renderer2D::drawDebugText(std::string_view message, Vector2 position, const
             for (int column = 0; column < 3; ++column) {
                 const unsigned int bit = static_cast<unsigned int>((4 - row) * 3 + (2 - column));
                 if ((glyph & (1u << bit)) != 0) {
-                    drawRectangle({ position.x + static_cast<float>(column) * pixel,
-                        position.y + static_cast<float>(row) * pixel, pixel, pixel }, options);
+                    drawRectangle(Rect{position.x + static_cast<float>(column) * pixel,
+                        position.y + static_cast<float>(row) * pixel, pixel, pixel}, options);
                     if (firstError != RenderError::None) {
                         return;
                     }

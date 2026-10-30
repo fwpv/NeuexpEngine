@@ -89,7 +89,7 @@ bool triangulatePolygon(const std::vector<Vector2>& vertices, std::vector<Vector
     }
     const double direction = area > 0 ? 1 : -1;
     std::vector<std::size_t> remaining(count);
-    std::iota(remaining.begin(), remaining.end(), std::size_t{ 0 });
+    std::iota(remaining.begin(), remaining.end(), std::size_t{0});
     while (remaining.size() > 3) {
         bool found = false;
         for (std::size_t index = 0; index < remaining.size(); ++index) {
@@ -110,7 +110,7 @@ bool triangulatePolygon(const std::vector<Vector2>& vertices, std::vector<Vector
                 }
             }
             if (!occupied) {
-                triangles.push_back({ a, b, c });
+                triangles.push_back(std::array<std::size_t, 3>{a, b, c});
                 remaining.erase(remaining.begin() + static_cast<std::ptrdiff_t>(index));
                 found = true;
                 break;
@@ -120,7 +120,7 @@ bool triangulatePolygon(const std::vector<Vector2>& vertices, std::vector<Vector
             return false;
         }
     }
-    triangles.push_back({ remaining[0], remaining[1], remaining[2] });
+    triangles.push_back(std::array<std::size_t, 3>{remaining[0], remaining[1], remaining[2]});
     return true;
 }
 }

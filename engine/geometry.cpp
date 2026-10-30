@@ -60,7 +60,7 @@ bool intersection(const Rect& first, const Rect& second, Rect& result)
     if (right < x || bottom < y) {
         return false;
     }
-    result = { x, y, right - x, bottom - y };
+    result = {x, y, right - x, bottom - y};
     return true;
 }
 }
