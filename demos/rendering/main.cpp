@@ -59,12 +59,21 @@ private:
         const int width = frame.window.width;
         const int height = frame.window.height;
         CameraError cameraError;
-        UiError uiError;
         const Camera2 mapCamera = {Vector2{}, 1, Size2{1150, 800}, ViewportMode::Fit};
-        if (!camera.createView(Viewport{0, HudHeaderHeight, width, height - HudHeaderHeight - HudFooterHeight - 14}, world, cameraError)
-            || !mapCamera.createView(Viewport{width - 232, 110, 216, 150}, map, cameraError)
-            || !UiCanvas{}.createView(Viewport{0, 0, width, height}, ui, uiError)) {
-            error = Platform::Error{"Renderer town", "Could not calculate world/UI views.", std::optional<int>{}};
+        if (!camera.createView(Viewport{0, HudHeaderHeight, width, height - HudHeaderHeight - HudFooterHeight - 14}, world, cameraError)) {
+            error = Platform::Error{"Camera2::createView",
+                "Could not calculate the world view. CameraError: " + std::to_string(static_cast<int>(cameraError)), std::nullopt};
+            return false;
+        }
+        if (!mapCamera.createView(Viewport{width - 232, 110, 216, 150}, map, cameraError)) {
+            error = Platform::Error{"Camera2::createView",
+                "Could not calculate the map view. CameraError: " + std::to_string(static_cast<int>(cameraError)), std::nullopt};
+            return false;
+        }
+        UiError uiError;
+        if (!UiCanvas{}.createView(Viewport{0, 0, width, height}, ui, uiError)) {
+            error = Platform::Error{"UiCanvas::createView",
+                "Could not calculate the interface view. UiError: " + std::to_string(static_cast<int>(uiError)), std::nullopt};
             return false;
         }
         ready = true;
@@ -141,7 +150,7 @@ private:
 
     bool onUpdate(const FrameInfo& frame, Platform::Error&) override
     {
-        constexpr float WalkSpeed = 180;
+        constexpr float WalkSpeed = 180; // Мировые единицы в секунду.
         animation += frame.deltaTime;
         Vector2 direction;
         if (Platform::isKeyDown(Key::A)) {

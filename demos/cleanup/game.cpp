@@ -36,21 +36,6 @@ World::World()
 {
 }
 
-Rules::Rules()
-    : playerRadius(18)
-    , trashRadius(8)
-    , homeGoal(40)
-    , glueCapacity(10)
-    , maximumMotivation(100)
-    , passiveMotivationFloor(10)
-    , motivationDecayInterval(2)
-    , dropPenalty(8)
-    , deliveryReward(4)
-    , glueLifetime(15)
-    , glueWarningTime(10)
-{
-}
-
 namespace
 {
 bool blocked(const World& world, Vector2 point, float radius, bool homeLocked)
@@ -94,27 +79,9 @@ Vector2 movePlayer(const World& world, const Rules& rules, Vector2 position, Vec
 }
 }
 
-Trash::Trash()
-    : state(TrashState::Ground)
-    , pickupDelay(0)
-{
-}
-
 GameState::GameState()
     : player(world.bounds.center())
-    , heading(0)
-    , coat(Coat::Dry)
-    , carried(0)
-    , washed(0)
-    , glue(0)
-    , motivation(60)
-    , motivationDecayTime(0)
-    , cargoAge(0)
     , nextDropTime(rules.glueLifetime)
-    , feedbackTime(0)
-    , motivationChange(0)
-    , lastDelivery(0)
-    , outcome(Outcome::Playing)
 {
     // Первые предметы расположены рядом с начальной оранжевой лужей.
     trash[0].position = Vector2{1410, 1050};
@@ -167,7 +134,9 @@ void Game::update(Vector2 direction, float deltaTime)
         item.pickupDelay = std::max(0.0F, item.pickupDelay - deltaTime);
     }
 
-    const float speed = 260.0f * (1 - 0.4F * static_cast<float>(game.carried) / static_cast<float>(game.rules.glueCapacity));
+    constexpr float MovementSpeed = 260.0F; // Мировые единицы в секунду без груза.
+    constexpr float FullCargoSlowdown = 0.4F;
+    const float speed = MovementSpeed * (1 - FullCargoSlowdown * static_cast<float>(game.carried) / static_cast<float>(game.rules.glueCapacity));
     const Vector2 previousPosition = game.player;
     Vector2 movement;
     if (direction != Vector2{}) {
@@ -209,12 +178,13 @@ void Game::update(Vector2 direction, float deltaTime)
                 }
             }
             game.lastDelivery = game.carried;
-            // За доставку партии от пяти предметов начисляется дополнительная награда.
-            const int reward = game.carried * game.rules.deliveryReward + (game.carried >= 5 ? game.carried : 0);
+            constexpr int BonusCargoThreshold = 5;
+            const int reward = game.carried * game.rules.deliveryReward + (game.carried >= BonusCargoThreshold ? game.carried : 0);
             const int previousMotivation = game.motivation;
             game.motivation = std::min(game.rules.maximumMotivation, game.motivation + reward);
             game.motivationChange = game.motivation - previousMotivation;
-            game.feedbackTime = 2;
+            constexpr float DeliveryFeedbackSeconds = 2;
+            game.feedbackTime = DeliveryFeedbackSeconds;
             game.washed += game.carried;
             game.carried = 0;
         }
@@ -238,8 +208,10 @@ void Game::update(Vector2 direction, float deltaTime)
             if (item.state == TrashState::Ground && item.pickupDelay == 0
                 && Engine::intersects(Circle{game.player, pickupRadius}, Circle{item.position, game.rules.trashRadius})) {
                 item.state = TrashState::Carried;
+                // Золотой угол в радианах разносит груз вокруг игрока.
+                constexpr float AttachmentAngleStep = 2.39996323F;
                 item.attachment = Engine::rotated(Vector2{game.rules.playerRadius + 9.0f + 4.0f * std::sqrt(static_cast<float>(game.carried)), 0},
-                    static_cast<float>(game.carried) * 2.39996323F);
+                    static_cast<float>(game.carried) * AttachmentAngleStep);
                 ++game.carried;
                 --game.glue;
             }
@@ -264,7 +236,8 @@ void Game::update(Vector2 direction, float deltaTime)
                             item.position = game.player;
                         }
                     }
-                    item.pickupDelay = 4;
+                    constexpr float PickupDelaySeconds = 4;
+                    item.pickupDelay = PickupDelaySeconds;
                     --game.carried;
                     break;
                 }
@@ -272,8 +245,10 @@ void Game::update(Vector2 direction, float deltaTime)
             const int previousMotivation = game.motivation;
             game.motivation = std::max(0, game.motivation - game.rules.dropPenalty);
             game.motivationChange = game.motivation - previousMotivation;
-            game.feedbackTime = 2;
-            game.nextDropTime += 3.0f;
+            constexpr float DropFeedbackSeconds = 2;
+            constexpr float DropIntervalSeconds = 3.0F;
+            game.feedbackTime = DropFeedbackSeconds;
+            game.nextDropTime += DropIntervalSeconds;
             if (game.motivation == 0) {
                 game.outcome = Outcome::Lost;
                 game.target.reset();

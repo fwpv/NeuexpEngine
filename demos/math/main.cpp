@@ -1,5 +1,6 @@
 #include "entry_point.h"
 #include "application.h"
+#include "camera.h"
 #include "geometry.h"
 #include "input.h"
 #include "math2d.h"
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace
@@ -55,12 +57,14 @@ private:
         if (Platform::isKeyDown(Engine::Key::ArrowDown)) {
             direction.y += 1;
         }
-        object.position += Engine::normalized(direction) * 200.0f * frame.deltaTime;
+        constexpr float MovementSpeed = 200.0F; // Мировые единицы в секунду.
+        constexpr float RotationSpeed = Engine::Pi / 2; // Радианы в секунду.
+        object.position += Engine::normalized(direction) * MovementSpeed * frame.deltaTime;
         if (Platform::isKeyDown(Engine::Key::Q)) {
-            object.rotation -= (Engine::Pi / 2) * frame.deltaTime;
+            object.rotation -= RotationSpeed * frame.deltaTime;
         }
         if (Platform::isKeyDown(Engine::Key::E)) {
-            object.rotation += (Engine::Pi / 2) * frame.deltaTime;
+            object.rotation += RotationSpeed * frame.deltaTime;
         }
         return true;
     }
@@ -71,7 +75,8 @@ private:
         Engine::Affine2 inverse;
         Engine::TransformError transformError;
         if (!forward.inverse(inverse, transformError)) {
-            error = Platform::Error{"Affine2::inverse", "Object transform is not invertible.", std::optional<int>{}};
+            error = Platform::Error{"Affine2::inverse",
+                "Could not invert the object transform. TransformError: " + std::to_string(static_cast<int>(transformError)), std::nullopt};
             return false;
         }
         const auto& mouse = Platform::getInput().mouse();
@@ -88,7 +93,8 @@ private:
         Engine::UiView view;
         Engine::UiError uiError;
         if (!Engine::UiCanvas{}.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, view, uiError)) {
-            error = Platform::Error{"UiCanvas::createView", "Could not calculate the math view.", std::optional<int>{}};
+            error = Platform::Error{"UiCanvas::createView",
+                "Could not calculate the math view. UiError: " + std::to_string(static_cast<int>(uiError)), std::nullopt};
             return false;
         }
         beginFrame(frame.window.width, frame.window.height, Engine::Color{0.03F, 0.04F, 0.07F});

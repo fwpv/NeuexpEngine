@@ -2,6 +2,7 @@
 #include "platform.h"
 #include "events.h"
 #include "application.h"
+#include "camera.h"
 #include "geometry.h"
 #include "input.h"
 #include "math2d.h"
@@ -77,7 +78,8 @@ private:
             Engine::UiView view;
             Engine::UiError uiError;
             if (!Engine::UiCanvas{}.createView(Engine::Viewport{0, 0, window.width, window.height}, view, uiError)) {
-                error = Platform::Error{"UiCanvas::createView", "Could not calculate the input view.", std::optional<int>{}};
+                error = Platform::Error{"UiCanvas::createView",
+                    "Could not calculate the input view. UiError: " + std::to_string(static_cast<int>(uiError)), std::nullopt};
                 return false;
             }
             beginFrame(frame.window.width, frame.window.height, Color{0.04F, 0.05F, 0.08F});

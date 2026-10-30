@@ -15,7 +15,7 @@ using Engine::Vector2;
 struct Puddle
 {
     Circle shape;
-    bool sticky;
+    bool sticky = false;
 };
 
 struct World
@@ -31,19 +31,17 @@ struct World
 
 struct Rules
 {
-    Rules();
-
-    float playerRadius;
-    float trashRadius;
-    int homeGoal;
-    int glueCapacity;
-    int maximumMotivation;
-    int passiveMotivationFloor;
-    float motivationDecayInterval;
-    int dropPenalty;
-    int deliveryReward;
-    float glueLifetime;
-    float glueWarningTime;
+    float playerRadius = 18;
+    float trashRadius = 8;
+    int homeGoal = 40;
+    int glueCapacity = 10;
+    int maximumMotivation = 100;
+    int passiveMotivationFloor = 10;
+    float motivationDecayInterval = 2;
+    int dropPenalty = 8;
+    int deliveryReward = 4;
+    float glueLifetime = 15;
+    float glueWarningTime = 10;
 };
 
 enum class Coat
@@ -69,12 +67,10 @@ enum class Outcome
 
 struct Trash
 {
-    Trash();
-
     Vector2 position;
     Vector2 attachment;
-    TrashState state;
-    float pickupDelay;
+    TrashState state = TrashState::Ground;
+    float pickupDelay = 0;
 };
 
 struct GameState
@@ -84,20 +80,20 @@ struct GameState
     World world;
     Rules rules;
     Vector2 player;
-    float heading;
-    Coat coat;
+    float heading = 0;
+    Coat coat = Coat::Dry;
     std::array<Trash, 60> trash;
-    int carried;
-    int washed;
-    int glue;
-    int motivation;
-    float motivationDecayTime;
-    float cargoAge;
+    int carried = 0;
+    int washed = 0;
+    int glue = 0;
+    int motivation = 60;
+    float motivationDecayTime = 0;
+    float cargoAge = 0;
     float nextDropTime;
-    float feedbackTime;
-    int motivationChange;
-    int lastDelivery;
-    Outcome outcome;
+    float feedbackTime = 0;
+    int motivationChange = 0;
+    int lastDelivery = 0;
+    Outcome outcome = Outcome::Playing;
     std::optional<Vector2> target;
 };
 

@@ -61,9 +61,15 @@ private:
         }
         const Viewport area = {0, 0, frame.window.width, frame.window.height};
         CameraError cameraError;
+        if (!camera.createView(area, worldView, cameraError)) {
+            error = Platform::Error{"Camera2::createView",
+                "Could not calculate the world view. CameraError: " + std::to_string(static_cast<int>(cameraError)), std::nullopt};
+            return false;
+        }
         UiError uiError;
-        if (!camera.createView(area, worldView, cameraError) || !canvas.createView(area, uiView, uiError)) {
-            error = Platform::Error{"DPI demo views", "Could not calculate the world and interface coordinates.", std::optional<int>{}};
+        if (!canvas.createView(area, uiView, uiError)) {
+            error = Platform::Error{"UiCanvas::createView",
+                "Could not calculate the interface view. UiError: " + std::to_string(static_cast<int>(uiError)), std::nullopt};
             return false;
         }
         viewsReady = true;
@@ -155,7 +161,8 @@ private:
         if (Platform::isKeyDown(Key::S)) {
             direction.y += 1;
         }
-        camera.position += normalized(direction) * (260.0f * frame.deltaTime);
+        constexpr float CameraSpeed = 260.0F; // Мировые единицы в секунду.
+        camera.position += normalized(direction) * (CameraSpeed * frame.deltaTime);
         return true;
     }
 

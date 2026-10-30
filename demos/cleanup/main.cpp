@@ -162,14 +162,27 @@ private:
             static_cast<float>(mapWidth + 2 * 7), static_cast<float>(mapHeight + 2 * 7)};
         camera.position = state.player;
         Engine::CameraError cameraError;
-        Engine::UiError uiError;
         const Engine::Size2 screenSize = {static_cast<float>(frame.window.width), static_cast<float>(frame.window.height)};
         const Camera2 panelCamera = {Vector2{screenSize.width / 2, screenSize.height / 2}, 1, screenSize, Engine::ViewportMode::Expand};
-        if (!camera.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, mainView, cameraError)
-            || !minimap.createView(Engine::Viewport{mapX, mapY, mapWidth, mapHeight}, mapView, cameraError)
-            || !panelCamera.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, panelView, cameraError)
-            || !Engine::UiCanvas{}.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, hudView, uiError)) {
-            error = Platform::Error{"Camera2::createView", "Could not calculate the camera viewport.", std::optional<int>{}};
+        if (!camera.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, mainView, cameraError)) {
+            error = Platform::Error{"Camera2::createView",
+                "Could not calculate the main view. CameraError: " + std::to_string(static_cast<int>(cameraError)), std::nullopt};
+            return false;
+        }
+        if (!minimap.createView(Engine::Viewport{mapX, mapY, mapWidth, mapHeight}, mapView, cameraError)) {
+            error = Platform::Error{"Camera2::createView",
+                "Could not calculate the minimap view. CameraError: " + std::to_string(static_cast<int>(cameraError)), std::nullopt};
+            return false;
+        }
+        if (!panelCamera.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, panelView, cameraError)) {
+            error = Platform::Error{"Camera2::createView",
+                "Could not calculate the panel view. CameraError: " + std::to_string(static_cast<int>(cameraError)), std::nullopt};
+            return false;
+        }
+        Engine::UiError uiError;
+        if (!Engine::UiCanvas{}.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, hudView, uiError)) {
+            error = Platform::Error{"UiCanvas::createView",
+                "Could not calculate the interface view. UiError: " + std::to_string(static_cast<int>(uiError)), std::nullopt};
             return false;
         }
         viewsReady = true;
