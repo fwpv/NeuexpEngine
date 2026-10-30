@@ -1,4 +1,4 @@
-add_executable(cat main.cpp cat.cpp game.cpp world.cpp)
+add_executable(cat main.cpp cat.cpp game.cpp world.cpp physics.cpp)
 if(WIN32)
     set_target_properties(cat PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()

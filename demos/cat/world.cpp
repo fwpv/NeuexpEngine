@@ -24,15 +24,15 @@ int random(std::uint32_t& state)
 }
 
 Platform::Platform(int id, Engine::Vector2 position, Art art)
-    : id(id)
-    , position(position)
-    , size(DefaultSize)
+    : surface{id, position, DefaultSize, 0, 0, 0}
     , art(art)
 {
 }
 
 World::World(std::uint32_t seed)
-    : routeRandom(seed)
+    : physics(cat.physicalBody(), surfaces)
+    , controller(cat.physicalBody(), physics)
+    , routeRandom(seed)
 {
     addPlatform(lastX, lastY, Stone);
 }
@@ -42,11 +42,11 @@ void World::addPlatform(int x, int y, Art art, float top, float bottom)
     Platform platform{nextId++, Engine::Vector2{static_cast<float>(x), static_cast<float>(y)}, art};
     if (art == Lift) {
         const float catX = cat.position().x - 101.25F;
-        platform.speed = -std::min(400.0F,
+        platform.surface.speed = -std::min(400.0F,
             200.0F + (1 - std::pow(5.0F, -catX / 100000.0F)) * 200.0F);
-        platform.top = top;
-        platform.bottom = bottom;
-        platform.position.y = std::clamp(platform.position.y, top, bottom);
+        platform.surface.top = top;
+        platform.surface.bottom = bottom;
+        platform.surface.position.y = std::clamp(platform.surface.position.y, top, bottom);
     }
     platforms.push_back(std::move(platform));
 }
@@ -119,8 +119,8 @@ bool World::overlaps(int x, int y) const
 {
     const Engine::Rect candidate{Engine::Vector2{static_cast<float>(x), static_cast<float>(y)}, Platform::DefaultSize};
     return std::any_of(platforms.begin(), platforms.end(), [&](const Platform& platform) {
-        const Engine::Rect bounds{Engine::Vector2{static_cast<float>(static_cast<int>(platform.position.x)),
-            static_cast<float>(static_cast<int>(platform.position.y))}, platform.size};
+        const Engine::Rect bounds{Engine::Vector2{static_cast<float>(static_cast<int>(platform.surface.position.x)),
+            static_cast<float>(static_cast<int>(platform.surface.position.y))}, platform.surface.size};
         Engine::Rect overlap;
         // Касание краями допустимо при генерации площадок.
         return Engine::intersection(candidate, bounds, overlap)
@@ -236,10 +236,45 @@ void World::update(float duration, const Controls& controls, float visibleWidth)
     constexpr float GenerationDistance = 1024;
     const float horizon = std::max(catX + GenerationDistance, camera + visibleWidth + Platform::DefaultSize.width);
     platforms.erase(std::remove_if(platforms.begin(), platforms.end(), [&](const Platform& platform) {
-        return platform.position.x < catX - GenerationDistance && !cat.standsOn(platform);
+        return platform.surface.position.x < catX - GenerationDistance && !physics.supports(platform.surface.id);
     }), platforms.end());
     generate(catX, horizon);
-    cat.advance(platforms, duration, controls);
+    // Генерация и удаление могут перемещать платформы; ссылки действуют только до следующего изменения набора.
+    surfaces.clear();
+    surfaces.reserve(platforms.size());
+    for (auto& platform : platforms) {
+        surfaces.push_back(&platform.surface);
+    }
+    updateMotion(duration, controls);
+    cat.updateAnimation(duration, controls, physics.hasSupport());
+}
+
+void World::returnToTop()
+{
+    physics.clearContacts();
+    auto& body = cat.physicalBody();
+    body.position.y = 0;
+    body.velocity.y = 500;
+    controller.cancelJump();
+}
+
+void World::updateMotion(float duration, const Controls& controls)
+{
+    constexpr float ReturnHeight = 700 + 123.75F;
+    controller.beginFrame(controls);
+    for (float remaining = duration; remaining > CatPhysics::TimeTolerance;) {
+        if (cat.position().y >= ReturnHeight) {
+            returnToTop();
+        }
+        const float durationLimit = physics.prepareStep(remaining);
+        const MotionRequest request = controller.motionRequest();
+        const StepResult result = physics.advance(durationLimit, request, ReturnHeight);
+        if (result.event == StepEventKind::LimitReached) {
+            returnToTop();
+        }
+        controller.advanceTime(result.duration);
+        remaining -= result.duration;
+    }
 }
 
 Foliage::Foliage(std::uint32_t seed)
@@ -277,33 +312,17 @@ void Foliage::update(float duration, float catX)
     }
 }
 
-float Platform::prepareMotion(float duration)
-{
-    constexpr float TurnTolerance = 0.01F;
-    if (speed == 0) {
-        return duration;
-    }
-    if (position.y <= top + TurnTolerance) {
-        position.y = top;
-        speed = std::abs(speed);
-    } else if (position.y >= bottom - TurnTolerance) {
-        position.y = bottom;
-        speed = -std::abs(speed);
-    }
-    return std::min(duration, (speed > 0 ? bottom - position.y : position.y - top) / std::abs(speed));
-}
-
 void Platform::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
 {
     constexpr float PlatformCullBehind = 250;
     constexpr float PlatformCullAhead = 5;
-    if (position.x <= visible.position.x - PlatformCullBehind
-        || position.x >= visible.position.x + visible.size.width + PlatformCullAhead) {
+    if (surface.position.x <= visible.position.x - PlatformCullBehind
+        || surface.position.x >= visible.position.x + visible.size.width + PlatformCullAhead) {
         return;
     }
-    images.draw(renderer, art, position);
+    images.draw(renderer, art, surface.position);
     for (const auto& decoration : decorations) {
-        images.draw(renderer, decoration.art, position + decoration.offset);
+        images.draw(renderer, decoration.art, surface.position + decoration.offset);
     }
 }
 

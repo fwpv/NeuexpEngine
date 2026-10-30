@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cat.h"
+#include "physics.h"
 #include "geometry.h"
 #include "math2d.h"
 
@@ -27,19 +28,13 @@ struct Decoration
 struct Platform
 {
     Platform(int id, Engine::Vector2 position, Art art);
-    float prepareMotion(float duration);
     void draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const;
 
     static constexpr Engine::Size2 DefaultSize{175, 35};
 
-    int id = -1;
-    Engine::Vector2 position;
-    Engine::Size2 size;
+    Surface surface;
     Art art = Stone;
     std::vector<Decoration> decorations;
-    float speed = 0; // Пиксели в секунду: положительная скорость направлена вниз.
-    float top = 0;
-    float bottom = 0;
 };
 
 struct Leaf
@@ -58,6 +53,10 @@ class World
 {
 public:
     explicit World(std::uint32_t seed);
+    World(const World&) = delete;
+    World& operator=(const World&) = delete;
+    World(World&&) = delete;
+    World& operator=(World&&) = delete;
     Engine::Vector2 catPosition() const;
     void update(float duration, const Controls& controls, float visibleWidth);
     void draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const;
@@ -72,6 +71,8 @@ private:
 
     void addPlatform(int x, int y, Art art, float top = 0, float bottom = 0);
     void decorate(Platform& platform);
+    void updateMotion(float duration, const Controls& controls);
+    void returnToTop();
     bool overlaps(int x, int y) const;
     void generate(float catX, float horizon);
     void generateNormal(float catX, float horizon);
@@ -79,6 +80,9 @@ private:
 
     Cat cat;
     std::vector<Platform> platforms;
+    std::vector<Surface*> surfaces;
+    CatPhysics physics;
+    CatController controller;
     std::uint32_t routeRandom;
     int nextId = 0;
     Pattern pattern = Pattern::Normal;
