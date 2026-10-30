@@ -93,8 +93,8 @@ void Images::draw(Engine::Renderer2D& renderer, std::size_t image, Engine::Vecto
 
 void Platform::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
 {
-    constexpr double PlatformCullBehind = 250;
-    constexpr double PlatformCullAhead = 5;
+    constexpr float PlatformCullBehind = 250;
+    constexpr float PlatformCullAhead = 5;
     if (position.x <= visible.position.x - PlatformCullBehind
         || position.x >= visible.position.x + visible.size.width + PlatformCullAhead) {
         return;
@@ -108,7 +108,7 @@ void Platform::draw(Engine::Renderer2D& renderer, const Images& images, const En
 void Leaf::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
 {
     if (active && Engine::intersects(visible, Engine::Rect{position - Engine::Vector2{25, 25}, Engine::Size2{50, 50}})) {
-        images.draw(renderer, art, position, 1, static_cast<float>(angle));
+        images.draw(renderer, art, position, 1, angle);
     }
 }
 
@@ -123,7 +123,7 @@ void Cat::draw(Engine::Renderer2D& renderer, const Images& images) const
 bool Game::prepareView(int width, int height, Engine::CameraError& error)
 {
     const float scale = std::min(static_cast<float>(width) / 935, static_cast<float>(height) / 700);
-    const int viewHeight = static_cast<int>(700.0 * scale);
+    const int viewHeight = static_cast<int>(700.0F * scale);
     Engine::Camera2 camera;
     camera.referenceSize = Engine::Size2{static_cast<float>(width) / scale, static_cast<float>(viewHeight) / scale};
     camera.position = Engine::Vector2{cat.position().x + camera.referenceSize.width / 2 - 450, camera.referenceSize.height / 2};

@@ -34,17 +34,17 @@ int Game::random(std::uint32_t& state)
     return static_cast<int>((state >> 16U) & 32767U);
 }
 
-void Game::addPlatform(int x, int y, Art art, double top, double bottom)
+void Game::addPlatform(int x, int y, Art art, float top, float bottom)
 {
     Platform platform{nextId++, Engine::Vector2{static_cast<float>(x), static_cast<float>(y)}, art,
         std::vector<Decoration>{}, 0, 0, 0};
     if (art == Lift) {
-        const double catX = cat.position().x - 101.25;
-        platform.speed = -std::min(400.0,
-            200.0 + (1 - std::pow(5.0, -catX / 100000.0)) * 200.0);
+        const float catX = cat.position().x - 101.25F;
+        platform.speed = -std::min(400.0F,
+            200.0F + (1 - std::pow(5.0F, -catX / 100000.0F)) * 200.0F);
         platform.top = top;
         platform.bottom = bottom;
-        platform.position.y = static_cast<float>(std::clamp(static_cast<double>(platform.position.y), top, bottom));
+        platform.position.y = std::clamp(platform.position.y, top, bottom);
     }
     platforms.push_back(std::move(platform));
 }
@@ -126,14 +126,14 @@ bool Game::overlaps(int x, int y) const
     });
 }
 
-void Game::generateNormal(double catX, double horizon)
+void Game::generateNormal(float catX, float horizon)
 {
     const bool variedHeights = random(routeRandom) % 2 == 0;
     // Расстояния возрастают с пройденным путём; радиус достижимости — 200 пикселей.
-    const int gap = static_cast<int>((1 - std::pow(25.0, -catX / 100000.0)) * 275 + 175);
-    const int span = catX > 100000.0 ? 460
-        : static_cast<int>(gap + 40 - 30 * catX / 100000.0);
-    while (lastX < horizon && platforms.size() < PlatformLimit) {
+    const int gap = static_cast<int>((1 - std::pow(25.0F, -catX / 100000.0F)) * 275 + 175);
+    const int span = catX > 100000.0F ? 460
+        : static_cast<int>(static_cast<float>(gap + 40) - 30 * catX / 100000.0F);
+    while (static_cast<float>(lastX) < horizon && platforms.size() < PlatformLimit) {
         const int y = variedHeights ? random(routeRandom) % 500 + 150
             : (random(routeRandom) % 100) * 5 + 150;
         const int offset = random(routeRandom) % span;
@@ -161,7 +161,7 @@ void Game::generateNormal(double catX, double horizon)
     }
 }
 
-bool Game::generateSpecial(double catX, bool zigzag)
+bool Game::generateSpecial(float catX, bool zigzag)
 {
     constexpr int ZigzagLifts = 4;
     const std::size_t sectionSize = zigzag ? ZigzagLifts + 2U : 3U;
@@ -175,19 +175,19 @@ bool Game::generateSpecial(double catX, bool zigzag)
         addPlatform(x, bottom, Stone);
         const int top = random(routeRandom) % 200 + 150;
         constexpr int LiftSectionSpacing = 200;
-        addPlatform(x + LiftSectionSpacing, RestHeight, Lift, top, bottom);
+        addPlatform(x + LiftSectionSpacing, RestHeight, Lift, static_cast<float>(top), static_cast<float>(bottom));
         lastX = x + 2 * LiftSectionSpacing;
         lastY = top;
     } else {
-        const double stretch = std::min(1.0, 1 - std::pow(5.0, -catX / 100000.0));
+        const float stretch = std::min(1.0F, 1 - std::pow(5.0F, -catX / 100000.0F));
         constexpr int ZigzagSpacing = 320;
         int middleX = 0;
         for (int index = 0; index < ZigzagLifts; ++index) {
             constexpr int MiddleLift = 2;
-            int x = static_cast<int>(lastX + ZigzagSpacing + 200 * stretch);
+            int x = static_cast<int>(static_cast<float>(lastX + ZigzagSpacing) + 200 * stretch);
             if (index == MiddleLift) {
                 middleX = x;
-                x = static_cast<int>(lastX + 2 * ZigzagSpacing + 2 * 200 * stretch);
+                x = static_cast<int>(static_cast<float>(lastX + 2 * ZigzagSpacing) + 2 * 200 * stretch);
             }
             lastY = index % 2 ? 650 : 150;
             addPlatform(x, lastY, Lift, 150, static_cast<int>(650 - 100 * stretch));
@@ -201,14 +201,14 @@ bool Game::generateSpecial(double catX, bool zigzag)
     return true;
 }
 
-void Game::generate(double catX, double horizon)
+void Game::generate(float catX, float horizon)
 {
-    if (lastX >= horizon) {
+    if (static_cast<float>(lastX) >= horizon) {
         return;
     }
     constexpr int ZigzagDominantFrom = 20000;
     constexpr int ZigzagDominantUntil = 30000;
-    if (catX > nextPatternX && catX > 3000 && catX != ZigzagDominantFrom && catX != ZigzagDominantUntil) {
+    if (catX > static_cast<float>(nextPatternX) && catX > 3000 && catX != ZigzagDominantFrom && catX != ZigzagDominantUntil) {
         const bool zigzagDominant = catX > ZigzagDominantFrom && catX < ZigzagDominantUntil;
         const int choice = random(routeRandom) % 3;
         const bool zigzag = zigzagDominant ? choice != 0 : choice == 0;
@@ -222,42 +222,42 @@ void Game::generate(double catX, double horizon)
     }
 }
 
-void Game::updateLeaves(double duration, double catX)
+void Game::updateLeaves(float duration, float catX)
 {
     time += duration;
     // Интеграл ветра сохраняет одинаковый снос при разной частоте кадров.
-    const double wind = 700.0 * (std::cos((time - duration) / 7.0) - std::cos(time / 7.0));
+    const float wind = 700.0F * (std::cos((time - duration) / 7.0F) - std::cos(time / 7.0F));
     for (auto& leaf : leaves) {
         constexpr int LeafRangeBehind = 1050;
         constexpr int LeafRangeAhead = 3000;
         if (leaf.active && leaf.position.x >= catX - LeafRangeBehind && leaf.position.x <= catX + LeafRangeAhead
-            && leaf.position.y <= 700 + 25.0) {
-            leaf.position.x -= static_cast<float>(wind + duration * leaf.speed * 0.25);
-            leaf.position.y += static_cast<float>(duration * leaf.speed);
+            && leaf.position.y <= 700 + 25.0F) {
+            leaf.position.x -= wind + duration * leaf.speed * 0.25F;
+            leaf.position.y += duration * leaf.speed;
             leaf.angle += duration * leaf.spin;
         } else {
             leaf.position.y = static_cast<float>(random(leavesRandom) % 350 - 400);
-            leaf.position.x = static_cast<float>(random(leavesRandom) % 3770 + catX - LeafRangeBehind);
-            leaf.speed = (random(leavesRandom) % 15 / 100.0 + 0.1)
-                / 1.5 * 1000;
+            leaf.position.x = static_cast<float>(random(leavesRandom) % 3770) + catX - LeafRangeBehind;
+            leaf.speed = (static_cast<float>(random(leavesRandom) % 15) / 100.0F + 0.1F)
+                / 1.5F * 1000;
             leaf.angle = 0;
-            leaf.spin = (random(leavesRandom) % 4 - 1) * 50;
+            leaf.spin = static_cast<float>((random(leavesRandom) % 4 - 1) * 50);
             leaf.active = true;
         }
     }
 }
 
-void Game::update(double duration, const Controls& controls)
+void Game::update(float duration, const Controls& controls)
 {
-    const double catX = cat.position().x - 101.25;
-    const double camera = cat.position().x - 450.0;
-    constexpr double GenerationDistance = 1024;
-    const double horizon = std::max(catX + GenerationDistance, camera + visibleWidth + 175);
+    const float catX = cat.position().x - 101.25F;
+    const float camera = cat.position().x - 450.0F;
+    constexpr float GenerationDistance = 1024;
+    const float horizon = std::max(catX + GenerationDistance, camera + visibleWidth + 175);
     platforms.erase(std::remove_if(platforms.begin(), platforms.end(), [&](const Platform& platform) {
         return platform.position.x < catX - GenerationDistance && !cat.standsOn(platform);
     }), platforms.end());
     generate(catX, horizon);
     cat.advance(platforms, duration, controls);
-    updateLeaves(duration, cat.position().x - 101.25);
+    updateLeaves(duration, cat.position().x - 101.25F);
 }
 }
