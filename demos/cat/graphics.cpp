@@ -126,7 +126,7 @@ bool Game::prepareView(int width, int height, Engine::CameraError& error)
     const int viewHeight = static_cast<int>(700.0F * scale);
     Engine::Camera2 camera;
     camera.referenceSize = Engine::Size2{static_cast<float>(width) / scale, static_cast<float>(viewHeight) / scale};
-    camera.position = Engine::Vector2{cat.position().x + camera.referenceSize.width / 2 - 450, camera.referenceSize.height / 2};
+    camera.position = Engine::Vector2{world.catPosition().x + camera.referenceSize.width / 2 - 450, camera.referenceSize.height / 2};
     if (!camera.createView(Engine::Viewport{0, (height - viewHeight) / 2, width, viewHeight}, view, error)) {
         return false;
     }
@@ -134,15 +134,25 @@ bool Game::prepareView(int width, int height, Engine::CameraError& error)
     return true;
 }
 
+void Foliage::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
+{
+    for (const auto& leaf : leaves) {
+        leaf.draw(renderer, images, visible);
+    }
+}
+
+void World::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
+{
+    for (const auto& platform : platforms) {
+        platform.draw(renderer, images, visible);
+    }
+    cat.draw(renderer, images);
+}
+
 void Game::draw(Engine::Renderer2D& renderer, const Images& images) const
 {
     renderer.setWorldView(view);
-    for (const auto& leaf : leaves) {
-        leaf.draw(renderer, images, view.worldBounds);
-    }
-    for (const auto& platform : platforms) {
-        platform.draw(renderer, images, view.worldBounds);
-    }
-    cat.draw(renderer, images);
+    foliage.draw(renderer, images, view.worldBounds);
+    world.draw(renderer, images, view.worldBounds);
 }
 }

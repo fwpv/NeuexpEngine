@@ -1,4 +1,4 @@
-add_executable(cat main.cpp game.cpp cat.cpp graphics.cpp)
+add_executable(cat main.cpp game.cpp world.cpp cat.cpp graphics.cpp)
 if(WIN32)
     set_target_properties(cat PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
