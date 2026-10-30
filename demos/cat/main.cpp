@@ -5,7 +5,7 @@
 #include "platform.h"
 #include "renderer.h"
 #include "resources.h"
-#include "ui.h"
+#include "camera.h"
 
 #include <cmath>
 #include <optional>
@@ -38,11 +38,13 @@ private:
     bool onStart(Host::Error& error) override;
     bool onInput(const Engine::FrameInfo& frame, Host::Error& error) override;
     bool onUpdate(const Engine::FrameInfo& frame, Host::Error&) override;
+    bool onPrepareFrame(const Engine::FrameInfo& frame, Host::Error& error) override;
     bool onRender(const Engine::FrameInfo& frame, Host::Error& error) override;
 
     Cat::Game game{std::random_device{}(), std::random_device{}()};
     Cat::Images images;
     bool verticalSync = false;
+    int displayedFps = -1;
 };
 
 bool CatApplication::onStart(Host::Error& error)
@@ -65,13 +67,8 @@ bool CatApplication::onStart(Host::Error& error)
     return true;
 }
 
-bool CatApplication::onInput(const Engine::FrameInfo& frame, Host::Error& error)
+bool CatApplication::onInput(const Engine::FrameInfo&, Host::Error&)
 {
-    if (Engine::UiError viewError; !frame.window.minimized
-        && !game.resize(frame.window.width, frame.window.height, viewError)) {
-        error = Platform::Error{"cat", "Cannot calculate game viewport.", std::optional<int>{}};
-        return false;
-    }
     if (Host::isKeyPressed(Engine::Key::Escape)) {
         requestExit();
     }
@@ -89,18 +86,31 @@ bool CatApplication::onInput(const Engine::FrameInfo& frame, Host::Error& error)
 bool CatApplication::onUpdate(const Engine::FrameInfo& frame, Host::Error&)
 {
     const Cat::Controls controls{Host::isKeyDown(Engine::Key::ArrowRight),
-        Host::isKeyDown(Engine::Key::ArrowLeft), Host::isKeyDown(Engine::Key::ArrowUp),
-        Host::isKeyDown(Engine::Key::ArrowDown)};
+        Host::isKeyDown(Engine::Key::ArrowLeft), Host::isKeyPressed(Engine::Key::ArrowUp),
+        Host::isKeyPressed(Engine::Key::ArrowDown)};
     game.update(frame.deltaTime, controls);
+    return true;
+}
+
+bool CatApplication::onPrepareFrame(const Engine::FrameInfo& frame, Host::Error& error)
+{
+    if (Engine::CameraError viewError; !frame.window.minimized
+        && !game.prepareView(frame.window.width, frame.window.height, viewError)) {
+        error = Platform::Error{"cat", "Cannot calculate game viewport.", std::optional<int>{}};
+        return false;
+    }
+    const int fps = static_cast<int>(std::round(frame.framesPerSecond));
+    if (fps != displayedFps) {
+        if (!Host::setWindowTitle(WindowTitle + " | " + std::to_string(fps) + " FPS", error)) {
+            return false;
+        }
+        displayedFps = fps;
+    }
     return true;
 }
 
 bool CatApplication::onRender(const Engine::FrameInfo& frame, Host::Error& error)
 {
-    if (const int fps = static_cast<int>(std::round(frame.framesPerSecond));
-        !Host::setWindowTitle(WindowTitle + " | " + std::to_string(fps) + " FPS", error)) {
-        return false;
-    }
     beginFrame(frame.window.width, frame.window.height, Engine::Color{245.0F / 255, 250.0F / 255, 245.0F / 255});
     game.draw(getRenderer(), images);
     return endFrame(error);

@@ -1,9 +1,11 @@
 #pragma once
 
+#include "geometry.h"
 #include "renderer.h"
 #include "resources.h"
 #include "texture.h"
-#include "ui.h"
+#include "camera.h"
+#include "math2d.h"
 
 #include <array>
 #include <cstddef>
@@ -14,19 +16,6 @@
 
 namespace Cat
 {
-// Мировые координаты в пикселях: X вправо, Y вниз. Время — в секундах.
-struct Point
-{
-    double x;
-    double y;
-};
-
-struct Vector
-{
-    double x;
-    double y;
-};
-
 enum Art : std::size_t
 {
     Stone,
@@ -45,18 +34,18 @@ enum Art : std::size_t
 
 struct Controls
 {
-    bool right;
-    bool left;
-    bool jump;
-    bool drop;
+    bool right = false;
+    bool left = false;
+    bool jump = false; // Нажатие за текущий кадр.
+    bool drop = false; // Нажатие за текущий кадр.
 };
 
 class Images
 {
 public:
     bool load(Engine::Renderer2D& renderer, Engine::ResourceError& error);
-    void draw(Engine::Renderer2D& renderer, std::size_t image, Point screen,
-        double scale = 1, double angle = 0) const;
+    void draw(Engine::Renderer2D& renderer, std::size_t image, Engine::Vector2 position,
+        float scale = 1, float angle = 0) const;
 
 private:
     std::array<Engine::Texture, ArtCount> textures;
@@ -64,33 +53,32 @@ private:
 
 struct Decoration
 {
-    Art art;
-    Point offset;
+    Art art = Stone;
+    Engine::Vector2 offset;
 };
 
 struct Platform
 {
     double prepareMotion(double duration);
-    void draw(Engine::Renderer2D& renderer, const Images& images, double camera, double width) const;
+    void draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const;
 
-    int id;
-    Point position;
-    Art art;
+    int id = -1;
+    Engine::Vector2 position;
+    Art art = Stone;
     std::vector<Decoration> decorations;
-    double speed; // Пиксели в секунду: положительная скорость направлена вниз.
-    double top;
-    double bottom;
+    double speed = 0; // Пиксели в секунду: положительная скорость направлена вниз.
+    double top = 0;
+    double bottom = 0;
 };
 
 class Cat
 {
 public:
-    Cat();
-    Point position() const;
+    Engine::Vector2 position() const;
     bool standsOn(const Platform& platform) const;
     // duration >= 0; кот и лифты продвигаются по одной шкале времени.
     void advance(std::vector<Platform>& platforms, double duration, const Controls& controls);
-    void draw(Engine::Renderer2D& renderer, const Images& images, double camera) const;
+    void draw(Engine::Renderer2D& renderer, const Images& images) const;
 
 private:
     struct Range
@@ -118,40 +106,38 @@ private:
     void returnToTop();
     void animate(double duration, int direction);
 
-    Point feet;
-    Vector velocity;
-    int support;
-    int entryDirection; // 0 — устойчивая опора, +1 — въезд слева, -1 — справа.
+    Engine::Vector2 feet = {450, 223.75};
+    Engine::Vector2 velocity;
+    int support = -1;
+    int entryDirection = 0; // 0 — устойчивая опора, +1 — въезд слева, -1 — справа.
     // Покинутые площадки снова участвуют в столкновениях после прохода сквозь них или приземления.
     std::set<int> ignored;
-    double jumpBuffer;
-    Controls previousControls;
-    bool dropRequested;
-    int headFrame;
-    int feetFrame;
-    double animationTime;
-    double frameTime;
+    double jumpBuffer = 0;
+    bool dropRequested = false;
+    int headFrame = (Feet - Head) / 2;
+    int feetFrame = 0;
+    double animationTime = 0;
+    double frameTime = 0;
 };
 
 struct Leaf
 {
-    Leaf();
-    void draw(Engine::Renderer2D& renderer, const Images& images, double camera, double width) const;
+    void draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const;
 
-    Art art;
-    Point position;
-    double angle; // Градусы.
-    double speed; // Пиксели в секунду.
-    double spin; // Градусы в секунду.
-    bool active;
+    Art art = Leaf1;
+    Engine::Vector2 position;
+    double angle = 0; // Градусы.
+    double speed = 0; // Пиксели в секунду.
+    double spin = 0; // Градусы в секунду.
+    bool active = false;
 };
 
 class Game
 {
 public:
     Game(std::uint32_t routeSeed, std::uint32_t leavesSeed);
-    // Положительные размеры клиентской области; вид задаётся до первого рисования.
-    bool resize(int width, int height, Engine::UiError& error);
+    // После update(), до draw(): положительные размеры окна и камера, следующая за котом.
+    bool prepareView(int width, int height, Engine::CameraError& error);
     void update(double duration, const Controls& controls);
     void draw(Engine::Renderer2D& renderer, const Images& images) const;
 
@@ -177,13 +163,13 @@ private:
     std::array<Leaf, 50> leaves;
     std::uint32_t routeRandom;
     std::uint32_t leavesRandom;
-    int nextId;
-    Pattern pattern;
-    int nextPatternX;
-    int lastX;
-    int lastY;
-    double time;
-    Engine::UiView view;
-    double visibleWidth;
+    int nextId = 0;
+    Pattern pattern = Pattern::Normal;
+    int nextPatternX = 3000;
+    int lastX = 360;
+    int lastY = 400;
+    double time = 0;
+    Engine::CameraView view;
+    double visibleWidth = 935;
 };
 }

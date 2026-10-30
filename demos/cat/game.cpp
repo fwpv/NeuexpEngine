@@ -1,4 +1,5 @@
 #include "game.h"
+#include "geometry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -14,26 +15,9 @@ namespace
 constexpr std::size_t PlatformLimit = 50;
 }
 
-Leaf::Leaf()
-    : art(Leaf1)
-    , position{}
-    , angle(0)
-    , speed(0)
-    , spin(0)
-    , active(false)
-{
-}
-
 Game::Game(std::uint32_t routeSeed, std::uint32_t leavesSeed)
     : routeRandom(routeSeed)
     , leavesRandom(leavesSeed)
-    , nextId(0)
-    , pattern(Pattern::Normal)
-    , nextPatternX(3000)
-    , lastX(360)
-    , lastY(400)
-    , time(0)
-    , visibleWidth(935)
 {
     addPlatform(lastX, lastY, Stone);
     for (auto& leaf : leaves) {
@@ -52,7 +36,7 @@ int Game::random(std::uint32_t& state)
 
 void Game::addPlatform(int x, int y, Art art, double top, double bottom)
 {
-    Platform platform{nextId++, Point{static_cast<double>(x), static_cast<double>(y)}, art,
+    Platform platform{nextId++, Engine::Vector2{static_cast<float>(x), static_cast<float>(y)}, art,
         std::vector<Decoration>{}, 0, 0, 0};
     if (art == Lift) {
         const double catX = cat.position().x - 101.25;
@@ -60,7 +44,7 @@ void Game::addPlatform(int x, int y, Art art, double top, double bottom)
             200.0 + (1 - std::pow(5.0, -catX / 100000.0)) * 200.0);
         platform.top = top;
         platform.bottom = bottom;
-        platform.position.y = std::clamp(platform.position.y, top, bottom);
+        platform.position.y = static_cast<float>(std::clamp(static_cast<double>(platform.position.y), top, bottom));
     }
     platforms.push_back(std::move(platform));
 }
@@ -69,7 +53,7 @@ void Game::decorate(Platform& platform)
 {
     const auto add = [&](Art art, int x) {
         const int height = art == Mushroom ? 58 : (art == Flowers ? 80 : 35);
-        platform.decorations.push_back(Decoration{art, Point{static_cast<double>(x), static_cast<double>(2 - height)}});
+        platform.decorations.push_back(Decoration{art, Engine::Vector2{static_cast<float>(x), static_cast<float>(2 - height)}});
     };
     constexpr int FlowersScatter = 16;
     constexpr int DecorationPairSpacing = 88;
@@ -131,11 +115,14 @@ void Game::decorate(Platform& platform)
 
 bool Game::overlaps(int x, int y) const
 {
-    return std::any_of(platforms.begin(), platforms.end(), [x, y](const Platform& platform) {
-        const int px = static_cast<int>(platform.position.x);
-        const int py = static_cast<int>(platform.position.y);
-        return x + 175 > px && y + 35 > py
-            && x < px + 175 && y < py + 35;
+    const Engine::Rect candidate{static_cast<float>(x), static_cast<float>(y), 175, 35};
+    return std::any_of(platforms.begin(), platforms.end(), [&](const Platform& platform) {
+        const Engine::Rect bounds{static_cast<float>(static_cast<int>(platform.position.x)),
+            static_cast<float>(static_cast<int>(platform.position.y)), 175, 35};
+        Engine::Rect overlap;
+        // Касание краями допустимо при генерации площадок.
+        return Engine::intersection(candidate, bounds, overlap)
+            && overlap.size.width > 0 && overlap.size.height > 0;
     });
 }
 
@@ -245,12 +232,12 @@ void Game::updateLeaves(double duration, double catX)
         constexpr int LeafRangeAhead = 3000;
         if (leaf.active && leaf.position.x >= catX - LeafRangeBehind && leaf.position.x <= catX + LeafRangeAhead
             && leaf.position.y <= 700 + 25.0) {
-            leaf.position.x -= wind + duration * leaf.speed * 0.25;
-            leaf.position.y += duration * leaf.speed;
+            leaf.position.x -= static_cast<float>(wind + duration * leaf.speed * 0.25);
+            leaf.position.y += static_cast<float>(duration * leaf.speed);
             leaf.angle += duration * leaf.spin;
         } else {
-            leaf.position.y = random(leavesRandom) % 350 - 400;
-            leaf.position.x = random(leavesRandom) % 3770 + catX - LeafRangeBehind;
+            leaf.position.y = static_cast<float>(random(leavesRandom) % 350 - 400);
+            leaf.position.x = static_cast<float>(random(leavesRandom) % 3770 + catX - LeafRangeBehind);
             leaf.speed = (random(leavesRandom) % 15 / 100.0 + 0.1)
                 / 1.5 * 1000;
             leaf.angle = 0;

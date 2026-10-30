@@ -1,7 +1,6 @@
 #include "game.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <initializer_list>
@@ -16,9 +15,9 @@ namespace
 constexpr int NoPlatform = -1;
 
 constexpr int HeadFrames = Feet - Head;
-constexpr double PositionTolerance = 1e-6;
+constexpr float PositionTolerance = 0.01F; // Сотая пикселя учитывает округление координат float.
 constexpr double TimeTolerance = 1e-9;
-constexpr double Gravity = 1500;
+constexpr float Gravity = 1500;
 
 const Platform* findPlatform(const std::vector<Platform>& platforms, int id)
 {
@@ -52,21 +51,6 @@ double landingTime(double gap, double speed)
 }
 }
 
-Cat::Cat()
-    : feet{450, 223.75}
-    , velocity{}
-    , support(NoPlatform)
-    , entryDirection(0)
-    , jumpBuffer(0)
-    , previousControls{}
-    , dropRequested(false)
-    , headFrame(HeadFrames / 2)
-    , feetFrame(0)
-    , animationTime(0)
-    , frameTime(0)
-{
-}
-
 Cat::Probe::Probe(double x, double speed, double after, bool allowEntry, bool ahead)
     : x(x)
     , speed(speed)
@@ -76,7 +60,7 @@ Cat::Probe::Probe(double x, double speed, double after, bool allowEntry, bool ah
 {
 }
 
-Point Cat::position() const
+Engine::Vector2 Cat::position() const
 {
     return feet;
 }
@@ -92,10 +76,10 @@ double Platform::prepareMotion(double duration)
         return duration;
     }
     if (position.y <= top + PositionTolerance) {
-        position.y = top;
+        position.y = static_cast<float>(top);
         speed = std::abs(speed);
     } else if (position.y >= bottom - PositionTolerance) {
-        position.y = bottom;
+        position.y = static_cast<float>(bottom);
         speed = -std::abs(speed);
     }
     return std::min(duration, (speed > 0 ? bottom - position.y : position.y - top) / std::abs(speed));
@@ -125,18 +109,17 @@ void Cat::returnToTop()
 void Cat::advance(std::vector<Platform>& platforms, double duration, const Controls& controls)
 {
     const int direction = static_cast<int>(controls.right) - static_cast<int>(controls.left);
-    if (controls.jump && !previousControls.jump) {
+    if (controls.jump) {
         jumpBuffer = 0.1;
     }
-    dropRequested = dropRequested || (controls.drop && !previousControls.drop);
-    previousControls = controls;
+    dropRequested = dropRequested || controls.drop;
     for (double remaining = duration; remaining > TimeTolerance;) {
         if (feet.y >= 700 + 123.75) {
             returnToTop();
         }
-        for (auto it = ignored.begin(); it != ignored.end();) {
-            const auto* platform = findPlatform(platforms, *it);
-            it = !platform || feet.y > platform->position.y + 35 ? ignored.erase(it) : std::next(it);
+        for (auto iterator = ignored.begin(); iterator != ignored.end();) {
+            const auto* platform = findPlatform(platforms, *iterator);
+            iterator = !platform || feet.y > platform->position.y + 35 ? ignored.erase(iterator) : std::next(iterator);
         }
         double step = remaining;
         for (auto& platform : platforms) {
@@ -149,19 +132,19 @@ void Cat::advance(std::vector<Platform>& platforms, double duration, const Contr
             standing = findSupport(platforms, 0, previous);
             support = standing ? standing->id : NoPlatform;
             if (!standing) {
-                velocity.y = speed;
+                velocity.y = static_cast<float>(speed);
                 ignored.insert(previous);
                 entryDirection = 0;
             }
         }
         if (standing) {
             feet.y = standing->position.y;
-            velocity.y = standing->speed;
+            velocity.y = static_cast<float>(standing->speed);
             if (dropRequested || jumpBuffer > 0) {
                 if (dropRequested) {
                     ignoreSupports(platforms);
                 }
-                velocity.y = dropRequested ? std::max(200.0, velocity.y + 200.0) : velocity.y - 810.0;
+                velocity.y = dropRequested ? std::max(200.0F, velocity.y + 200) : velocity.y - 810;
                 support = NoPlatform;
                 entryDirection = 0;
                 jumpBuffer = 0;
@@ -185,10 +168,9 @@ std::optional<Cat::Range> Cat::supportRange(const Platform& platform, const std:
     const bool left = probe.speed < -PositionTolerance || (continuing && entryDirection < 0);
     const Range central{platform.position.x - 10.0 - (probe.allowEntry && right ? 10.0 : 0),
         platform.position.x + 175 + 10.0 + (probe.allowEntry && left ? 10.0 : 0)};
-    constexpr std::size_t PlatformLimit = 50;
-    std::array<Range, PlatformLimit + 1> ranges{};
-    ranges[0] = central;
-    std::size_t count = 1;
+    std::vector<Range> ranges;
+    ranges.reserve(platforms.size() + 1);
+    ranges.push_back(central);
     for (const auto& neighbor : platforms) {
         const double relativeSpeed = neighbor.speed - platform.speed;
         const double height = neighbor.position.y - platform.position.y + relativeSpeed * probe.after;
@@ -211,13 +193,13 @@ std::optional<Cat::Range> Cat::supportRange(const Platform& platform, const std:
         } else if (probe.allowEntry && left && bridge.left > central.right) {
             bridge.left = central.right;
         }
-        ranges[count++] = bridge;
+        ranges.push_back(bridge);
     }
-    std::sort(ranges.begin(), ranges.begin() + static_cast<std::ptrdiff_t>(count), [](Range a, Range b) {
+    std::sort(ranges.begin(), ranges.end(), [](Range a, Range b) {
         return a.left < b.left;
     });
     std::size_t merged = 0;
-    for (std::size_t i = 0; i < count; ++i) {
+    for (std::size_t i = 0; i < ranges.size(); ++i) {
         if (merged > 0 && ranges[i].left <= ranges[merged - 1].right + PositionTolerance) {
             ranges[merged - 1].right = std::max(ranges[merged - 1].right, ranges[i].right);
         } else {
@@ -267,14 +249,14 @@ void Cat::ignoreSupports(const std::vector<Platform>& platforms)
 
 void Cat::leaveEdge(const Platform& platform, const std::vector<Platform>& platforms, double x)
 {
-    feet.x = x;
+    feet.x = static_cast<float>(x);
     const int direction = x > platform.position.x + 175 / 2.0 ? 1 : -1;
     if (const auto* next = findSupport(platforms, direction, platform.id)) {
         support = next->id;
         feet.y = next->position.y;
-        velocity.y = next->speed;
+        velocity.y = static_cast<float>(next->speed);
     } else {
-        velocity.y = platform.speed;
+        velocity.y = static_cast<float>(platform.speed);
         ignoreSupports(platforms);
         ignored.insert(platform.id);
         support = NoPlatform;
@@ -299,28 +281,27 @@ double Cat::move(std::vector<Platform>& platforms, double duration, int directio
     } else if (entryDirection == 0) {
         entryDirection = velocity.x > 0 ? 1 : -1;
     }
-    const double target = direction != 0 ? direction * 600.0 : (entering ? velocity.x : 0);
-    const double acceleration = direction == 0
-        ? (standing ? 4800.0 : 800.0) : (standing ? 2400.0 : 1200.0);
-    const double difference = target - velocity.x;
-    const Vector accelerationVector{std::abs(difference) < PositionTolerance ? 0 : std::copysign(acceleration, difference),
+    const float target = direction != 0 ? static_cast<float>(direction) * 600 : (entering ? velocity.x : 0);
+    const float acceleration = direction == 0
+        ? (standing ? 4800.0F : 800.0F) : (standing ? 2400.0F : 1200.0F);
+    const float difference = target - velocity.x;
+    const Engine::Vector2 accelerationVector{std::abs(difference) < PositionTolerance ? 0 : std::copysign(acceleration, difference),
         standing ? 0 : Gravity};
     const double targetTime = std::abs(difference) / acceleration;
     if (accelerationVector.x != 0) {
         duration = std::min(duration, targetTime);
         if (velocity.x * accelerationVector.x < 0) {
-            duration = std::min(duration, -velocity.x / accelerationVector.x);
+            duration = std::min(duration, static_cast<double>(-velocity.x) / accelerationVector.x);
         }
     }
     const auto positionAt = [&](double t) {
-        return Point{feet.x + velocity.x * t + accelerationVector.x * (t * t / 2),
-            feet.y + velocity.y * t + accelerationVector.y * (t * t / 2)};
+        return feet + velocity * static_cast<float>(t) + accelerationVector * static_cast<float>(t * t / 2);
     };
     Event event = Event::None;
     const Platform* landing = nullptr;
     double edgeX = feet.x;
     if (standing) {
-        if (entering && entryDirection * velocity.x <= PositionTolerance && entryDirection * accelerationVector.x < 0) {
+        if (entering && static_cast<float>(entryDirection) * velocity.x <= PositionTolerance && static_cast<float>(entryDirection) * accelerationVector.x < 0) {
             duration = 0;
             event = Event::Departure;
         }
@@ -380,14 +361,14 @@ double Cat::move(std::vector<Platform>& platforms, double duration, int directio
             if (!approach) {
                 continue;
             }
-            const double entryX = std::clamp(feet.x, approach->left, approach->right);
+            const double entryX = std::clamp(static_cast<double>(feet.x), approach->left, approach->right);
             const double destination = positionAt(duration).x;
             if ((velocity.x > 0 && destination < entryX) || (velocity.x < 0 && destination > entryX)) {
                 continue;
             }
             const double time = std::abs(entryX - feet.x) <= PositionTolerance
                 ? 0 : travelTime(velocity.x, accelerationVector.x, entryX - feet.x);
-            const Vector speed{velocity.x + accelerationVector.x * time, velocity.y + accelerationVector.y * time};
+            const Engine::Vector2 speed = velocity + accelerationVector * static_cast<float>(time);
             if (time < 0 || time > duration || (landing && time >= duration - TimeTolerance)
                 || (platform.position.x + 175 / 2.0 - entryX) * speed.x <= PositionTolerance
                 || speed.y - platform.speed < -PositionTolerance
@@ -409,12 +390,12 @@ double Cat::move(std::vector<Platform>& platforms, double duration, int directio
         }
     }
     feet = positionAt(duration);
-    velocity = Vector{velocity.x + accelerationVector.x * duration, velocity.y + accelerationVector.y * duration};
+    velocity += accelerationVector * static_cast<float>(duration);
     if (accelerationVector.x != 0 && std::abs(duration - targetTime) <= TimeTolerance) {
         velocity.x = target;
     }
     for (auto& platform : platforms) {
-        platform.position.y += platform.speed * duration;
+        platform.position.y += static_cast<float>(platform.speed * duration);
     }
     if (event == Event::Landing) {
         support = landing->id;
@@ -423,7 +404,7 @@ double Cat::move(std::vector<Platform>& platforms, double duration, int directio
     }
     if (const auto* platform = findPlatform(platforms, support)) {
         feet.y = platform->position.y;
-        velocity.y = platform->speed;
+        velocity.y = static_cast<float>(platform->speed);
         if (!supportRange(*platform, platforms, Probe{feet.x, velocity.x})) {
             leaveEdge(*platform, platforms, feet.x);
         } else if (event == Event::Departure) {

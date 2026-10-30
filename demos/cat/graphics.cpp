@@ -5,7 +5,7 @@
 #include "resources.h"
 #include "texture.h"
 #include "transform.h"
-#include "ui.h"
+#include "camera.h"
 
 #include <algorithm>
 #include <array>
@@ -73,17 +73,17 @@ bool Images::load(Engine::Renderer2D& renderer, Engine::ResourceError& error)
     return true;
 }
 
-void Images::draw(Engine::Renderer2D& renderer, std::size_t image, Point screen, double scale, double angle) const
+void Images::draw(Engine::Renderer2D& renderer, std::size_t image, Engine::Vector2 position, float scale, float angle) const
 {
     const auto& texture = textures[image];
-    Engine::Rect rectangle{static_cast<float>(screen.x), static_cast<float>(screen.y),
-        static_cast<float>(texture.width() * scale), static_cast<float>(texture.height() * scale)};
+    Engine::Rect rectangle{position, Engine::Size2{static_cast<float>(texture.width()) * scale,
+        static_cast<float>(texture.height()) * scale}};
     Engine::DrawOptions options;
     if (image >= Leaf1 && image <= Leaf3) {
         constexpr float LeafPivot = 17.5F;
         Engine::Transform2 transform;
         transform.position = Engine::Vector2{rectangle.position.x + LeafPivot, rectangle.position.y + LeafPivot};
-        transform.rotation = -Engine::degreesToRadians(static_cast<float>(angle));
+        transform.rotation = -Engine::degreesToRadians(angle);
         options.transform = transform.toAffine();
         rectangle.position = Engine::Vector2{-LeafPivot, -LeafPivot};
     }
@@ -91,56 +91,58 @@ void Images::draw(Engine::Renderer2D& renderer, std::size_t image, Point screen,
         Engine::TextureSampling{image >= Head ? Engine::TextureFilter::Linear : Engine::TextureFilter::Nearest});
 }
 
-void Platform::draw(Engine::Renderer2D& renderer, const Images& images, double camera, double width) const
+void Platform::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
 {
     constexpr double PlatformCullBehind = 250;
     constexpr double PlatformCullAhead = 5;
-    if (position.x - camera <= -PlatformCullBehind || position.x - camera >= width + PlatformCullAhead) {
+    if (position.x <= visible.position.x - PlatformCullBehind
+        || position.x >= visible.position.x + visible.size.width + PlatformCullAhead) {
         return;
     }
-    images.draw(renderer, art, Point{position.x - camera, position.y});
+    images.draw(renderer, art, position);
     for (const auto& decoration : decorations) {
-        images.draw(renderer, decoration.art, Point{position.x + decoration.offset.x - camera, position.y + decoration.offset.y});
+        images.draw(renderer, decoration.art, position + decoration.offset);
     }
 }
 
-void Leaf::draw(Engine::Renderer2D& renderer, const Images& images, double camera, double width) const
+void Leaf::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
 {
-    if (active && position.x >= camera - 25.0 && position.x <= camera + width + 25.0
-        && position.y >= -25.0 && position.y <= 700 + 25.0) {
-        images.draw(renderer, art, Point{position.x - camera, position.y}, 1, angle);
+    if (active && Engine::intersects(visible, Engine::Rect{position - Engine::Vector2{25, 25}, Engine::Size2{50, 50}})) {
+        images.draw(renderer, art, position, 1, static_cast<float>(angle));
     }
 }
 
-void Cat::draw(Engine::Renderer2D& renderer, const Images& images, double camera) const
+void Cat::draw(Engine::Renderer2D& renderer, const Images& images) const
 {
-    const Point origin{feet.x - 101.25 - camera, feet.y - 123.75 + 3.0 + (support >= 0 ? 2.0 : 0)};
-    images.draw(renderer, Head + static_cast<std::size_t>(headFrame), origin, 0.75);
+    const Engine::Vector2 origin = feet + Engine::Vector2{-101.25F, -123.75F + 3 + (support >= 0 ? 2 : 0)};
+    images.draw(renderer, Head + static_cast<std::size_t>(headFrame), origin, 0.75F);
     images.draw(renderer, Feet + static_cast<std::size_t>(feetFrame),
-        Point{origin.x + 44 * 0.75, origin.y + 120 * 0.75}, 0.75);
+        origin + Engine::Vector2{44 * 0.75F, 120 * 0.75F}, 0.75F);
 }
 
-bool Game::resize(int width, int height, Engine::UiError& error)
+bool Game::prepareView(int width, int height, Engine::CameraError& error)
 {
     const float scale = std::min(static_cast<float>(width) / 935, static_cast<float>(height) / 700);
     const int viewHeight = static_cast<int>(700.0 * scale);
-    if (!Engine::UiCanvas{scale}.createView(Engine::Viewport{0, (height - viewHeight) / 2, width, viewHeight}, view, error)) {
+    Engine::Camera2 camera;
+    camera.referenceSize = Engine::Size2{static_cast<float>(width) / scale, static_cast<float>(viewHeight) / scale};
+    camera.position = Engine::Vector2{cat.position().x + camera.referenceSize.width / 2 - 450, camera.referenceSize.height / 2};
+    if (!camera.createView(Engine::Viewport{0, (height - viewHeight) / 2, width, viewHeight}, view, error)) {
         return false;
     }
-    visibleWidth = static_cast<double>(width) / scale;
+    visibleWidth = view.worldBounds.size.width;
     return true;
 }
 
 void Game::draw(Engine::Renderer2D& renderer, const Images& images) const
 {
-    renderer.setUiView(view);
-    const double camera = cat.position().x - 450.0;
+    renderer.setWorldView(view);
     for (const auto& leaf : leaves) {
-        leaf.draw(renderer, images, camera, visibleWidth);
+        leaf.draw(renderer, images, view.worldBounds);
     }
     for (const auto& platform : platforms) {
-        platform.draw(renderer, images, camera, visibleWidth);
+        platform.draw(renderer, images, view.worldBounds);
     }
-    cat.draw(renderer, images, camera);
+    cat.draw(renderer, images);
 }
 }
