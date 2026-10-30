@@ -31,7 +31,7 @@ Platform::Platform(int id, Engine::Vector2 position, Art art)
 
 World::World(std::uint32_t seed)
     : physics(cat.physicalBody(), surfaces)
-    , controller(cat.physicalBody(), physics)
+    , controller(physics)
     , routeRandom(seed)
 {
     addPlatform(lastX, lastY, Stone);
@@ -251,30 +251,23 @@ void World::update(float duration, const Controls& controls, float visibleWidth)
 
 void World::returnToTop()
 {
-    physics.clearContacts();
-    auto& body = cat.physicalBody();
-    body.position.y = 0;
-    body.velocity.y = 500;
+    const Body& body = cat.physicalBody();
+    physics.reset(Engine::Vector2{body.position.x, 0}, Engine::Vector2{body.velocity.x, 500});
     controller.cancelJump();
 }
 
 void World::updateMotion(float duration, const Controls& controls)
 {
     constexpr float ReturnHeight = 700 + 123.75F;
-    controller.beginFrame(controls);
-    for (float remaining = duration; remaining > CatPhysics::TimeTolerance;) {
-        if (cat.position().y >= ReturnHeight) {
-            returnToTop();
-        }
-        const float durationLimit = physics.prepareStep(remaining);
-        const MotionRequest request = controller.motionRequest();
-        const StepResult result = physics.advance(durationLimit, request, ReturnHeight);
-        if (result.event == StepEventKind::LimitReached) {
-            returnToTop();
-        }
-        controller.advanceTime(result.duration);
-        remaining -= result.duration;
+    if (cat.position().y >= ReturnHeight) {
+        returnToTop();
     }
+    controller.beginFrame(controls);
+    physics.update(duration, controller.motionRequest());
+    if (cat.position().y >= ReturnHeight) {
+        returnToTop();
+    }
+    controller.advanceTime(duration);
 }
 
 Foliage::Foliage(std::uint32_t seed)

@@ -10,6 +10,7 @@ namespace Cat
 namespace
 {
 constexpr int HeadFrames = Feet - Head;
+constexpr float JumpImpulse = 810;
 }
 
 Cat::Cat()
@@ -17,10 +18,8 @@ Cat::Cat()
     body.position = Engine::Vector2{450, 223.75F};
     body.supportShape.segments = std::array<Interval, 2>{Interval{-60.75F, -20.25F}, Interval{8.25F, 54.75F}};
     body.supportShape.overhang = 10;
-    body.supportShape.captureDistance = 10;
     body.supportShape.heightAllowance = 5;
     body.supportShape.minimumOverlap = 3;
-    body.supportShape.bridgeMargin = 5;
 }
 
 Engine::Vector2 Cat::position() const
@@ -54,9 +53,8 @@ void Cat::draw(Engine::Renderer2D& renderer, const Images& images) const
         origin + Engine::Vector2{44 * 0.75F, 120 * 0.75F}, 0.75F);
 }
 
-CatController::CatController(Body& body, CatPhysics& physics)
-    : body(body)
-    , physics(physics)
+CatController::CatController(CatPhysics& physics)
+    : physics(physics)
 {
 }
 
@@ -74,9 +72,11 @@ MotionRequest CatController::motionRequest()
 {
     if (physics.hasSupport() && (dropRequested || jumpBuffer > 0)) {
         constexpr float DropImpulse = 200;
-        constexpr float JumpImpulse = 810;
-        physics.detachSupport(dropRequested);
-        body.velocity.y = dropRequested ? std::max(DropImpulse, body.velocity.y + DropImpulse) : body.velocity.y - JumpImpulse;
+        if (dropRequested) {
+            physics.dropThrough(DropImpulse);
+        } else {
+            physics.launch(JumpImpulse);
+        }
         jumpBuffer = 0;
     }
     dropRequested = false;
@@ -87,15 +87,19 @@ MotionRequest CatController::motionRequest()
     constexpr float AirBraking = 800;
     constexpr float Gravity = 1500;
     const bool supported = physics.hasSupport();
-    const float target = direction != 0 ? static_cast<float>(direction) * RunningSpeed
-        : (physics.isCapturingSupport() ? body.velocity.x : 0);
+    const float target = static_cast<float>(direction) * RunningSpeed;
     const float acceleration = direction == 0
         ? (supported ? GroundBraking : AirBraking) : (supported ? GroundAcceleration : AirAcceleration);
-    return MotionRequest{target, acceleration, supported ? 0 : Gravity};
+    return MotionRequest{target, acceleration, Gravity};
 }
 
 void CatController::advanceTime(float duration)
 {
+    // Приземление в этом кадре ещё может использовать сохранённое нажатие прыжка.
+    if (jumpBuffer > 0 && physics.hasSupport()) {
+        physics.launch(JumpImpulse);
+        jumpBuffer = 0;
+    }
     jumpBuffer = std::max(0.0F, jumpBuffer - duration);
 }
 

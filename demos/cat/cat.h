@@ -59,14 +59,13 @@ private:
 class CatController
 {
 public:
-    CatController(Body& body, CatPhysics& physics);
+    explicit CatController(CatPhysics& physics);
     void beginFrame(const Controls& controls);
     MotionRequest motionRequest();
     void advanceTime(float duration);
     void cancelJump();
 
 private:
-    Body& body;
     CatPhysics& physics;
     int direction = 0;
     float jumpBuffer = 0;

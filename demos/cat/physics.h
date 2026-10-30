@@ -3,8 +3,6 @@
 #include "math2d.h"
 
 #include <array>
-#include <optional>
-#include <set>
 #include <vector>
 
 namespace Cat
@@ -17,135 +15,59 @@ struct Interval
 
 struct SupportShape
 {
-    // Локальные опорные отрезки, упорядоченные слева направо.
-    std::array<Interval, 2> segments;
-    float overhang = 0;
-    float captureDistance = 0;
-    float heightAllowance = 0;
-    float minimumOverlap = 0;
-    float bridgeMargin = 0;
+    std::array<Interval, 2> segments; // Локальные опорные отрезки слева направо.
+    float overhang = 0; // Допустимый вылет центра за край поверхности.
+    float heightAllowance = 0; // Допуск высоты при переходе между опорами.
+    float minimumOverlap = 0; // Перекрытие каждого отрезка своей поверхностью при опоре между ними.
 };
 
 struct Body
 {
-    Engine::Vector2 position;
+    Engine::Vector2 position; // X — центр опоры, Y — уровень контакта; ось Y направлена вниз.
     Engine::Vector2 velocity;
     SupportShape supportShape;
 };
 
-// Односторонняя горизонтальная поверхность с ограниченным вертикальным движением.
 struct Surface
 {
-    int id = -1; // Уникальный неотрицательный ID, независимый от адреса поверхности.
+    int id = -1; // Уникальный неотрицательный ID.
     Engine::Vector2 position;
     Engine::Size2 size;
-    float speed = 0; // Вертикальная скорость, положительное направление — вниз.
-    float top = 0;
+    float speed = 0; // Вертикальная скорость; положительное направление — вниз.
+    float top = 0; // При ненулевой скорости требуется top < bottom.
     float bottom = 0;
-};
-
-struct Trajectory
-{
-    Engine::Vector2 positionAt(float time) const;
-    Engine::Vector2 velocityAt(float time) const;
-
-    Engine::Vector2 origin;
-    Engine::Vector2 velocity;
-    Engine::Vector2 acceleration;
 };
 
 struct MotionRequest
 {
-    float horizontalTarget = 0;
-    float horizontalAcceleration = 0; // Неотрицательная величина.
-    float verticalAcceleration = 0; // Неотрицательная величина, ось Y направлена вниз.
+    float horizontalTarget = 0; // Целевая скорость по X, пиксели в секунду.
+    float horizontalAcceleration = 0; // Неотрицательное ускорение к целевой скорости.
+    float verticalAcceleration = 0; // Неотрицательное ускорение свободного падения.
 };
 
-enum class StepEventKind
-{
-    None,
-    ContactBegin,
-    ContactEnd,
-    LimitReached
-};
-
-struct StepResult
-{
-    float duration = 0;
-    StepEventKind event = StepEventKind::None;
-    int surfaceId = -1;
-};
-
-// Решатель одного тела и набора односторонних поверхностей.
+// Одно тело и односторонние горизонтальные поверхности; расстояния — пиксели, время — секунды.
 class CatPhysics
 {
 public:
-    // Тело и контейнер ссылок должны существовать дольше решателя.
-    // Элементы surfaces действительны и неизменны по составу между prepareStep() и advance().
-    CatPhysics(Body& body, std::vector<Surface*>& surfaces);
+    // Тело и контейнер должны жить дольше решателя; указатели действительны на время update().
+    CatPhysics(Body& body, const std::vector<Surface*>& surfaces);
     bool supports(int surfaceId) const;
     bool hasSupport() const;
-    bool isCapturingSupport() const;
-    void clearContacts();
-    void detachSupport(bool excludeContacts);
-    float prepareStep(float duration);
-    // maximumY ограничивает свободное движение по Y; дальнейшие действия после события определяет мир.
-    StepResult advance(float duration, const MotionRequest& request, std::optional<float> maximumY = std::nullopt);
-
-    static constexpr float TimeTolerance = 1e-9F;
+    void reset(Engine::Vector2 position, Engine::Vector2 velocity);
+    void launch(float upwardImpulse); // Отрыв с добавлением скорости вверх, включая скорость опоры.
+    void dropThrough(float downwardImpulse); // Импульс вниз и запрет приземления на 0,15 секунды.
+    // Один плавающий шаг целиком, без внутренних подшагов. duration >= 0, ускорения и импульсы >= 0.
+    // Платформы разворачиваются на границах, отбрасывая остаток перемещения.
+    // Опора: центр над поверхностью с overhang либо два отрезка над соседними поверхностями.
+    // Близкая высота допускает переход между опорами; приземление — пересечение уровня сверху вниз.
+    void update(float duration, const MotionRequest& request);
 
 private:
-    struct SupportQuery
-    {
-        float speed = 0;
-        float time = 0;
-        bool allowCapture = true;
-    };
-
-    struct VelocityLimit
-    {
-        float value;
-        float time;
-    };
-
-    struct MotionStep
-    {
-        Trajectory trajectory;
-        VelocityLimit velocityLimit;
-        float duration;
-    };
-
-    struct StepEvent
-    {
-        float time;
-        StepEventKind kind = StepEventKind::None;
-        const Surface* surface = nullptr;
-        float edgeX = 0;
-    };
-
-    struct SupportState
-    {
-        int surfaceId = -1;
-        int entrySide = 0; // 0 — устойчивая опора, +1 — захват слева, -1 — справа.
-        std::set<int> excluded;
-    };
-
-    std::vector<Interval> supportIntervals(const Surface& surface, SupportQuery query) const;
-    std::optional<Interval> supportInterval(const Surface& surface, float x, SupportQuery query) const;
-    std::optional<Interval> nextSupportInterval(const Surface& surface, float x, SupportQuery query) const;
-    const Surface* findSupport(int direction = 0, int excluded = -1) const;
-    void retireExcludedSurfaces();
-    void refreshSupport();
-    void excludeContactSurfaces();
-    void leaveEdge(const Surface& surface, float x);
-    MotionStep planMotion(float duration, const MotionRequest& request) const;
-    void limitSupportedMotion(const Surface& standing, bool entering, const Trajectory& trajectory, StepEvent& event) const;
-    void findAirborneEvent(const Trajectory& trajectory, StepEvent& event, std::optional<float> maximumY) const;
-    static float prepareSurfaceMotion(Surface& surface, float duration);
+    bool canSupport(const Surface& surface) const;
 
     Body& body;
-    std::vector<Surface*>& surfaces;
-    SupportState contactState;
+    const std::vector<Surface*>& surfaces;
+    int supportId = -1;
+    float dropTime = 0;
 };
-
 }
