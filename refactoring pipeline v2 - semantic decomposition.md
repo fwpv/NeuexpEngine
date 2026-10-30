@@ -1,4 +1,4 @@
-# Refactoring Pipeline — смысловая декомпозиция (версия 2)
+# Refactoring Pipeline
 
 ## 1. Назначение и цель
 
