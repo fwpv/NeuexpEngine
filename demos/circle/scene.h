@@ -13,8 +13,8 @@ struct HudState
     Vector2 shuttlePosition;
     Vector2 stationPosition;
     Vector2 beaconPosition;
-    int score;
-    bool targetLocked;
+    int score = 0;
+    bool targetLocked = false;
 };
 
 class Hud
@@ -49,6 +49,6 @@ private:
     std::vector<Drone> drones;
     std::vector<Bolt> bolts;
     Hud hud;
-    int score;
+    int score = 0;
 };
 }

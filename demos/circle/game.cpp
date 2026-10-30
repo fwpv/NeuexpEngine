@@ -92,15 +92,23 @@ private:
         Engine::CameraView worldView;
         Engine::UiView hudView;
         Engine::CameraError cameraError;
+        if (!camera.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, worldView, cameraError)) {
+            error = Platform::Error{"Camera2::createView",
+                "Could not calculate the world view. CameraError: " + std::to_string(static_cast<int>(cameraError)),
+                std::nullopt};
+            return false;
+        }
         Engine::UiError uiError;
-        if (!camera.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, worldView, cameraError)
-            || !Engine::UiCanvas{static_cast<float>(worldView.viewport.width) / worldSize.width}
+        if (!Engine::UiCanvas{static_cast<float>(worldView.viewport.width) / worldSize.width}
                 .createView(worldView.viewport, hudView, uiError)) {
-            error = Platform::Error{"Circle views", "Could not calculate the world and interface views.", std::optional<int>{}};
+            error = Platform::Error{"UiCanvas::createView",
+                "Could not calculate the interface view. UiError: " + std::to_string(static_cast<int>(uiError)),
+                std::nullopt};
             return false;
         }
 
         const float time = static_cast<float>(frame.elapsedTime);
+        Engine::Renderer2D& drawing = getRenderer();
         beginFrame(frame.window.width, frame.window.height, Engine::Color{0.004f, 0.008f, 0.025f, 1.0f});
         drawing.setWorldView(worldView);
         scene.drawWorld(drawing, time);
@@ -109,7 +117,6 @@ private:
         return endFrame(error);
     }
 
-    Engine::Renderer2D& drawing = getRenderer();
     Game::Scene scene;
     bool titleDirty = true;
     std::optional<bool> verticalSync;

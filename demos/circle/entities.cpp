@@ -48,13 +48,6 @@ void Bolt::draw(Engine::Renderer2D& renderer) const
     renderer.drawLine(location - velocity * 0.025f, location, options);
 }
 
-Shuttle::Shuttle()
-    : transform{Vector2{170, 390}, Pi / 2, Vector2{1, 1}, Vector2{}}
-    , thrusting(false)
-    , nextShotTime(0)
-{
-}
-
 void Shuttle::update(const InputState& input, float deltaTime)
 {
     Vector2 movement = {0.0f, 0.0f};
@@ -73,11 +66,13 @@ void Shuttle::update(const InputState& input, float deltaTime)
 
     thrusting = movement.x != 0.0f || movement.y != 0.0f;
     if (thrusting) {
-        transform.position += Engine::normalized(movement) * 205.0f * deltaTime;
+        constexpr float MovementSpeed = 205.0f; // Мировые единицы в секунду.
+        transform.position += Engine::normalized(movement) * MovementSpeed * deltaTime;
         transform.rotation = std::atan2(movement.y, movement.x) + (Pi / 2);
     }
 
-    transform.position = Engine::closestPoint(Rect{38, 76, 724, 429}, transform.position);
+    constexpr Rect MovementBounds = {38, 76, 724, 429};
+    transform.position = Engine::closestPoint(MovementBounds, transform.position);
 }
 
 std::optional<Bolt> Shuttle::fire(bool requested, float time)
@@ -87,8 +82,11 @@ std::optional<Bolt> Shuttle::fire(bool requested, float time)
     }
     const Affine2 shot = transform.toAffine();
     const Vector2 direction = Engine::normalized(shot.transformVector(Vector2{0, -1}));
-    nextShotTime = time + 0.24f;
-    return Bolt(shot.transformPoint(Vector2{0, -20.0f}), direction * 470.0f, 2.0f);
+    constexpr float ShotIntervalSeconds = 0.24f;
+    constexpr float BoltSpeed = 470.0f; // Мировые единицы в секунду.
+    constexpr float BoltLifetimeSeconds = 2.0f;
+    nextShotTime = time + ShotIntervalSeconds;
+    return Bolt(shot.transformPoint(Vector2{0, -20.0f}), direction * BoltSpeed, BoltLifetimeSeconds);
 }
 
 Vector2 Shuttle::position() const
@@ -127,8 +125,6 @@ void Shuttle::draw(Engine::Renderer2D& renderer, float time) const
 
 Drone::Drone(float startPhase)
     : phase(startPhase)
-    , respawnTime(0)
-    , active(true)
 {
 }
 
@@ -152,7 +148,8 @@ bool Drone::tryHit(Vector2 point, float time)
         return false;
     }
     active = false;
-    respawnTime = time + 4.0f;
+    constexpr float RespawnDelaySeconds = 4.0f;
+    respawnTime = time + RespawnDelaySeconds;
     return true;
 }
 
@@ -206,21 +203,23 @@ PortalPair::PortalPair()
         Portal(Vector2{138.0f, 184.0f}, Vector2{738.0f, 432.0f}),
         Portal(Vector2{690.0f, 432.0f}, Vector2{90.0f, 184.0f})
     }
-    , nextPortalTime(0)
-    , open(false)
 {
 }
 
 void PortalPair::update(Shuttle& shuttle, float time)
 {
-    const float cycle = std::fmod(time, 24.0f);
-    open = cycle > 7.0f && cycle < 14.0f;
+    constexpr float CycleSeconds = 24.0f;
+    constexpr float OpeningTimeSeconds = 7.0f;
+    constexpr float ClosingTimeSeconds = 14.0f;
+    const float cycle = std::fmod(time, CycleSeconds);
+    open = cycle > OpeningTimeSeconds && cycle < ClosingTimeSeconds;
     if (!open || time < nextPortalTime) {
         return;
     }
     for (const Portal& portal : portals) {
         if (portal.tryTeleport(shuttle)) {
-            nextPortalTime = time + 1.0f;
+            constexpr float TeleportCooldownSeconds = 1.0f;
+            nextPortalTime = time + TeleportCooldownSeconds;
             return;
         }
     }

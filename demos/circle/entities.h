@@ -25,11 +25,11 @@ using Engine::ShapeFill;
 // Игровые действия текущего кадра без системных кодов клавиш.
 struct InputState
 {
-    bool up;
-    bool down;
-    bool left;
-    bool right;
-    bool fire;
+    bool up = false;
+    bool down = false;
+    bool left = false;
+    bool right = false;
+    bool fire = false;
 };
 
 class Bolt
@@ -50,7 +50,6 @@ private:
 class Shuttle
 {
 public:
-    Shuttle();
     void update(const InputState& input, float deltaTime);
     std::optional<Bolt> fire(bool requested, float time);
     Vector2 position() const;
@@ -58,9 +57,9 @@ public:
     void draw(Engine::Renderer2D& renderer, float time) const;
 
 private:
-    Transform2 transform;
-    bool thrusting;
-    float nextShotTime;
+    Transform2 transform = {Vector2{170, 390}, Pi / 2, Vector2{1, 1}, Vector2{}};
+    bool thrusting = false;
+    float nextShotTime = 0;
 };
 
 class Drone
@@ -75,8 +74,8 @@ private:
     Vector2 position(float time) const;
 
     float phase;
-    float respawnTime;
-    bool active;
+    float respawnTime = 0;
+    bool active = true;
 };
 
 class Portal
@@ -100,8 +99,8 @@ public:
 
 private:
     const std::array<Portal, 2> portals;
-    float nextPortalTime;
-    bool open;
+    float nextPortalTime = 0;
+    bool open = false;
 };
 
 class Station

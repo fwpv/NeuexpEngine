@@ -9,12 +9,11 @@ namespace Game
 {
 namespace
 {
-const Size2 WorldSize = {800, 600};
+constexpr Size2 WorldSize = {800, 600};
 constexpr float HudInactiveAlpha = 0.18f;
 }
 
 Scene::Scene()
-    : score(0)
 {
     constexpr int StartingDroneCount = 3;
 
