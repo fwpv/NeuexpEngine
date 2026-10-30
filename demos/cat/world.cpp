@@ -1,4 +1,5 @@
 #include "world.h"
+#include "game.h"
 #include "geometry.h"
 
 #include <algorithm>
@@ -267,6 +268,58 @@ void Foliage::update(float duration, float catX)
             leaf.active = true;
         }
     }
+}
+
+float Platform::prepareMotion(float duration)
+{
+    constexpr float TurnTolerance = 0.01F;
+    if (speed == 0) {
+        return duration;
+    }
+    if (position.y <= top + TurnTolerance) {
+        position.y = top;
+        speed = std::abs(speed);
+    } else if (position.y >= bottom - TurnTolerance) {
+        position.y = bottom;
+        speed = -std::abs(speed);
+    }
+    return std::min(duration, (speed > 0 ? bottom - position.y : position.y - top) / std::abs(speed));
+}
+
+void Platform::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
+{
+    constexpr float PlatformCullBehind = 250;
+    constexpr float PlatformCullAhead = 5;
+    if (position.x <= visible.position.x - PlatformCullBehind
+        || position.x >= visible.position.x + visible.size.width + PlatformCullAhead) {
+        return;
+    }
+    images.draw(renderer, art, position);
+    for (const auto& decoration : decorations) {
+        images.draw(renderer, decoration.art, position + decoration.offset);
+    }
+}
+
+void Leaf::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
+{
+    if (active && Engine::intersects(visible, Engine::Rect{position - Engine::Vector2{25, 25}, Engine::Size2{50, 50}})) {
+        images.draw(renderer, art, position, 1, angle);
+    }
+}
+
+void Foliage::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
+{
+    for (const auto& leaf : leaves) {
+        leaf.draw(renderer, images, visible);
+    }
+}
+
+void World::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
+{
+    for (const auto& platform : platforms) {
+        platform.draw(renderer, images, visible);
+    }
+    cat.draw(renderer, images);
 }
 
 }
