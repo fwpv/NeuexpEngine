@@ -35,11 +35,15 @@ endif()
 add_test(NAME platform_dpi COMMAND platform_dpi_test)
 set_tests_properties(platform_dpi PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
 
-foreach(group math geometry transform)
+foreach(group math geometry transform polygon)
     add_executable(${group}_test ${group}_test.cpp)
     target_link_libraries(${group}_test PRIVATE engine_math project_warnings)
     add_test(NAME ${group} COMMAND ${group}_test)
 endforeach()
+
+add_executable(sprite_test sprite_test.cpp)
+target_link_libraries(sprite_test PRIVATE engine_renderer project_warnings)
+add_test(NAME sprite COMMAND sprite_test)
 
 add_executable(event_dispatcher_test event_dispatcher_test.cpp)
 target_link_libraries(event_dispatcher_test PRIVATE engine_events engine_input project_warnings)

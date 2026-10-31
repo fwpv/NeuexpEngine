@@ -1,7 +1,9 @@
 #include "geometry.h"
+#include "detail/segments.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 
 namespace Engine
 {
@@ -16,6 +18,71 @@ bool contains(const Circle& circle, Vector2 point)
 {
     return std::hypot(static_cast<double>(point.x) - circle.center.x,
         static_cast<double>(point.y) - circle.center.y) <= circle.radius;
+}
+
+namespace
+{
+bool containsVertices(const Vector2* vertices, std::size_t count, Vector2 point)
+{
+    if (count == 0) {
+        return false;
+    }
+    bool inside = false;
+    Vector2 previous = vertices[count - 1];
+    for (std::size_t index = 0; index < count; ++index) {
+        const Vector2 current = vertices[index];
+        if (Detail::onSegment(previous, current, point)) {
+            return true;
+        }
+        // Полуоткрытый интервал по Y учитывает вершину один раз. Горизонтальные
+        // рёбра не пересекают луч; сравнение через turn не требует деления.
+        if ((previous.y > point.y) != (current.y > point.y)) {
+            const double side = Detail::turn(previous, current, point);
+            if ((current.y > previous.y && side > 0) || (current.y < previous.y && side < 0)) {
+                inside = !inside;
+            }
+        }
+        previous = current;
+    }
+    return inside;
+}
+
+Rect vertexBounds(const Vector2* vertices, std::size_t count)
+{
+    if (count == 0) {
+        return {};
+    }
+    Vector2 minimum = vertices[0];
+    Vector2 maximum = minimum;
+    for (std::size_t index = 1; index < count; ++index) {
+        const Vector2 point = vertices[index];
+        minimum.x = std::min(minimum.x, point.x);
+        minimum.y = std::min(minimum.y, point.y);
+        maximum.x = std::max(maximum.x, point.x);
+        maximum.y = std::max(maximum.y, point.y);
+    }
+    return {minimum, Size2{maximum.x - minimum.x, maximum.y - minimum.y}};
+}
+}
+
+bool contains(const Polygon& polygon, Vector2 point)
+{
+    return containsVertices(polygon.data(), polygon.size(), point);
+}
+
+bool contains(const Quad& polygon, Vector2 point)
+{
+    return containsVertices(polygon.data(), polygon.size(), point);
+}
+
+Rect bounds(const Polygon& polygon)
+{
+    return vertexBounds(polygon.data(), polygon.size());
+}
+
+Rect bounds(const Quad& polygon)
+{
+    return vertexBounds(polygon.data(), polygon.size());
 }
 
 Vector2 closestPoint(const Rect& rectangle, Vector2 point)

@@ -352,6 +352,19 @@ void sprites(Renderer2D& renderer)
     pixel(230, 10, Red);
     pixel(30, 150, Black);
 
+    frame(renderer);
+    region.transform = {{100, 100}, Pi / 2, {2, 3}, {10, 5}};
+    renderer.drawSprite(region);
+    DrawOptions outline;
+    outline.color = White;
+    outline.lineWidth = 3;
+    renderer.drawPolygon(region.polygon(), outline, ShapeFill::Outline);
+    check(renderer.endFrame(error), error);
+    pixel(100, 100, Blue);
+    pixel(85, 100, White);
+    pixel(100, 80, White);
+    pixel(80, 100, Black);
+
     // Цвет и альфа текстуры, спрайта и DrawOptions перемножаются.
     const auto translucent = create(renderer, {1, 1, {255, 255, 255, 128}});
     Sprite tinted(translucent);

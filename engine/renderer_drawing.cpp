@@ -106,9 +106,24 @@ void Renderer2D::drawEllipse(Vector2 center, Vector2 radii, Color color, ShapeFi
     drawEllipse(center, radii, colored(color), fill, segments);
 }
 
-void Renderer2D::drawPolygon(const std::vector<Vector2>& vertices, Color color, ShapeFill fill)
+void Renderer2D::drawPolygon(const Polygon& polygon, const DrawOptions& options, ShapeFill fill)
 {
-    drawPolygon(vertices, colored(color), fill);
+    queuePolygon(polygon.data(), polygon.size(), options, fill);
+}
+
+void Renderer2D::drawPolygon(const Polygon& polygon, Color color, ShapeFill fill)
+{
+    drawPolygon(polygon, colored(color), fill);
+}
+
+void Renderer2D::drawPolygon(const Quad& polygon, const DrawOptions& options, ShapeFill fill)
+{
+    queuePolygon(polygon.data(), polygon.size(), options, fill);
+}
+
+void Renderer2D::drawPolygon(const Quad& polygon, Color color, ShapeFill fill)
+{
+    drawPolygon(polygon, colored(color), fill);
 }
 
 void Renderer2D::drawDebugText(std::string_view message, Vector2 position, const DrawOptions& options, float pixel)

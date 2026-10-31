@@ -105,6 +105,7 @@ void primitives()
     auto reversed = concave;
     std::reverse(reversed.begin(), reversed.end());
     renderer.drawPolygon(reversed, style(Red, { { 115, 0 }, 0, { 1, 1 }, {} }), ShapeFill::Filled);
+    renderer.drawPolygon(Rect{210, 210, 30, 30}.corners(), Blue);
     check(renderer.endFrame(error), error);
     pixel(15, 15, Red);
     pixel(59, 49, Red);
@@ -128,6 +129,7 @@ void primitives()
     pixel(185, 170, Red);
     pixel(135, 220, Red);
     pixel(185, 220, Black);
+    pixel(220, 220, Blue);
 
     renderer.beginFrame(ImageSize, ImageSize, Black);
     renderer.setUiView(screen());
@@ -140,7 +142,7 @@ void primitives()
 
     renderer.beginFrame(ImageSize, ImageSize, Black);
     renderer.setUiView(screen());
-    renderer.drawPolygon(concave, style({ 1, 0, 0, 0.5F }), ShapeFill::Filled);
+    renderer.drawPolygon(concave, Color{1, 0, 0, 0.5F}, ShapeFill::Filled);
     check(renderer.endFrame(error), error);
     pixel(20, 200, { 0.5F, 0, 0 });
     pixel(70, 200, Black);
@@ -327,9 +329,11 @@ void errors()
     };
     for (const auto& polygon : invalid) {
         for (ShapeFill fill : { ShapeFill::Filled, ShapeFill::Outline }) {
-            reject([&] { renderer.drawPolygon(polygon, style(Red), fill); }, RenderError::InvalidGeometry, "Invalid polygon accepted.");
+            reject([&] { renderer.drawPolygon(polygon, style(Red), fill); }, RenderError::InvalidGeometry, "Invalid Polygon value accepted.");
         }
     }
+    reject([&] { renderer.drawPolygon(Quad{}, Red); }, RenderError::InvalidGeometry, "Degenerate quad accepted.");
+    reject([&] { renderer.drawPolygon(Polygon{}, style(Red)); }, RenderError::InvalidGeometry, "Empty polygon accepted.");
     reject([&] { renderer.drawCircle({ {}, -1 }, style(Red), ShapeFill::Filled); }, RenderError::InvalidGeometry, "Negative radius accepted.");
     reject([&] { renderer.drawCircle({ {}, 10 }, style(Red), ShapeFill::Filled, 2); }, RenderError::InvalidGeometry, "Invalid circle subdivision accepted.");
     reject([&] { renderer.drawRectangle({ 10, 10, -1, 20 }, style(Red), ShapeFill::Filled); }, RenderError::InvalidGeometry, "Negative rectangle accepted.");
@@ -477,10 +481,10 @@ void sorting()
     renderer.drawRectangle({ 0, 0, 100, 100 }, ordered(Blue, 1), ShapeFill::Filled);
     renderer.setClip(std::nullopt);
     // Отложенные команды владеют копией вершин и параметров.
-    std::vector<Vector2> vertices = { { 10, 120 }, { 70, 120 }, { 10, 180 } };
+    Polygon polygon = {Vector2{10, 120}, Vector2{70, 120}, Vector2{10, 180}};
     DrawOptions options = style(Blue);
-    renderer.drawPolygon(vertices, options, ShapeFill::Filled);
-    vertices.clear();
+    renderer.drawPolygon(polygon, options, ShapeFill::Filled);
+    polygon.clear();
     options.color = Green;
     options.transform.m02 = 1000;
     check(renderer.endFrame(error), error);
@@ -531,7 +535,7 @@ void ellipses()
     renderer.drawEllipse({ 5, 0 }, { 12, 5 }, transformed, ShapeFill::Filled, 64);
     renderer.drawRectangle({ 150, 20, 20, 20 }, Blue);
     renderer.drawEllipse({ 65, 140 }, { 20, 10 }, White, ShapeFill::Outline, 4);
-    renderer.drawPolygon({ { 5, 170 }, { 25, 170 }, { 5, 190 } }, Green);
+    renderer.drawPolygon(Polygon{Vector2{5, 170}, Vector2{25, 170}, Vector2{5, 190}}, Green);
     renderer.drawLine({ 150.5F, 60.5F }, { 190.5F, 60.5F });
     DrawOptions point = style(Red);
     point.pointSize = 5;

@@ -350,12 +350,7 @@ bool Renderer2D::queueRectangle(const Rect& rectangle, ShapeFill fill, const Dra
         error = RenderError::InvalidGeometry;
         return false;
     }
-    const std::array<Vector2, 4> vertices = {
-        rectangle.position,
-        rectangle.position + Vector2{rectangle.size.width, 0},
-        rectangle.position + Vector2{rectangle.size.width, rectangle.size.height},
-        rectangle.position + Vector2{0, rectangle.size.height}
-    };
+    const Quad vertices = rectangle.corners();
     return submit(fill == ShapeFill::Filled ? Primitive::Quads : Primitive::LineLoop,
         vertices.data(), vertices.size(), options, error);
 }
@@ -409,8 +404,7 @@ void Renderer2D::drawCircle(const Circle& circle, const DrawOptions& options, Sh
         vertices.data(), vertices.size(), options, firstError);
 }
 
-void Renderer2D::drawPolygon(const std::vector<Vector2>& vertices, const DrawOptions& options,
-    ShapeFill fill)
+void Renderer2D::queuePolygon(const Vector2* vertices, std::size_t count, const DrawOptions& options, ShapeFill fill)
 {
     if (!ready()) {
         return;
@@ -422,7 +416,7 @@ void Renderer2D::drawPolygon(const std::vector<Vector2>& vertices, const DrawOpt
     // Подготовка геометрии завершается до отправки команд: отказ не оставляет частичной заливки.
     std::vector<Vector2> contour;
     std::vector<std::array<std::size_t, 3>> triangles;
-    if (!Detail::triangulatePolygon(vertices, contour, triangles)) {
+    if (!Detail::triangulatePolygon(vertices, count, contour, triangles)) {
         firstError = RenderError::InvalidGeometry;
         return;
     }

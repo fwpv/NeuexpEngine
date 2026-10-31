@@ -332,7 +332,7 @@ void Renderer2D::executeTexture(const Command& command) const
             const float right = horizontal.positions[static_cast<std::size_t>(x)];
             const float top = vertical.positions[static_cast<std::size_t>(y - 1)];
             const float bottom = vertical.positions[static_cast<std::size_t>(y)];
-            const std::array<Vector2, 4> positions = {Vector2{left, top}, Vector2{right, top}, Vector2{right, bottom}, Vector2{left, bottom}};
+            const Quad positions = Rect{left, top, right - left, bottom - top}.corners();
             for (const auto position : positions) {
                 glTexCoord2f(horizontal.coordinate(position.x), vertical.coordinate(position.y));
                 const auto point = command.options.transform.transformPoint(origin + Vector2{extent.x * position.x, extent.y * position.y});

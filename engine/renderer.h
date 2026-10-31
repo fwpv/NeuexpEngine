@@ -119,10 +119,13 @@ public:
         ShapeFill fill = ShapeFill::Filled, unsigned int segments = 48);
     // Простой многоугольник без отверстий и самопересечений, >= 3 вершин.
     // Любой обход; соседние повторы, замыкающая вершина и коллинеарность допустимы.
-    void drawPolygon(const std::vector<Vector2>& vertices, const DrawOptions& options = {},
+    // Пустые и вырожденные контуры отклоняются, в том числе при рисовании обводки.
+    void drawPolygon(const Polygon& polygon, const DrawOptions& options = {},
         ShapeFill fill = ShapeFill::Filled);
-    void drawPolygon(const std::vector<Vector2>& vertices, Color color,
+    void drawPolygon(const Polygon& polygon, Color color, ShapeFill fill = ShapeFill::Filled);
+    void drawPolygon(const Quad& polygon, const DrawOptions& options = {},
         ShapeFill fill = ShapeFill::Filled);
+    void drawPolygon(const Quad& polygon, Color color, ShapeFill fill = ShapeFill::Filled);
     void drawGradientRectangle(const Rect& bounds, Color top, Color bottom, const DrawOptions& options = {});
     void drawTexture(const Texture& texture, const Rect& bounds, const DrawOptions& options = {},
         const TextureSampling& sampling = {});
@@ -136,6 +139,7 @@ public:
 
 private:
     bool queueRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options, RenderError& error);
+    void queuePolygon(const Vector2* vertices, std::size_t count, const DrawOptions& options, ShapeFill fill);
 
     bool ready();
 

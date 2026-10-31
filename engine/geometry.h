@@ -2,8 +2,20 @@
 
 #include "math2d.h"
 
+#include <array>
+#include <vector>
+
 namespace Engine
 {
+// Четырёхугольный полигон: четыре последовательные вершины, замыкание не повторяется.
+// Форма не обязана быть квадратом или прямоугольником.
+using Quad = std::array<Vector2, 4>;
+
+// Простой замкнутый контур без отверстий и самопересечений; вершины конечные.
+// Последняя вершина соединяется с первой автоматически. Любой обход;
+// соседние повторы, повтор первой вершины в конце и коллинеарные точки допустимы.
+using Polygon = std::vector<Vector2>;
+
 // Прямоугольник вдоль координатных осей. Размеры неотрицательные, границы включены.
 // position — угол с минимальными x/y, независимо от направления экранной оси y.
 struct Rect
@@ -28,6 +40,14 @@ struct Rect
     {
         return {position.x + size.width / 2, position.y + size.height / 2};
     }
+
+    // Обход от угла с минимальными x/y: +x, затем +y.
+    constexpr Quad corners() const
+    {
+        return {position, Vector2{position.x + size.width, position.y},
+            Vector2{position.x + size.width, position.y + size.height},
+            Vector2{position.x, position.y + size.height}};
+    }
 };
 
 // Радиус неотрицательный. Нулевые размеры фигур допустимы.
@@ -43,6 +63,7 @@ struct Circle
     {
     }
 };
+
 
 constexpr bool operator==(const Rect& first, const Rect& second)
 {
@@ -66,6 +87,13 @@ constexpr bool operator!=(const Circle& first, const Circle& second)
 
 bool contains(const Rect& rectangle, Vector2 point);
 bool contains(const Circle& circle, Vector2 point);
+// Граница включена. Пустой полигон не содержит точек; вырожденный содержит
+// только точки своих рёбер. point должен быть конечным.
+bool contains(const Polygon& polygon, Vector2 point);
+bool contains(const Quad& polygon, Vector2 point);
+// Для пустого полигона возвращает Rect{}; для вырожденного размер может быть нулевым.
+Rect bounds(const Polygon& polygon);
+Rect bounds(const Quad& polygon);
 // Ближайшая точка замкнутого прямоугольника; внутренняя точка возвращается без изменения.
 Vector2 closestPoint(const Rect& rectangle, Vector2 point);
 // Касание считается пересечением, в том числе для вырожденных фигур.

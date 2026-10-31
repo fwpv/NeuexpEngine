@@ -105,7 +105,7 @@ private:
         drawing.drawRectangle(LocalBounds, shape);
         shape.color = Engine::Color{1, 1, 1};
         drawing.drawRectangle(Engine::Rect{28, 44, 80, 12}, shape);
-        drawing.drawPolygon(std::vector<Engine::Vector2>{Engine::Vector2{132, 50},
+        drawing.drawPolygon(Engine::Polygon{Engine::Vector2{132, 50},
             Engine::Vector2{108, 34}, Engine::Vector2{108, 66}}, shape);
         drawing.drawRectangle(bounds, Engine::Color{1, 0.6F, 0.2F}, Engine::ShapeFill::Outline);
 

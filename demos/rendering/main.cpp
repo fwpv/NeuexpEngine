@@ -231,7 +231,7 @@ private:
         renderer.drawRectangle(Rect{105, -15, 215, 155}, paint(Color{0.39F, 0.48F, 0.47F}, LandscapeDetailLayer));
         renderer.drawCircle(Circle{Vector2{345, -220}, 85}, paint(Color{0.15F, 0.43F, 0.52F}, LandscapeLayer));
         renderer.drawCircle(Circle{Vector2{365, -235}, 57}, paint(Color{0.22F, 0.54F, 0.61F}, LandscapeDetailLayer));
-        const std::vector<Vector2> garden = {Vector2{95, 210}, Vector2{185, 210}, Vector2{185, 240},
+        const Polygon garden = {Vector2{95, 210}, Vector2{185, 210}, Vector2{185, 240},
             Vector2{130, 240}, Vector2{130, 310}, Vector2{95, 310}};
         renderer.drawPolygon(garden, paint(Color{0.46F, 0.30F, 0.25F}, -8), ShapeFill::Filled);
         for (int flower = 0; flower < 4; ++flower) {
@@ -258,7 +258,7 @@ private:
         }
         constexpr float MillSortY = -70;
         renderer.drawRectangle(Rect{-385, -195, 90, 125}, paint(Color{0.79F, 0.70F, 0.51F}, ActorLayer, MillSortY));
-        const std::vector<Vector2> roof = {Vector2{-402, -195}, Vector2{-340, -252}, Vector2{-278, -195}};
+        const Polygon roof = {Vector2{-402, -195}, Vector2{-340, -252}, Vector2{-278, -195}};
         renderer.drawPolygon(roof, paint(Color{0.62F, 0.31F, 0.22F}, ActorLayer, MillSortY), ShapeFill::Filled);
         const float stretch = 1 + 0.12F * std::sin(animation);
         const Transform2 rotor = {Vector2{-340, -175}, animation * 0.7F, Vector2{stretch, stretch}, Vector2{}};

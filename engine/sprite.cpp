@@ -14,4 +14,9 @@ Sprite::Sprite(const Texture& texture, const Rect& textureRect)
     , size(textureRect.size)
 {
 }
+
+Quad Sprite::polygon() const
+{
+    return transformed(Rect{Vector2{}, size}.corners(), transform.toAffine());
+}
 }

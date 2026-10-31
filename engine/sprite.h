@@ -14,6 +14,10 @@ struct Sprite
     explicit Sprite(const Texture& texture);
     Sprite(const Texture& texture, const Rect& textureRect);
 
+    // Четыре угла после transform, без преобразований DrawOptions и камеры.
+    // Не зависит от текстуры, visible и альфа-канала; size должен быть неотрицательным.
+    Quad polygon() const;
+
     Texture texture;
     // Пиксели исходной текстуры, начало сверху слева. nullopt — вся текстура.
     // Участок должен быть конечным, с неотрицательными размерами и внутри текстуры.

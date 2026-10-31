@@ -36,6 +36,10 @@ struct Affine2
 // first * second сначала применяет second, затем first, сохраняя в том числе неперпендикулярные оси.
 Affine2 operator*(const Affine2& first, const Affine2& second);
 
+// Преобразует все вершины, сохраняя их порядок; исходный полигон не меняется.
+Polygon transformed(const Polygon& polygon, const Affine2& transform);
+Quad transformed(const Quad& polygon, const Affine2& transform);
+
 struct Transform2
 {
     Vector2 position;
