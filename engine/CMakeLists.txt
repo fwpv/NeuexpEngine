@@ -29,7 +29,7 @@ if(BUILD_DEMOS OR BUILD_TESTING)
     target_include_directories(engine_entry_point PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
     target_link_libraries(engine_entry_point PRIVATE project_warnings)
 
-    add_library(engine_renderer STATIC renderer.cpp renderer_textures.cpp texture.cpp renderer_drawing.cpp detail/polygon.cpp)
+    add_library(engine_renderer STATIC renderer.cpp renderer_textures.cpp texture.cpp sprite.cpp renderer_drawing.cpp detail/polygon.cpp)
     target_include_directories(engine_renderer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
     target_link_libraries(engine_renderer PUBLIC engine_ui engine_resources PRIVATE project_warnings)
     if(WIN32)

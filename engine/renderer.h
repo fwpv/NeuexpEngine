@@ -3,6 +3,7 @@
 #include "camera.h"
 #include "ui.h"
 #include "texture.h"
+#include "sprite.h"
 
 #include <array>
 #include <cstddef>
@@ -125,6 +126,9 @@ public:
     void drawGradientRectangle(const Rect& bounds, Color top, Color bottom, const DrawOptions& options = {});
     void drawTexture(const Texture& texture, const Rect& bounds, const DrawOptions& options = {},
         const TextureSampling& sampling = {});
+    // Невидимый спрайт пропускается. Преобразование options применяется после transform
+    // спрайта; цвета перемножаются. Слой, порядок и отсечение работают как у остальных команд.
+    void drawSprite(const Sprite& sprite, const DrawOptions& options = {});
     // Встроенный шрифт 3x5: ASCII A-Z, 0-9 и знаки - + /. Остальные байты дают пробел.
     // pixel — размер пикселя глифа в локальных координатах, конечный и положительный.
     void drawDebugText(std::string_view message, Vector2 position, const DrawOptions& options = {}, float pixel = 2);
@@ -162,6 +166,7 @@ private:
         std::optional<std::array<Color, 2>> gradient;
         Texture texture;
         TextureSampling sampling;
+        std::optional<Rect> textureRect;
     };
 
     bool selectView(const Viewport& area, const Affine2& transform, Stage next, RenderError& error);
@@ -172,6 +177,8 @@ private:
         const std::optional<std::array<Color, 2>>& gradient) const;
     void flush();
     void executeTexture(const Command& command) const;
+    void queueTexture(const Texture& texture, const Rect& bounds, const DrawOptions& options,
+        const TextureSampling& sampling, const std::optional<Rect>& textureRect);
     void applyClip(const std::optional<Viewport>& area) const;
 
     bool initialized = false;

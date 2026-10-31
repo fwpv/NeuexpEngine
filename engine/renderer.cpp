@@ -263,7 +263,7 @@ bool Renderer2D::submit(Primitive primitive, const Vector2* vertices, std::size_
     DrawOptions screenOptions = options;
     screenOptions.transform = viewTransform * options.transform;
     commands.push_back(Command{primitive, std::vector<Vector2>(vertices, vertices + count),
-        screenOptions, clip, std::nullopt, Texture{}, TextureSampling{}});
+        screenOptions, clip, std::nullopt, Texture{}, TextureSampling{}, std::nullopt});
     return true;
 }
 

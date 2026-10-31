@@ -198,6 +198,32 @@ bool Renderer2D::loadTexture(const ResourceFiles& files, const std::string& name
 void Renderer2D::drawTexture(const Texture& texture, const Rect& rectangle, const DrawOptions& options,
     const TextureSampling& sampling)
 {
+    queueTexture(texture, rectangle, options, sampling, std::nullopt);
+}
+
+void Renderer2D::drawSprite(const Sprite& sprite, const DrawOptions& options)
+{
+    if (!ready() || !sprite.visible) {
+        return;
+    }
+    DrawOptions combined;
+    combined.transform = sprite.transform.toAffine();
+    combined.color = sprite.color;
+    if (!prepareDraw(options, firstError) || !prepareDraw(combined, firstError)) {
+        return;
+    }
+    combined = options;
+    combined.transform = options.transform * sprite.transform.toAffine();
+    combined.color = {options.color.red * sprite.color.red, options.color.green * sprite.color.green,
+        options.color.blue * sprite.color.blue, options.color.alpha * sprite.color.alpha};
+    TextureSampling sampling;
+    sampling.filter = sprite.filter;
+    queueTexture(sprite.texture, Rect{Vector2{}, sprite.size}, combined, sampling, sprite.textureRect);
+}
+
+void Renderer2D::queueTexture(const Texture& texture, const Rect& rectangle, const DrawOptions& options,
+    const TextureSampling& sampling, const std::optional<Rect>& textureRect)
+{
     if (!ready()) {
         return;
     }
@@ -212,6 +238,17 @@ void Renderer2D::drawTexture(const Texture& texture, const Rect& rectangle, cons
         firstError = RenderError::InvalidOptions;
         return;
     }
+    if (textureRect) {
+        const auto& area = *textureRect;
+        if (!std::isfinite(area.position.x) || !std::isfinite(area.position.y)
+            || !std::isfinite(area.size.width) || !std::isfinite(area.size.height)
+            || area.position.x < 0 || area.position.y < 0 || area.size.width < 0 || area.size.height < 0
+            || static_cast<double>(area.position.x) + area.size.width > texture.width()
+            || static_cast<double>(area.position.y) + area.size.height > texture.height()) {
+            firstError = RenderError::InvalidGeometry;
+            return;
+        }
+    }
     const auto previous = commands.size();
     if (!queueRectangle(rectangle, ShapeFill::Filled, options, firstError)) {
         return;
@@ -219,6 +256,7 @@ void Renderer2D::drawTexture(const Texture& texture, const Rect& rectangle, cons
     if (commands.size() > previous) {
         commands.back().texture = texture;
         commands.back().sampling = sampling;
+        commands.back().textureRect = textureRect;
     }
 }
 
@@ -247,28 +285,44 @@ void Renderer2D::executeTexture(const Command& command) const
         int count = 2;
         float halfPixel = 0;
         float repeats = 1;
+        float start = 0;
+        float span = 1;
+        float minimum = 0;
+        float maximum = 1;
         bool clamp = false;
 
         float coordinate(float position) const
         {
-            const float value = position * repeats;
-            return clamp ? std::clamp(value, halfPixel, 1 - halfPixel) : value;
+            const float value = start + position * repeats * span;
+            return clamp ? std::clamp(value, minimum, maximum) : value;
         }
     };
-    const auto axis = [](int size, float repeats, TextureWrap wrap) {
+    const auto axis = [](int size, float repeats, TextureWrap wrap, float start, float span) {
         Axis result;
         result.halfPixel = 0.5F / static_cast<float>(size);
         result.repeats = repeats;
+        result.start = start;
+        result.span = span;
+        result.minimum = start + std::min(result.halfPixel, span / 2);
+        result.maximum = start + span - std::min(result.halfPixel, span / 2);
         result.clamp = wrap == TextureWrap::Clamp;
         if (result.clamp) {
-            result.positions = {0, std::min(result.halfPixel / repeats, 1.0F),
-                std::min((1 - result.halfPixel) / repeats, 1.0F), 1};
+            if (span > 0) {
+                result.positions = {0, std::min((result.minimum - start) / span / repeats, 1.0F),
+                    std::min((result.maximum - start) / span / repeats, 1.0F), 1};
+            }
             result.count = 4;
         }
         return result;
     };
-    const Axis horizontal = axis(texture.storageWidth, sampling.repeats.x, sampling.wrapX);
-    const Axis vertical = axis(texture.storageHeight, sampling.repeats.y, sampling.wrapY);
+    const Rect area = command.textureRect.value_or(Rect{0, 0,
+        static_cast<float>(texture.width), static_cast<float>(texture.height)});
+    const float width = static_cast<float>(texture.width);
+    const float height = static_cast<float>(texture.height);
+    const Axis horizontal = axis(texture.storageWidth, sampling.repeats.x, sampling.wrapX,
+        area.position.x / width, area.size.width / width);
+    const Axis vertical = axis(texture.storageHeight, sampling.repeats.y, sampling.wrapY,
+        area.position.y / height, area.size.height / height);
     const Vector2 origin = command.vertices[0];
     const Vector2 extent = command.vertices[2] - origin;
     glBegin(GL_QUADS);
