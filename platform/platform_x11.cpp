@@ -652,7 +652,7 @@ void reportError(const Error& error, bool)
 bool initialize(const WindowOptions& options, Error& error)
 {
     error = {};
-    if (display || initialized) {
+    if (display || initialized || !previousLocale.empty()) {
         error = Error{"initialize", "Call shutdown before initializing again.", std::nullopt};
         return false;
     }
@@ -987,11 +987,18 @@ bool shutdown(Error& result)
     numLockMask = 0;
     altMask = Mod1Mask;
     superMask = Mod4Mask;
+    // При отказе сохраняем настройки для повторного shutdown().
     if (!previousLocale.empty()) {
-        std::setlocale(LC_CTYPE, previousLocale.c_str());
-        previousLocale.clear();
-        XSetLocaleModifiers(previousLocaleModifiers.c_str());
-        previousLocaleModifiers.clear();
+        if (!std::setlocale(LC_CTYPE, previousLocale.c_str())) {
+            Detail::keepFirstError(result, Error{"setlocale (restore LC_CTYPE)",
+                "Could not restore the previous character locale.", std::nullopt});
+        } else if (!XSetLocaleModifiers(previousLocaleModifiers.c_str())) {
+            Detail::keepFirstError(result, Error{"XSetLocaleModifiers (restore)",
+                "Could not restore the previous locale modifiers.", std::nullopt});
+        } else {
+            previousLocale.clear();
+            previousLocaleModifiers.clear();
+        }
     }
     Detail::resetInput();
     return result.operation.empty();

@@ -109,7 +109,7 @@ bool ResourceFiles::readBinary(const std::string& name, std::vector<std::uint8_t
     if (!bytes.empty()) {
         input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
-    if (!input || input.peek() != std::char_traits<char>::eof()) {
+    if (!input || input.peek() != std::char_traits<char>::eof() || input.bad()) {
         error = {ResourceErrorCode::Io, "Cannot read resource completely: " + name};
         return false;
     }
