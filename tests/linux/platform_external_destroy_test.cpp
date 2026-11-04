@@ -56,9 +56,9 @@ int main()
         options.width = 320;
         options.height = 240;
         options.title = "External destruction test";
-        std::vector<Platform::Error> errors;
-        if (!Platform::initialize(options, errors)) {
-            PlatformTest::reportErrors(errors);
+        Platform::Error failure;
+        if (!Platform::initialize(options, failure)) {
+            PlatformTest::reportError(failure);
             exitCode = 1;
             break;
         }
@@ -71,14 +71,14 @@ int main()
         injectUnrelatedError = scenario == Scenario::UnrelatedError;
 
         // Не вызываем processEvents: shutdown должен учитывать ещё не разобранное DestroyNotify.
-        Platform::shutdown(errors);
+        Platform::shutdown(failure);
         const bool passed = scenario == Scenario::UnrelatedError
-            ? errors.size() == 1 && errors.front().operation == "XDestroyWindow"
-                && errors.front().nativeCode == BadWindow
-            : errors.empty();
+            ? !failure.operation.empty() && failure.operation == "XDestroyWindow"
+                && failure.nativeCode == BadWindow
+            : failure.operation.empty();
         if (!passed) {
             std::cerr << "Unexpected shutdown result in scenario " << static_cast<int>(scenario) << ".\n";
-            PlatformTest::reportErrors(errors);
+            PlatformTest::reportError(failure);
             exitCode = 1;
             break;
         }

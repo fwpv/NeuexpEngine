@@ -4,6 +4,7 @@
 #include "math2d.h"
 
 #include <memory>
+#include <cstddef>
 
 namespace Engine
 {

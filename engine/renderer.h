@@ -3,12 +3,19 @@
 #include "camera.h"
 #include "ui.h"
 #include "texture.h"
+#include "sprite.h"
+#include "geometry.h"
+#include "math2d.h"
+#include "resources.h"
+#include "transform.h"
 
 #include <array>
 #include <cstddef>
 #include <optional>
 #include <string_view>
 #include <vector>
+#include <memory>
+#include <string>
 
 namespace Engine
 {
@@ -118,20 +125,27 @@ public:
         ShapeFill fill = ShapeFill::Filled, unsigned int segments = 48);
     // Простой многоугольник без отверстий и самопересечений, >= 3 вершин.
     // Любой обход; соседние повторы, замыкающая вершина и коллинеарность допустимы.
-    void drawPolygon(const std::vector<Vector2>& vertices, const DrawOptions& options = {},
+    // Пустые и вырожденные контуры отклоняются, в том числе при рисовании обводки.
+    void drawPolygon(const Polygon& polygon, const DrawOptions& options = {},
         ShapeFill fill = ShapeFill::Filled);
-    void drawPolygon(const std::vector<Vector2>& vertices, Color color,
+    void drawPolygon(const Polygon& polygon, Color color, ShapeFill fill = ShapeFill::Filled);
+    void drawPolygon(const Quad& polygon, const DrawOptions& options = {},
         ShapeFill fill = ShapeFill::Filled);
+    void drawPolygon(const Quad& polygon, Color color, ShapeFill fill = ShapeFill::Filled);
     void drawGradientRectangle(const Rect& bounds, Color top, Color bottom, const DrawOptions& options = {});
     void drawTexture(const Texture& texture, const Rect& bounds, const DrawOptions& options = {},
         const TextureSampling& sampling = {});
+    // Невидимый спрайт пропускается. Преобразование options применяется после transform
+    // спрайта; цвета перемножаются. Слой, порядок и отсечение работают как у остальных команд.
+    void drawSprite(const Sprite& sprite, const DrawOptions& options = {});
     // Встроенный шрифт 3x5: ASCII A-Z, 0-9 и знаки - + /. Остальные байты дают пробел.
     // pixel — размер пикселя глифа в локальных координатах, конечный и положительный.
     void drawDebugText(std::string_view message, Vector2 position, const DrawOptions& options = {}, float pixel = 2);
     void drawDebugText(std::string_view message, Vector2 position, Color color, float pixel = 2);
 
 private:
-    bool queueRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options, RenderError& error);
+    bool queueRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options);
+    void queuePolygon(const Vector2* vertices, std::size_t count, const DrawOptions& options, ShapeFill fill);
 
     bool ready();
 
@@ -162,16 +176,19 @@ private:
         std::optional<std::array<Color, 2>> gradient;
         Texture texture;
         TextureSampling sampling;
+        std::optional<Rect> textureRect;
     };
 
-    bool selectView(const Viewport& area, const Affine2& transform, Stage next, RenderError& error);
-    bool prepareDraw(const DrawOptions& options, RenderError& error) const;
+    bool selectView(const Viewport& area, const Affine2& transform, Stage next);
+    bool prepareDraw(const DrawOptions& options);
     bool submit(Primitive primitive, const Vector2* vertices, std::size_t count,
-        const DrawOptions& options, RenderError& error);
+        const DrawOptions& options);
     void execute(Primitive primitive, const Vector2* vertices, std::size_t count, const DrawOptions& options,
         const std::optional<std::array<Color, 2>>& gradient) const;
     void flush();
     void executeTexture(const Command& command) const;
+    void queueTexture(const Texture& texture, const Rect& bounds, const DrawOptions& options,
+        const TextureSampling& sampling, const std::optional<Rect>& textureRect);
     void applyClip(const std::optional<Viewport>& area) const;
 
     bool initialized = false;

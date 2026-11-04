@@ -1,4 +1,7 @@
 #include "camera.h"
+#include "geometry.h"
+#include "math2d.h"
+#include "transform.h"
 
 #include <algorithm>
 #include <cmath>
@@ -70,8 +73,7 @@ bool Camera2::createView(const Viewport& area, CameraView& result, CameraError& 
     }
     const Transform2 transform = {candidate.viewport.bounds().center(), 0, Vector2{pixelsPerUnit, pixelsPerUnit}, position};
     candidate.worldToScreenTransform = transform.toAffine();
-    TransformError transformError;
-    if (!candidate.worldToScreenTransform.inverse(candidate.screenToWorldTransform, transformError)) {
+    if (!candidate.worldToScreenTransform.inverse(candidate.screenToWorldTransform)) {
         error = CameraError::NonInvertible;
         return false;
     }

@@ -1,12 +1,15 @@
 #include "application.h"
 #include "frame_clock.h"
+#include "detail/cleanup_error.h"
+#include "math2d.h"
+#include "platform.h"
 
 #include <chrono>
 #include <cmath>
 #include <exception>
-#include <iterator>
 #include <thread>
 #include <utility>
+#include <optional>
 
 namespace Engine
 {
@@ -22,177 +25,176 @@ double secondsBetween(Clock::time_point start, Clock::time_point end)
 }
 }
 
-bool Application::run(const ApplicationOptions& options, std::vector<Platform::Error>& errors)
+bool Application::run(const ApplicationOptions& options, Platform::Error& error)
 {
-    errors.clear();
+    error = {};
     if (started) {
-        errors.push_back(Platform::Error{"Application::run", "Application has already been started.", std::nullopt});
+        error = Platform::Error{"Application::run", "Application has already been started.", std::nullopt};
         return false;
     }
     if (!std::isfinite(options.maxDeltaTime) || options.maxDeltaTime <= 0 ||
         !std::isfinite(options.targetFramesPerSecond) || options.targetFramesPerSecond < 0) {
-        errors.push_back(Platform::Error{"Application::run", "Invalid frame timing options.", std::nullopt});
+        error = Platform::Error{"Application::run", "Invalid frame timing options.", std::nullopt};
         return false;
     }
     started = true;
-    if (!Platform::initialize(options.window, errors)) {
-        return false;
-    }
-
-    // При исключении обработчика onStop() вызывается до уничтожения контекста.
-    Platform::Error error;
+    bool success = false;
     bool startAttempted = false;
     try {
-        bool ready = true;
-        if (options.verticalSync.has_value()) {
-            ready = setVSync(*options.verticalSync, error);
+        if (!Platform::initialize(options.window, error)) {
+            return false;
         }
-        if (ready) {
+        success = !options.verticalSync || setVSync(*options.verticalSync, error);
+        if (success) {
             startAttempted = true;
-            ready = onStart(error);
+            success = onStart(error);
         }
-        if (!ready) {
-            errors.push_back(error);
-        } else {
-            const auto start = Clock::now();
-            FrameClock frameClock(options.maxDeltaTime, start);
-            auto fpsStart = start;
-            double presentedFrames = 0;
-            FrameInfo frame;
-            bool wasPaused = paused;
-            bool wasMinimized = false;
-            while (!exitRequested && errors.empty()) {
-                const auto frameStart = Clock::now();
-                FrameTimings timings;
-                if (!Platform::isCloseRequested() && !Platform::processEvents(error)) {
-                    errors.push_back(error);
-                    break;
-                }
-                if (!Platform::getWindowState(frame.window, error)) {
-                    errors.push_back(error);
-                    break;
-                }
-                frame.realTime = secondsBetween(start, frameStart);
-                frame.paused = paused || frame.window.minimized;
-                if (!onInput(frame, error)) {
-                    errors.push_back(error);
-                    break;
-                }
-                if (exitRequested || Platform::isCloseRequested()) {
-                    break;
-                }
-                auto stageEnd = Clock::now();
-                timings.events = secondsBetween(frameStart, stageEnd);
-
-                frame.paused = paused || frame.window.minimized;
-                // Первый кадр после продолжения имеет dT=0.
-                if (frame.paused || wasPaused) {
-                    frameClock.reset(frameStart);
-                    frame.deltaTime = 0;
-                } else {
-                    frame.deltaTime = frameClock.tick(frameStart);
-                }
-                wasPaused = frame.paused;
-                frame.elapsedTime += static_cast<double>(frame.deltaTime);
-
-                if (frame.window.minimized || wasMinimized) {
-                    fpsStart = frameStart;
-                    presentedFrames = 0;
-                    frame.framesPerSecond = 0;
-                    frame.fpsUpdated = true;
-                }
-                wasMinimized = frame.window.minimized;
-
-                const auto updateStart = stageEnd;
-                if (!frame.paused && !onUpdate(frame, error)) {
-                    errors.push_back(error);
-                    break;
-                }
-                stageEnd = Clock::now();
-                timings.update = secondsBetween(updateStart, stageEnd);
-                if (exitRequested) {
-                    break;
-                }
-
-                if (!frame.window.minimized) {
-                    const auto prepareStart = stageEnd;
-                    if (!onPrepareFrame(frame, error)) {
-                        errors.push_back(error);
-                        break;
-                    }
-                    stageEnd = Clock::now();
-                    timings.preparation = secondsBetween(prepareStart, stageEnd);
-                    if (exitRequested) {
-                        break;
-                    }
-                    const auto renderStart = stageEnd;
-                    if (!onRender(frame, error)) {
-                        errors.push_back(error);
-                        break;
-                    }
-                    stageEnd = Clock::now();
-                    timings.rendering = secondsBetween(renderStart, stageEnd);
-                    if (exitRequested) {
-                        break;
-                    }
-                    const auto presentStart = stageEnd;
-                    if (!Platform::present(error)) {
-                        errors.push_back(error);
-                        break;
-                    }
-                    stageEnd = Clock::now();
-                    timings.presentation = secondsBetween(presentStart, stageEnd);
-                    ++presentedFrames;
-                }
-
-                // FPS использует число показанных кадров и реальное время.
-                frame.fpsUpdated = false;
-                const double fpsElapsed = secondsBetween(fpsStart, stageEnd);
-                if (!frame.window.minimized && fpsElapsed >= FpsIntervalSeconds) {
-                    frame.framesPerSecond = presentedFrames / fpsElapsed;
-                    frame.fpsUpdated = true;
-                    fpsStart = stageEnd;
-                    presentedFrames = 0;
-                }
-
-                // Ожидание учитывает все стадии кадра, включая present().
-                const double targetFps = frame.window.minimized ?
-                    MinimizedFramesPerSecond : (verticalSyncEnabled ? 0.0 : options.targetFramesPerSecond);
-                const auto waitStart = Clock::now();
-                if (targetFps > 0) {
-                    const auto targetDuration = std::chrono::duration_cast<Clock::duration>(
-                        std::chrono::duration<double>(1.0 / targetFps));
-                    std::this_thread::sleep_until(frameStart + targetDuration);
-                }
-                const auto frameEnd = Clock::now();
-                timings.waiting = secondsBetween(waitStart, frameEnd);
-                timings.total = secondsBetween(frameStart, frameEnd);
-                frame.timings = timings;
-            }
+        if (success) {
+            success = runFrames(options, error);
         }
     } catch (const std::exception& exception) {
-        errors.push_back(Platform::Error{"Application::run", exception.what(), std::nullopt});
+        error = Platform::Error{"Application::run", exception.what(), std::nullopt};
+        success = false;
     } catch (...) {
-        errors.push_back(Platform::Error{"Application::run", "Unknown exception in application callback.", std::nullopt});
+        error = Platform::Error{"Application::run", "Unknown exception in application callback.", std::nullopt};
+        success = false;
     }
 
-    std::vector<Platform::Error> cleanupErrors;
+    if (success) {
+        error = {};
+    }
+    Platform::Error cleanupError;
     try {
-        if (startAttempted) {
-            onStop(cleanupErrors);
+        if (startAttempted && !onStop(cleanupError)) {
+            Platform::Detail::keepFirstError(error, std::move(cleanupError));
+            success = false;
         }
     } catch (const std::exception& exception) {
-        cleanupErrors.push_back(Platform::Error{"Application::onStop", exception.what(), std::nullopt});
+        Platform::Detail::keepFirstError(error, Platform::Error{"Application::onStop", exception.what(), std::nullopt});
+        success = false;
     } catch (...) {
-        cleanupErrors.push_back(Platform::Error{"Application::onStop", "Unknown exception during cleanup.", std::nullopt});
+        Platform::Detail::keepFirstError(error, Platform::Error{"Application::onStop", "Unknown exception during cleanup.", std::nullopt});
+        success = false;
     }
-    errors.insert(errors.end(), std::make_move_iterator(cleanupErrors.begin()),
-        std::make_move_iterator(cleanupErrors.end()));
     graphics.shutdown();
-    Platform::shutdown(cleanupErrors);
-    errors.insert(errors.end(), std::make_move_iterator(cleanupErrors.begin()),
-        std::make_move_iterator(cleanupErrors.end()));
-    return errors.empty();
+    if (!Platform::shutdown(cleanupError)) {
+        Platform::Detail::keepFirstError(error, std::move(cleanupError));
+        success = false;
+    }
+    return success;
+}
+
+bool Application::runFrames(const ApplicationOptions& options, Platform::Error& error)
+{
+    const auto start = Clock::now();
+    FrameClock frameClock(options.maxDeltaTime, start);
+    auto fpsStart = start;
+    double presentedFrames = 0;
+    FrameInfo frame;
+    bool wasPaused = paused;
+    bool wasMinimized = false;
+    while (!exitRequested) {
+        const auto frameStart = Clock::now();
+        FrameTimings timings;
+        if (!Platform::isCloseRequested() && !Platform::processEvents(error)) {
+            return false;
+        }
+        if (!Platform::getWindowState(frame.window, error)) {
+            return false;
+        }
+        frame.realTime = secondsBetween(start, frameStart);
+        frame.paused = paused || frame.window.minimized;
+        if (!onInput(frame, error)) {
+            return false;
+        }
+        if (exitRequested || Platform::isCloseRequested()) {
+            break;
+        }
+        auto stageEnd = Clock::now();
+        timings.events = secondsBetween(frameStart, stageEnd);
+
+        frame.paused = paused || frame.window.minimized;
+        // Первый кадр после продолжения имеет dT=0.
+        if (frame.paused || wasPaused) {
+            frameClock.reset(frameStart);
+            frame.deltaTime = 0;
+        } else {
+            frame.deltaTime = frameClock.tick(frameStart);
+        }
+        wasPaused = frame.paused;
+        frame.elapsedTime += static_cast<double>(frame.deltaTime);
+
+        if (frame.window.minimized || wasMinimized) {
+            fpsStart = frameStart;
+            presentedFrames = 0;
+            frame.framesPerSecond = 0;
+            frame.fpsUpdated = true;
+        }
+        wasMinimized = frame.window.minimized;
+
+        const auto updateStart = stageEnd;
+        if (!frame.paused && !onUpdate(frame, error)) {
+            return false;
+        }
+        stageEnd = Clock::now();
+        timings.update = secondsBetween(updateStart, stageEnd);
+        if (exitRequested) {
+            break;
+        }
+
+        if (!frame.window.minimized) {
+            const auto prepareStart = stageEnd;
+            if (!onPrepareFrame(frame, error)) {
+                return false;
+            }
+            stageEnd = Clock::now();
+            timings.preparation = secondsBetween(prepareStart, stageEnd);
+            if (exitRequested) {
+                break;
+            }
+            const auto renderStart = stageEnd;
+            if (!onRender(frame, error)) {
+                return false;
+            }
+            stageEnd = Clock::now();
+            timings.rendering = secondsBetween(renderStart, stageEnd);
+            if (exitRequested) {
+                break;
+            }
+            const auto presentStart = stageEnd;
+            if (!Platform::present(error)) {
+                return false;
+            }
+            stageEnd = Clock::now();
+            timings.presentation = secondsBetween(presentStart, stageEnd);
+            ++presentedFrames;
+        }
+
+        // FPS использует число показанных кадров и реальное время.
+        frame.fpsUpdated = false;
+        const double fpsElapsed = secondsBetween(fpsStart, stageEnd);
+        if (!frame.window.minimized && fpsElapsed >= FpsIntervalSeconds) {
+            frame.framesPerSecond = presentedFrames / fpsElapsed;
+            frame.fpsUpdated = true;
+            fpsStart = stageEnd;
+            presentedFrames = 0;
+        }
+
+        // Ожидание учитывает все стадии кадра, включая present().
+        const double targetFps = frame.window.minimized ?
+            MinimizedFramesPerSecond : (verticalSyncEnabled ? 0.0 : options.targetFramesPerSecond);
+        const auto waitStart = Clock::now();
+        if (targetFps > 0) {
+            const auto targetDuration = std::chrono::duration_cast<Clock::duration>(
+                std::chrono::duration<double>(1.0 / targetFps));
+            std::this_thread::sleep_until(frameStart + targetDuration);
+        }
+        const auto frameEnd = Clock::now();
+        timings.waiting = secondsBetween(waitStart, frameEnd);
+        timings.total = secondsBetween(frameStart, frameEnd);
+        frame.timings = timings;
+    }
+    return true;
 }
 
 void Application::setPaused(bool value)
@@ -272,7 +274,8 @@ bool Application::onPrepareFrame(const FrameInfo&, Platform::Error&)
     return true;
 }
 
-void Application::onStop(std::vector<Platform::Error>&)
+bool Application::onStop(Platform::Error&)
 {
+    return true;
 }
 }

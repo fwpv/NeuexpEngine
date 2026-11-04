@@ -1,9 +1,11 @@
 #include "platform.h"
+#include "detail/cleanup_error.h"
 #include "window_validation.h"
 #include "key_codes.h"
 #include "extension_names.h"
 #include "detail/platform_input.h"
 #include "detail/unicode.h"
+#include "input.h"
 
 #include <windows.h>
 #include <mmsystem.h>
@@ -13,6 +15,9 @@
 #include <iostream>
 #include <memory>
 #include <utility>
+#include <cstddef>
+#include <optional>
+#include <string>
 
 #ifndef WM_DPICHANGED
 #define WM_DPICHANGED 0x02E0
@@ -368,8 +373,12 @@ bool handleInput(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
         }
         const unsigned int bit = 1U << static_cast<unsigned int>(event.button);
         if (down) {
-            heldMouseButtons |= bit;
             SetCapture(handle); // Получаем отпускание и за пределами окна при drag.
+            if (GetCapture() != handle) {
+                recordInputError("SetCapture", "Could not capture the mouse for dragging.");
+                return true;
+            }
+            heldMouseButtons |= bit;
         } else {
             heldMouseButtons &= ~bit;
         }
@@ -677,25 +686,20 @@ void reportError(const Error& error, bool showDialog)
     }
 }
 
-bool initialize(const WindowOptions& options, std::vector<Error>& errors)
+bool initialize(const WindowOptions& options, Error& error)
 {
-    errors.clear();
-    if (initialized || windowClassRegistered || window || openGLContext) {
-        errors.push_back(Error{"initialize", "Call shutdown before initializing again.", std::nullopt});
+    error = {};
+    if (initialized || windowClassRegistered || window || deviceContext || openGLContext
+        || previousDpiContext || timerResolutionEnabled) {
+        error = Error{"initialize", "Call shutdown before initializing again.", std::nullopt};
         return false;
     }
-    Error error;
     if (!validateWindowOptions(options, error)) {
-        errors.push_back(error);
         return false;
     }
-    if (initializeWindows(options, error)) {
-        return true;
-    }
-    // shutdown заменяет переданный список ошибок.
-    shutdown(errors);
-    errors.insert(errors.begin(), error);
-    return false;
+    Detail::StartupRollback rollback;
+    rollback.committed = initializeWindows(options, error);
+    return rollback.committed;
 }
 
 bool getWindowState(WindowState& state, Error& error)
@@ -802,62 +806,73 @@ bool present(Error& error)
     return true;
 }
 
-void shutdown(std::vector<Error>& errors)
+bool shutdown(Error& result)
 {
-    errors.clear();
+    result = {};
     Error inputError;
     if (!takeInputError(inputError)) {
-        errors.push_back(std::move(inputError));
+        Detail::keepFirstError(result, std::move(inputError));
     }
     if (timerResolutionEnabled) {
         // Multimedia API возвращает собственный код, а не GetLastError.
-        const MMRESULT result = timeEndPeriod(1);
-        if (result != TIMERR_NOERROR) {
-            errors.push_back(Error{"timeEndPeriod", "Could not restore the timer resolution.", static_cast<int>(result)});
+        const MMRESULT timerResult = timeEndPeriod(1);
+        if (timerResult != TIMERR_NOERROR) {
+            Detail::keepFirstError(result, Error{"timeEndPeriod", "Could not restore the timer resolution.", static_cast<int>(timerResult)});
+        } else {
+            timerResolutionEnabled = false;
         }
-        timerResolutionEnabled = false;
     }
     if (openGLContext) {
         // После отказа активации контекст может не быть текущим.
         if (wglGetCurrentContext() == openGLContext && !wglMakeCurrent(nullptr, nullptr)) {
-            errors.push_back(windowsError("wglMakeCurrent (detach)", "Could not detach the OpenGL context.", GetLastError()));
+            Detail::keepFirstError(result, windowsError("wglMakeCurrent (detach)", "Could not detach the OpenGL context.", GetLastError()));
         }
-        if (!wglDeleteContext(openGLContext)) {
-            errors.push_back(windowsError("wglDeleteContext", "Could not delete the OpenGL context.", GetLastError()));
+        if (wglGetCurrentContext() != openGLContext) {
+            if (!wglDeleteContext(openGLContext)) {
+                Detail::keepFirstError(result, windowsError("wglDeleteContext", "Could not delete the OpenGL context.", GetLastError()));
+            } else {
+                openGLContext = nullptr;
+            }
         }
-        openGLContext = nullptr;
     }
-    if (deviceContext && window) {
+    // Зависимые ресурсы сохраняются, пока не освобождён использующий их ресурс.
+    if (!openGLContext && deviceContext && window) {
         // ReleaseDC не предоставляет расширенную ошибку через GetLastError.
         if (!ReleaseDC(window, deviceContext)) {
-            errors.push_back(windowsError("ReleaseDC", "Could not release the window drawing surface."));
+            Detail::keepFirstError(result, windowsError("ReleaseDC", "Could not release the window drawing surface."));
+        } else {
+            deviceContext = nullptr;
         }
-        deviceContext = nullptr;
     }
-    if (window) {
+    if (!openGLContext && !deviceContext && window) {
         const BOOL destroyed = DestroyWindow(window);
         const DWORD code = destroyed ? ERROR_SUCCESS : GetLastError();
         if (!takeInputError(inputError)) {
-            errors.push_back(std::move(inputError));
+            Detail::keepFirstError(result, std::move(inputError));
         }
         if (!destroyed) {
-            errors.push_back(windowsError("DestroyWindow", "Could not destroy the application window.", code));
+            Detail::keepFirstError(result, windowsError("DestroyWindow", "Could not destroy the application window.", code));
+        } else {
+            window = nullptr;
         }
-        window = nullptr;
     }
-    if (windowClassRegistered) {
+    if (!window && windowClassRegistered) {
         if (!UnregisterClassW(WindowClassName, applicationInstance)) {
-            errors.push_back(windowsError("UnregisterClass", "Could not unregister the window class.", GetLastError()));
+            Detail::keepFirstError(result, windowsError("UnregisterClass", "Could not unregister the window class.", GetLastError()));
+        } else {
+            windowClassRegistered = false;
         }
-        windowClassRegistered = false;
     }
     if (previousDpiContext) {
         if (!setDpiContext(previousDpiContext)) {
-            errors.push_back(windowsError("SetThreadDpiAwarenessContext", "Could not restore the thread DPI context.", GetLastError()));
+            Detail::keepFirstError(result, windowsError("SetThreadDpiAwarenessContext", "Could not restore the thread DPI context.", GetLastError()));
+        } else {
+            previousDpiContext = nullptr;
         }
-        previousDpiContext = nullptr;
     }
-    applicationInstance = nullptr;
+    if (!window && !windowClassRegistered) {
+        applicationInstance = nullptr;
+    }
     closeRequested = false;
     initialized = false;
     windowState = {};
@@ -867,8 +882,11 @@ void shutdown(std::vector<Error>& errors)
     mouseInside = false;
     highSurrogate = 0;
     Detail::resetInput();
-    windowOptions = {};
-    minimumTrackWidth = 0;
-    minimumTrackHeight = 0;
+    if (!window) {
+        windowOptions = {};
+        minimumTrackWidth = 0;
+        minimumTrackHeight = 0;
+    }
+    return result.operation.empty();
 }
 }

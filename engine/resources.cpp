@@ -3,8 +3,14 @@
 
 #include <fstream>
 #include <limits>
-#include <new>
 #include <utility>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <ios>
+#include <string>
+#include <system_error>
+#include <vector>
 
 namespace Engine
 {
@@ -98,21 +104,16 @@ bool ResourceFiles::readBinary(const std::string& name, std::vector<std::uint8_t
         error = {ResourceErrorCode::LimitExceeded, "Resource exceeds the file size limit: " + name};
         return false;
     }
-    try {
-        std::vector<std::uint8_t> bytes(static_cast<std::size_t>(length));
-        input.seekg(0);
-        if (!bytes.empty()) {
-            input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-        }
-        if (!input || input.peek() != std::char_traits<char>::eof()) {
-            error = {ResourceErrorCode::Io, "Cannot read resource completely: " + name};
-            return false;
-        }
-        result = std::move(bytes);
-    } catch (const std::bad_alloc&) {
-        error = {ResourceErrorCode::LimitExceeded, "Not enough memory to read resource: " + name};
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(length));
+    input.seekg(0);
+    if (!bytes.empty()) {
+        input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
+    if (!input || input.peek() != std::char_traits<char>::eof() || input.bad()) {
+        error = {ResourceErrorCode::Io, "Cannot read resource completely: " + name};
         return false;
     }
+    result = std::move(bytes);
     error = {};
     return true;
 }
@@ -124,13 +125,8 @@ bool ResourceFiles::readText(const std::string& name, std::string& result,
     if (!readBinary(name, bytes, error, maxBytes)) {
         return false;
     }
-    try {
-        std::string text(bytes.begin(), bytes.end());
-        result = std::move(text);
-    } catch (const std::bad_alloc&) {
-        error = {ResourceErrorCode::LimitExceeded, "Not enough memory for resource text: " + name};
-        return false;
-    }
+    std::string text(bytes.begin(), bytes.end());
+    result = std::move(text);
     return true;
 }
 

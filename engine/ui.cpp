@@ -1,4 +1,6 @@
 #include "ui.h"
+#include "camera.h"
+#include "math2d.h"
 
 #include <cmath>
 #include <limits>
@@ -35,10 +37,9 @@ bool UiCanvas::createView(const Viewport& area, UiView& result, UiError& error) 
     candidate.viewport = area;
     candidate.size = {static_cast<float>(area.width) / scale, static_cast<float>(area.height) / scale};
     candidate.uiToScreenTransform = {scale, 0, static_cast<float>(area.x), 0, scale, static_cast<float>(area.y)};
-    TransformError transformError;
     if (!std::isfinite(candidate.size.width) || !std::isfinite(candidate.size.height)
         || candidate.size.width <= 0 || candidate.size.height <= 0
-        || !candidate.uiToScreenTransform.inverse(candidate.screenToUiTransform, transformError)) {
+        || !candidate.uiToScreenTransform.inverse(candidate.screenToUiTransform)) {
         error = UiError::NonInvertible;
         return false;
     }

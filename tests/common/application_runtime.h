@@ -31,9 +31,7 @@ struct Runtime
     bool vsyncFails = false;
     bool vsyncDisableSupported = true;
     bool closeDuringInitialize = false;
-    bool initializeFails = false;
     bool shutdownFails = false;
-    std::string failingOperation;
     int polls = 0;
     int presents = 0;
     int waits = 0;

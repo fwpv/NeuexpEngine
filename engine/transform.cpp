@@ -1,10 +1,10 @@
 #include "transform.h"
+#include "geometry.h"
+#include "math2d.h"
 
-#include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
-#include <initializer_list>
 
 namespace Engine
 {
@@ -20,22 +20,13 @@ Vector2 Affine2::transformVector(Vector2 vector) const
 
 Rect Affine2::transformBounds(const Rect& rectangle) const
 {
-    const Vector2 first = transformPoint(rectangle.position);
-    const Vector2 second = transformPoint(Vector2{rectangle.position.x + rectangle.size.width, rectangle.position.y});
-    const Vector2 third = transformPoint(Vector2{rectangle.position.x, rectangle.position.y + rectangle.size.height});
-    const Vector2 fourth = transformPoint(Vector2{rectangle.position.x + rectangle.size.width,
-        rectangle.position.y + rectangle.size.height});
-    const float x = std::min(std::initializer_list<float>{first.x, second.x, third.x, fourth.x});
-    const float y = std::min(std::initializer_list<float>{first.y, second.y, third.y, fourth.y});
-    return {x, y, std::max(std::initializer_list<float>{first.x, second.x, third.x, fourth.x}) - x,
-        std::max(std::initializer_list<float>{first.y, second.y, third.y, fourth.y}) - y};
+    return bounds(transformed(rectangle.corners(), *this));
 }
 
-bool Affine2::inverse(Affine2& result, TransformError& error) const
+bool Affine2::inverse(Affine2& result) const
 {
     const double determinant = static_cast<double>(m00) * m11 - static_cast<double>(m01) * m10;
     if (determinant == 0) {
-        error = TransformError::NonInvertible;
         return false;
     }
 
@@ -49,7 +40,6 @@ bool Affine2::inverse(Affine2& result, TransformError& error) const
     };
     for (double coefficient : coefficients) {
         if (!std::isfinite(coefficient) || std::abs(coefficient) > std::numeric_limits<float>::max()) {
-            error = TransformError::NonInvertible;
             return false;
         }
     }
@@ -57,7 +47,6 @@ bool Affine2::inverse(Affine2& result, TransformError& error) const
         static_cast<float>(coefficients[0]), static_cast<float>(coefficients[1]), static_cast<float>(coefficients[2]),
         static_cast<float>(coefficients[3]), static_cast<float>(coefficients[4]), static_cast<float>(coefficients[5])
     };
-    error = TransformError::None;
     return true;
 }
 
@@ -77,6 +66,31 @@ Affine2 operator*(const Affine2& first, const Affine2& second)
         first.m10 * second.m01 + first.m11 * second.m11,
         first.m10 * second.m02 + first.m11 * second.m12 + first.m12
     };
+}
+
+namespace
+{
+template<typename Vertices>
+void transformVertices(Vertices& vertices, const Affine2& transform)
+{
+    for (Vector2& point : vertices) {
+        point = transform.transformPoint(point);
+    }
+}
+}
+
+Polygon transformed(const Polygon& polygon, const Affine2& transform)
+{
+    Polygon result = polygon;
+    transformVertices(result, transform);
+    return result;
+}
+
+Quad transformed(const Quad& polygon, const Affine2& transform)
+{
+    Quad result = polygon;
+    transformVertices(result, transform);
+    return result;
 }
 
 Affine2 Transform2::toAffine() const

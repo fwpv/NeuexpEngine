@@ -13,7 +13,6 @@
 #include <cmath>
 #include <optional>
 #include <string>
-#include <vector>
 
 namespace
 {
@@ -73,10 +72,9 @@ private:
     {
         const Engine::Affine2 forward = object.toAffine();
         Engine::Affine2 inverse;
-        Engine::TransformError transformError;
-        if (!forward.inverse(inverse, transformError)) {
+        if (!forward.inverse(inverse)) {
             error = Platform::Error{"Affine2::inverse",
-                "Could not invert the object transform. TransformError: " + std::to_string(static_cast<int>(transformError)), std::nullopt};
+                "Could not invert the object transform.", std::nullopt};
             return false;
         }
         const auto& mouse = Platform::getInput().mouse();
@@ -105,7 +103,7 @@ private:
         drawing.drawRectangle(LocalBounds, shape);
         shape.color = Engine::Color{1, 1, 1};
         drawing.drawRectangle(Engine::Rect{28, 44, 80, 12}, shape);
-        drawing.drawPolygon(std::vector<Engine::Vector2>{Engine::Vector2{132, 50},
+        drawing.drawPolygon(Engine::Polygon{Engine::Vector2{132, 50},
             Engine::Vector2{108, 34}, Engine::Vector2{108, 66}}, shape);
         drawing.drawRectangle(bounds, Engine::Color{1, 0.6F, 0.2F}, Engine::ShapeFill::Outline);
 
@@ -132,12 +130,10 @@ int Engine::applicationMain()
     Engine::ApplicationOptions options;
     options.window.title = "Math | arrows: move | Q/E: rotate | wheel: scale | X: reflect | R: reset | hover: local hit test";
     MathApplication application;
-    std::vector<Platform::Error> errors;
-    const bool success = application.run(options, errors);
-    bool showDialog = true;
-    for (const auto& error : errors) {
-        Platform::reportError(error, showDialog);
-        showDialog = false;
+    Platform::Error failure;
+    const bool success = application.run(options, failure);
+    if (!success) {
+        Platform::reportError(failure);
     }
     return success ? 0 : 1;
 }

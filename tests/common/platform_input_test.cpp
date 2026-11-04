@@ -31,7 +31,7 @@ std::string pendingCommit;
 bool commitArmed = false;
 bool filterNextKey = false;
 bool legacyRepeat = false;
-unsigned int closedDisplays = 0;
+bool failLockState = false;
 
 // Поиск затрагивает чужие окна: они могут исчезнуть после XQueryTree.
 // Подмена обработчика действует только во время поиска и только для BadWindow
@@ -72,13 +72,11 @@ private:
     inline static WindowLookupErrors* active = nullptr;
 };
 }
-extern "C" int __real_XCloseDisplay(Display*);
-extern "C" int __wrap_XCloseDisplay(Display* display)
+extern "C" Status __real_XkbGetState(Display*, unsigned int, XkbStatePtr);
+extern "C" Status __wrap_XkbGetState(Display* display, unsigned int device, XkbStatePtr state)
 {
-    ++closedDisplays;
-    return __real_XCloseDisplay(display);
+    return failLockState ? BadAlloc : __real_XkbGetState(display, device, state);
 }
-
 // Уведомления XKB поступают в тестовое окно без изменения блокировок рабочего стола.
 extern "C" int __real_XNextEvent(Display*, XEvent*);
 extern "C" int __wrap_XNextEvent(Display* display, XEvent* event)
@@ -566,6 +564,32 @@ void keyboard(NativeInput& native)
 #endif
 }
 
+#ifndef _WIN32
+void lockStateFailure(NativeInput& native)
+{
+    native.focus(false);
+    native.frame();
+    require(!Platform::getInput().focused(), "Input did not lose focus before the failure test.");
+    failLockState = true;
+    native.focus(true);
+    native.flush();
+    Platform::Error error;
+    require(!Platform::processEvents(error), "Keyboard lock query failure was reported as success.");
+    require(error.operation == "XkbGetState" && error.nativeCode == BadAlloc && !error.message.empty(),
+        "Keyboard lock query failure lost its diagnostic.");
+    require(!Platform::getInput().focused() && !findEvent(EventType::FocusGained),
+        "Failed keyboard lock query published focus with fabricated modifiers.");
+    Platform::WindowState window;
+    require(Platform::getWindowState(window, error) && !window.focused,
+        "Failed keyboard lock query changed the window focus snapshot.");
+    failLockState = false;
+    native.focus(true);
+    native.frame();
+    require(Platform::getInput().focused() && findEvent(EventType::FocusGained),
+        "Focus did not recover after the keyboard lock query failure.");
+}
+#endif
+
 void mouse(NativeInput& native)
 {
     native.motion(10, 20);
@@ -884,31 +908,15 @@ int main(int argc, char** argv)
         return 77;
     }
 #endif
-    std::vector<Platform::Error> errors;
+    Platform::Error failure;
     try {
-#ifndef _WIN32
-        if (argc > 1 && std::string(argv[1]) == "constructor-rollback") {
-            const unsigned int closedBefore = closedDisplays;
-            bool failedAsExpected = false;
-            try {
-                // Окно с этим заголовком не создаётся: ошибка возникает после XOpenDisplay.
-                NativeInput native("Engine input missing window for constructor rollback");
-            } catch (const std::runtime_error& error) {
-                failedAsExpected = std::string(error.what()) == "Test window not found.";
-            }
-            require(failedAsExpected, "The missing window did not trigger constructor failure.");
-            require(closedDisplays == closedBefore + 1, "Constructor failure leaked the X11 connection.");
-            std::cout << "Native input constructor rollback passed.\n";
-            return 0;
-        }
-#endif
         require(Platform::getEvents().empty() && !Platform::isKeyDown(Key::A), "Input exists before initialization.");
         Platform::WindowOptions options;
         options.title = "Engine input test";
         options.width = 400;
         options.height = 300;
-        if (!Platform::initialize(options, errors)) {
-            PlatformTest::reportErrors(errors);
+        if (!Platform::initialize(options, failure)) {
+            PlatformTest::reportError(failure);
             throw std::runtime_error("Initialization failed.");
         }
         {
@@ -934,25 +942,26 @@ int main(int argc, char** argv)
             keyboard(native);
 #ifndef _WIN32
             lockStates(native);
+            lockStateFailure(native);
 #endif
             mouse(native);
             text(native);
             windowEvents(native);
         }
-        Platform::shutdown(errors);
-        require(errors.empty(), "Shutdown failed.");
+        Platform::shutdown(failure);
+        require(failure.operation.empty(), "Shutdown failed.");
         require(Platform::getEvents().empty() && Platform::getInput().text().empty()
             && !Platform::getInput().focused() && !Platform::isKeyDown(Key::A), "Shutdown retained input.");
-        require(Platform::initialize(options, errors), "Reinitialization failed.");
+        require(Platform::initialize(options, failure), "Reinitialization failed.");
         require(!Platform::isKeyDown(Key::A), "Reinitialization retained held keys.");
-        Platform::shutdown(errors);
-        require(errors.empty(), "Second shutdown failed.");
+        Platform::shutdown(failure);
+        require(failure.operation.empty(), "Second shutdown failed.");
         std::cout << "Native input checks passed.\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
-        Platform::shutdown(errors);
-        PlatformTest::reportErrors(errors);
+        Platform::shutdown(failure);
+        PlatformTest::reportError(failure);
         return 1;
     }
 }

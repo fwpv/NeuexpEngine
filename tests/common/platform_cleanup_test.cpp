@@ -5,17 +5,15 @@
 
 int main()
 {
-    std::vector<Platform::Error> errors = {
-        { "previous operation", "Previous error", std::nullopt }
-    };
-    Platform::shutdown(errors);
-    if (!errors.empty()) {
+    Platform::Error failure = {"previous operation", "Previous error", std::nullopt};
+    Platform::shutdown(failure);
+    if (!failure.operation.empty()) {
         std::cerr << "Shutdown without initialization must leave no errors.\n";
         return 1;
     }
 
-    Platform::shutdown(errors);
-    if (!errors.empty()) {
+    Platform::shutdown(failure);
+    if (!failure.operation.empty()) {
         std::cerr << "Repeated shutdown must leave no errors.\n";
         return 1;
     }

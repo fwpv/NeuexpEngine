@@ -14,7 +14,6 @@
 #include <optional>
 #include <sstream>
 #include <string>
-#include <vector>
 
 namespace
 {
@@ -141,12 +140,10 @@ int Engine::applicationMain()
     options.window.height = 500;
     options.targetFramesPerSecond = 100.0;
     InputApplication application;
-    std::vector<Platform::Error> errors;
-    const bool success = application.run(options, errors);
-    bool showDialog = true;
-    for (const auto& error : errors) {
-        Platform::reportError(error, showDialog);
-        showDialog = false;
+    Platform::Error failure;
+    const bool success = application.run(options, failure);
+    if (!success) {
+        Platform::reportError(failure);
     }
     return success ? 0 : 1;
 }

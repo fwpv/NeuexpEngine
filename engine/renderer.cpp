@@ -1,17 +1,25 @@
 #include "renderer.h"
 #include "detail/polygon.h"
 #include "detail/texture_data.h"
+#include "camera.h"
+#include "geometry.h"
+#include "math2d.h"
+#include "texture.h"
+#include "transform.h"
 
 #ifdef _WIN32
 #include <windows.h>
 #endif
-#include <GL/gl.h>
 
+#include <GL/gl.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <cstddef>
+#include <optional>
+#include <vector>
 
 namespace Engine
 {
@@ -145,16 +153,16 @@ void Renderer2D::beginFrame(int width, int height, Color clearColor)
     firstError = RenderError::None;
 }
 
-bool Renderer2D::selectView(const Viewport& area, const Affine2& transform, Stage next, RenderError& error)
+bool Renderer2D::selectView(const Viewport& area, const Affine2& transform, Stage next)
 {
     if (stage == Stage::Idle || (stage == Stage::Ui && next == Stage::World)) {
-        error = RenderError::InvalidState;
+        firstError = RenderError::InvalidState;
         return false;
     }
     const std::int64_t viewportY = static_cast<std::int64_t>(frameHeight) - area.y - area.height;
     if (area.width <= 0 || area.height <= 0 || !finite(transform)
         || viewportY < std::numeric_limits<int>::min() || viewportY > std::numeric_limits<int>::max()) {
-        error = RenderError::InvalidView;
+        firstError = RenderError::InvalidView;
         return false;
     }
     flush();
@@ -171,7 +179,6 @@ bool Renderer2D::selectView(const Viewport& area, const Affine2& transform, Stag
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     applyClip(clip);
-    error = RenderError::None;
     return true;
 }
 
@@ -234,27 +241,26 @@ bool Renderer2D::endFrame(RenderError& error)
     return error == RenderError::None;
 }
 
-bool Renderer2D::prepareDraw(const DrawOptions& options, RenderError& error) const
+bool Renderer2D::prepareDraw(const DrawOptions& options)
 {
     if (stage != Stage::World && stage != Stage::Ui) {
-        error = RenderError::InvalidState;
+        firstError = RenderError::InvalidState;
         return false;
     }
     if (!valid(options.color) || !finite(options.transform)
         || !std::isfinite(options.lineWidth) || options.lineWidth <= 0
         || !std::isfinite(options.pointSize) || options.pointSize <= 0
         || !std::isfinite(options.order)) {
-        error = RenderError::InvalidOptions;
+        firstError = RenderError::InvalidOptions;
         return false;
     }
-    error = RenderError::None;
     return true;
 }
 
 bool Renderer2D::submit(Primitive primitive, const Vector2* vertices, std::size_t count,
-    const DrawOptions& options, RenderError& error)
+    const DrawOptions& options)
 {
-    if (!prepareDraw(options, error)) {
+    if (!prepareDraw(options)) {
         return false;
     }
     if (options.color.alpha == 0 || count == 0) {
@@ -263,7 +269,7 @@ bool Renderer2D::submit(Primitive primitive, const Vector2* vertices, std::size_
     DrawOptions screenOptions = options;
     screenOptions.transform = viewTransform * options.transform;
     commands.push_back(Command{primitive, std::vector<Vector2>(vertices, vertices + count),
-        screenOptions, clip, std::nullopt, Texture{}, TextureSampling{}});
+        screenOptions, clip, std::nullopt, Texture{}, TextureSampling{}, std::nullopt});
     return true;
 }
 
@@ -327,7 +333,7 @@ void Renderer2D::drawPoint(Vector2 point, const DrawOptions& options)
         firstError = RenderError::InvalidGeometry;
         return;
     }
-    submit(Primitive::Points, &point, 1, options, firstError);
+    submit(Primitive::Points, &point, 1, options);
 }
 
 void Renderer2D::drawLine(Vector2 start, Vector2 end, const DrawOptions& options)
@@ -340,24 +346,19 @@ void Renderer2D::drawLine(Vector2 start, Vector2 end, const DrawOptions& options
         return;
     }
     const std::array<Vector2, 2> vertices = {start, end};
-    submit(Primitive::Lines, vertices.data(), vertices.size(), options, firstError);
+    submit(Primitive::Lines, vertices.data(), vertices.size(), options);
 }
 
-bool Renderer2D::queueRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options, RenderError& error)
+bool Renderer2D::queueRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options)
 {
     if (!finite(rectangle.position) || !std::isfinite(rectangle.size.width) || !std::isfinite(rectangle.size.height)
         || rectangle.size.width < 0 || rectangle.size.height < 0 || !valid(fill)) {
-        error = RenderError::InvalidGeometry;
+        firstError = RenderError::InvalidGeometry;
         return false;
     }
-    const std::array<Vector2, 4> vertices = {
-        rectangle.position,
-        rectangle.position + Vector2{rectangle.size.width, 0},
-        rectangle.position + Vector2{rectangle.size.width, rectangle.size.height},
-        rectangle.position + Vector2{0, rectangle.size.height}
-    };
+    const Quad vertices = rectangle.corners();
     return submit(fill == ShapeFill::Filled ? Primitive::Quads : Primitive::LineLoop,
-        vertices.data(), vertices.size(), options, error);
+        vertices.data(), vertices.size(), options);
 }
 
 void Renderer2D::drawGradientRectangle(const Rect& rectangle, Color top, Color bottom,
@@ -371,7 +372,7 @@ void Renderer2D::drawGradientRectangle(const Rect& rectangle, Color top, Color b
         return;
     }
     const auto previousSize = commands.size();
-    if (!queueRectangle(rectangle, ShapeFill::Filled, options, firstError)) {
+    if (!queueRectangle(rectangle, ShapeFill::Filled, options)) {
         return;
     }
     if (commands.size() > previousSize) {
@@ -388,7 +389,7 @@ void Renderer2D::drawCircle(const Circle& circle, const DrawOptions& options, Sh
         firstError = RenderError::InvalidGeometry;
         return;
     }
-    if (!prepareDraw(options, firstError)) {
+    if (!prepareDraw(options)) {
         return;
     }
     if (circle.radius == 0) {
@@ -406,11 +407,10 @@ void Renderer2D::drawCircle(const Circle& circle, const DrawOptions& options, Sh
         vertices.push_back(circle.center + Vector2{circle.radius, 0});
     }
     submit(fill == ShapeFill::Filled ? Primitive::TriangleFan : Primitive::LineLoop,
-        vertices.data(), vertices.size(), options, firstError);
+        vertices.data(), vertices.size(), options);
 }
 
-void Renderer2D::drawPolygon(const std::vector<Vector2>& vertices, const DrawOptions& options,
-    ShapeFill fill)
+void Renderer2D::queuePolygon(const Vector2* vertices, std::size_t count, const DrawOptions& options, ShapeFill fill)
 {
     if (!ready()) {
         return;
@@ -422,12 +422,12 @@ void Renderer2D::drawPolygon(const std::vector<Vector2>& vertices, const DrawOpt
     // Подготовка геометрии завершается до отправки команд: отказ не оставляет частичной заливки.
     std::vector<Vector2> contour;
     std::vector<std::array<std::size_t, 3>> triangles;
-    if (!Detail::triangulatePolygon(vertices, contour, triangles)) {
+    if (!Detail::triangulatePolygon(vertices, count, contour, triangles)) {
         firstError = RenderError::InvalidGeometry;
         return;
     }
     if (fill == ShapeFill::Outline) {
-        submit(Primitive::LineLoop, contour.data(), contour.size(), options, firstError);
+        submit(Primitive::LineLoop, contour.data(), contour.size(), options);
         return;
     }
     std::vector<Vector2> points;
@@ -436,6 +436,6 @@ void Renderer2D::drawPolygon(const std::vector<Vector2>& vertices, const DrawOpt
             points.push_back(contour[index]);
         }
     }
-    submit(Primitive::Triangles, points.data(), points.size(), options, firstError);
+    submit(Primitive::Triangles, points.data(), points.size(), options);
 }
 }

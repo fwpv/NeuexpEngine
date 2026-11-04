@@ -4,7 +4,7 @@
 #include "camera.h"
 #include "math2d.h"
 #include "resources.h"
-#include "texture.h"
+#include "sprite.h"
 
 #include <array>
 #include <cstddef>
@@ -20,7 +20,7 @@ public:
         float scale = 1, float angle = 0) const;
 
 private:
-    std::array<Engine::Texture, ArtCount> textures;
+    std::array<Engine::Sprite, ArtCount> sprites;
 };
 
 class Game

@@ -54,3 +54,10 @@ endif()
 add_custom_target(demo_assets ALL
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${PROJECT_SOURCE_DIR}/assets" "${DEMO_ASSET_DIRECTORY}")
 add_subdirectory(cat)
+
+add_executable(sprites_demo sprites/main.cpp)
+if(WIN32)
+    set_target_properties(sprites_demo PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+target_link_libraries(sprites_demo PRIVATE engine_entry_point engine_application project_warnings)
+set_target_properties(sprites_demo PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")

@@ -1,7 +1,13 @@
 #include "renderer.h"
 #include "detail/debug_font.h"
+#include "camera.h"
+#include "geometry.h"
+#include "math2d.h"
+#include "transform.h"
+#include "ui.h"
 
 #include <cmath>
+#include <string_view>
 
 namespace Engine
 {
@@ -47,14 +53,14 @@ bool Renderer2D::ready()
 void Renderer2D::setWorldView(const CameraView& view)
 {
     if (ready()) {
-        selectView(view.viewport, view.worldToScreenTransform, Stage::World, firstError);
+        selectView(view.viewport, view.worldToScreenTransform, Stage::World);
     }
 }
 
 void Renderer2D::setUiView(const UiView& view)
 {
     if (ready()) {
-        selectView(view.viewport, view.uiToScreenTransform, Stage::Ui, firstError);
+        selectView(view.viewport, view.uiToScreenTransform, Stage::Ui);
     }
 }
 
@@ -71,7 +77,7 @@ void Renderer2D::drawLine(Vector2 start, Vector2 end, Color color)
 void Renderer2D::drawRectangle(const Rect& bounds, const DrawOptions& options, ShapeFill fill)
 {
     if (ready()) {
-        queueRectangle(bounds, fill, options, firstError);
+        queueRectangle(bounds, fill, options);
     }
 }
 
@@ -106,9 +112,24 @@ void Renderer2D::drawEllipse(Vector2 center, Vector2 radii, Color color, ShapeFi
     drawEllipse(center, radii, colored(color), fill, segments);
 }
 
-void Renderer2D::drawPolygon(const std::vector<Vector2>& vertices, Color color, ShapeFill fill)
+void Renderer2D::drawPolygon(const Polygon& polygon, const DrawOptions& options, ShapeFill fill)
 {
-    drawPolygon(vertices, colored(color), fill);
+    queuePolygon(polygon.data(), polygon.size(), options, fill);
+}
+
+void Renderer2D::drawPolygon(const Polygon& polygon, Color color, ShapeFill fill)
+{
+    drawPolygon(polygon, colored(color), fill);
+}
+
+void Renderer2D::drawPolygon(const Quad& polygon, const DrawOptions& options, ShapeFill fill)
+{
+    queuePolygon(polygon.data(), polygon.size(), options, fill);
+}
+
+void Renderer2D::drawPolygon(const Quad& polygon, Color color, ShapeFill fill)
+{
+    drawPolygon(polygon, colored(color), fill);
 }
 
 void Renderer2D::drawDebugText(std::string_view message, Vector2 position, const DrawOptions& options, float pixel)

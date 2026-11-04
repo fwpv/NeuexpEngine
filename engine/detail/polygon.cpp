@@ -1,26 +1,18 @@
 #include "polygon.h"
+#include "segments.h"
+#include "math2d.h"
 
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <array>
+#include <cstddef>
+#include <vector>
 
 namespace Engine::Detail
 {
 namespace
 {
-double turn(Vector2 a, Vector2 b, Vector2 c)
-{
-    return (static_cast<double>(b.x) - a.x) * (static_cast<double>(c.y) - a.y)
-        - (static_cast<double>(b.y) - a.y) * (static_cast<double>(c.x) - a.x);
-}
-
-bool onSegment(Vector2 a, Vector2 b, Vector2 point)
-{
-    return turn(a, b, point) == 0
-        && point.x >= std::min(a.x, b.x) && point.x <= std::max(a.x, b.x)
-        && point.y >= std::min(a.y, b.y) && point.y <= std::max(a.y, b.y);
-}
-
 bool segmentsIntersect(Vector2 a, Vector2 b, Vector2 c, Vector2 d)
 {
     const double abC = turn(a, b, c);
@@ -35,12 +27,13 @@ bool segmentsIntersect(Vector2 a, Vector2 b, Vector2 c, Vector2 d)
 }
 }
 
-bool triangulatePolygon(const std::vector<Vector2>& vertices, std::vector<Vector2>& contour,
+bool triangulatePolygon(const Vector2* vertices, std::size_t vertexCount, std::vector<Vector2>& contour,
     std::vector<std::array<std::size_t, 3>>& triangles)
 {
     contour.clear();
     triangles.clear();
-    for (Vector2 point : vertices) {
+    for (std::size_t index = 0; index < vertexCount; ++index) {
+        const Vector2 point = vertices[index];
         if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
             return false;
         }

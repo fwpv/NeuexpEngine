@@ -1,6 +1,10 @@
 #pragma once
 
-#include "texture.h"
+#include "resources.h"
+
+#include <cstddef>
+#include <filesystem>
+#include <memory>
 
 namespace Engine
 {

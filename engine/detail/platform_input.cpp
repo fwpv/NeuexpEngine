@@ -1,8 +1,10 @@
 #include "platform.h"
 #include "platform_input.h"
+#include "input.h"
 
 #include <chrono>
 #include <utility>
+#include <vector>
 
 namespace Platform
 {

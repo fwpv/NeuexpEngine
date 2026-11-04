@@ -107,17 +107,17 @@ void Shuttle::draw(Engine::Renderer2D& renderer, float time) const
     if (thrusting) {
         const float flame = 13.0f + 5.0f * std::sin(time * 25.0f);
         options.color = Color{1.0f, 0.3f, 0.05f, 1.0f};
-        renderer.drawPolygon(std::vector<Vector2>{Vector2{-7.0f, 13.0f}, Vector2{0, 13.0f + flame}, Vector2{7.0f, 13.0f}}, options);
+        renderer.drawPolygon(Engine::Polygon{Vector2{-7.0f, 13.0f}, Vector2{0, 13.0f + flame}, Vector2{7.0f, 13.0f}}, options);
     }
 
     options.color = Color{0.14f, 0.56f, 0.78f, 1.0f};
-    renderer.drawPolygon(std::vector<Vector2>{
+    renderer.drawPolygon(Engine::Polygon{
         Vector2{0.0f, -20.0f}, Vector2{7.0f, -5.0f}, Vector2{17.0f, 9.0f}, Vector2{8.0f, 7.0f},
         Vector2{0.0f, 13.0f}, Vector2{-8.0f, 7.0f}, Vector2{-17.0f, 9.0f}, Vector2{-7.0f, -5.0f}
     }, options);
 
     options.color = Color{0.05f, 0.15f, 0.26f, 1.0f};
-    renderer.drawPolygon(std::vector<Vector2>{Vector2{-3.0f, 1.0f}, Vector2{3.0f, 1.0f},
+    renderer.drawPolygon(Engine::Quad{Vector2{-3.0f, 1.0f}, Vector2{3.0f, 1.0f},
         Vector2{5.0f, 7.0f}, Vector2{-5.0f, 7.0f}}, options);
     options.color = Color{0.3f, 0.9f, 1.0f, 0.75f};
     renderer.drawCircle(Circle{Vector2{}, 22.0f}, options, ShapeFill::Outline);

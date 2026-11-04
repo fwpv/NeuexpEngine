@@ -65,7 +65,7 @@ void runCommonCases()
 
 int main()
 {
-    std::vector<Platform::Error> errors;
+    Platform::Error failure;
     bool passed = false;
     try {
         Platform::Error error;
@@ -82,8 +82,9 @@ int main()
         options.title = "Engine VSync test";
         options.width = 320;
         options.height = 240;
-        if (!Platform::initialize(options, errors)) {
-            for (const auto& startupError : errors) {
+        if (!Platform::initialize(options, failure)) {
+            if (!failure.operation.empty()) {
+                const auto& startupError = failure;
                 Platform::reportError(startupError, false);
             }
             throw std::runtime_error("VSync test platform initialization failed.");
@@ -94,9 +95,9 @@ int main()
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
     }
-    Platform::shutdown(errors);
-    for (const auto& error : errors) {
-        Platform::reportError(error, false);
+    Platform::shutdown(failure);
+    if (!failure.operation.empty()) {
+        Platform::reportError(failure, false);
     }
     Platform::Error error;
     const int calls = VSyncTest::driver.calls;
@@ -104,5 +105,5 @@ int main()
         std::cerr << "VSync remained available after shutdown.\n";
         passed = false;
     }
-    return passed && errors.empty() ? 0 : 1;
+    return passed && failure.operation.empty() ? 0 : 1;
 }

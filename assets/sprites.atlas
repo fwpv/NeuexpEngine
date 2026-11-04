@@ -1,0 +1,3 @@
+# Two frames sharing one texture
+ring.first 0 0 32 32
+ring.second 32 0 32 32

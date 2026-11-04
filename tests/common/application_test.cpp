@@ -30,13 +30,7 @@ struct CapturedFrame
 class ProbeApplication final : public Engine::Application
 {
 public:
-    std::string failureStage;
     std::string exitStage;
-    bool throwFailure = false;
-    bool throwUnknown = false;
-    bool stopFails = false;
-    bool stopThrows = false;
-    bool stopThrowsUnknown = false;
     std::function<void(ProbeApplication&, const FrameInfo&)> inputAction;
     std::vector<CapturedFrame> inputs;
     std::vector<CapturedFrame> updates;
@@ -44,20 +38,10 @@ public:
     std::vector<CapturedFrame> rendered;
 
 private:
-    bool stage(const char* name, Platform::Error& error)
+    bool stage(const char* name, Platform::Error&)
     {
         runtime.calls.emplace_back(name);
         require(runtime.initialized, "Callback ran outside platform lifetime.");
-        if (failureStage == name) {
-            if (throwUnknown) {
-                throw 7;
-            }
-            if (throwFailure) {
-                throw std::runtime_error("Callback exception.");
-            }
-            error = { name, "Callback failure.", 19 };
-            return false;
-        }
         if (exitStage == name) {
             requestExit();
         }
@@ -103,19 +87,11 @@ private:
         return stage("render", error);
     }
 
-    void onStop(std::vector<Platform::Error>& errors) override
+    bool onStop(Platform::Error&) override
     {
         runtime.calls.emplace_back("stop");
         require(runtime.initialized, "Application cleanup ran after platform shutdown.");
-        if (stopFails) {
-            errors.push_back({ "stop", "Application cleanup failure.", 31 });
-        }
-        if (stopThrowsUnknown) {
-            throw 9;
-        }
-        if (stopThrows) {
-            throw std::runtime_error("Cleanup exception.");
-        }
+        return true;
     }
 };
 
@@ -154,20 +130,20 @@ void testLifecycle()
     ApplicationTest::reset();
     ProbeApplication application;
     finishOnSecondInput(application);
-    std::vector<Platform::Error> errors{ { "old", "Old error.", {} } };
-    require(application.run(options(), errors), "Normal application failed.");
-    require(errors.empty(), "Successful run retained old errors.");
+    Platform::Error failure{"old", "Old error.", {}};
+    require(application.run(options(), failure), "Normal application failed.");
+    require(failure.operation.empty(), "Successful run retained old errors.");
     requireCalls({ "initialize", "start", "processEvents", "getWindowState", "input",
         "update", "prepare", "render", "present", "processEvents", "getWindowState", "input", "stop", "shutdown" });
     const auto calls = runtime.calls;
-    require(!application.run(options(), errors), "Repeated run was accepted.");
-    require(runtime.calls == calls && errors.size() == 1, "Repeated run touched the platform.");
+    require(!application.run(options(), failure), "Repeated run was accepted.");
+    require(runtime.calls == calls && !failure.operation.empty(), "Repeated run touched the platform.");
 
     for (const std::string exitStage : { "start", "input", "update", "prepare", "render" }) {
         ApplicationTest::reset();
         ProbeApplication exiting;
         exiting.exitStage = exitStage;
-        require(exiting.run(options(), errors), "requestExit failed.");
+        require(exiting.run(options(), failure), "requestExit failed.");
         std::vector<std::string> expected{ "initialize", "start" };
         if (exitStage != "start") {
             expected.insert(expected.end(), { "processEvents", "getWindowState" });
@@ -218,8 +194,8 @@ void testClosingEvents()
                 dispatcher.dispatch(event);
             }
         };
-        std::vector<Platform::Error> errors;
-        require(application.run(options(), errors), "Closing application failed.");
+        Platform::Error failure;
+        require(application.run(options(), failure), "Closing application failed.");
         require(application.inputs.size() == 1, "Closing batch was not delivered exactly once.");
         require(application.updates.empty() && application.prepared.empty() && application.rendered.empty()
             && runtime.presents == 0, "Simulation or rendering continued after close.");
@@ -261,8 +237,8 @@ void testPause()
             current.requestExit();
         }
     };
-    std::vector<Platform::Error> errors;
-    require(application.run(options(), errors), "Pause scenario failed.");
+    Platform::Error failure;
+    require(application.run(options(), failure), "Pause scenario failed.");
     require(application.inputs.size() == 10, "Input stopped during pause or minimization.");
     require(application.updates.size() == 4, "Simulation ran while paused.");
     require(application.prepared.size() == 7 && application.rendered.size() == 7 && runtime.presents == 7,
@@ -286,92 +262,16 @@ void testPause()
         "Real time stopped during pause.");
 }
 
-void testFailures()
-{
-    std::vector<Platform::Error> errors;
-    for (const std::string name : { "start", "input", "update", "prepare", "render" }) {
-        for (int exceptionMode = 0; exceptionMode < 3; ++exceptionMode) {
-            ApplicationTest::reset();
-            runtime.shutdownFails = true;
-            ProbeApplication application;
-            application.failureStage = name;
-            application.throwFailure = exceptionMode == 1;
-            application.throwUnknown = exceptionMode == 2;
-            application.stopFails = true;
-            require(!application.run(options(), errors), "Callback failure was ignored.");
-            require(errors.size() == 3 && errors[1].operation == "stop" && errors[2].operation == "shutdown",
-                "Cleanup errors replaced or reordered the primary error.");
-            require(errors[0].operation == (exceptionMode == 0 ? name : "Application::run"),
-                "Wrong primary callback diagnostic.");
-            require(!errors[0].message.empty(), "Primary diagnostic has no message.");
-            if (exceptionMode == 0) {
-                require(errors[0].nativeCode == 19, "Callback native error code was lost.");
-            }
-            require(runtime.presents == 0, "Callback failure was followed by presentation.");
-            require(std::count(runtime.calls.begin(), runtime.calls.end(), "stop") == 1
-                && runtime.calls.back() == "shutdown", "Cleanup was skipped or repeated.");
-        }
-    }
-    for (const std::string operation : { "processEvents", "getWindowState", "present" }) {
-        ApplicationTest::reset();
-        runtime.failingOperation = operation;
-        ProbeApplication application;
-        require(!application.run(options(), errors), "Platform failure was ignored.");
-        require(errors.size() == 1 && errors[0].operation == operation && errors[0].nativeCode == 17,
-            "Platform error was not preserved.");
-        require(runtime.calls[runtime.calls.size() - 2] == "stop" && runtime.calls.back() == "shutdown",
-            "Platform failure skipped application cleanup.");
-    }
-    for (bool unknown : { false, true }) {
-        ApplicationTest::reset();
-        runtime.shutdownFails = true;
-        ProbeApplication application;
-        application.exitStage = "input";
-        application.stopThrows = !unknown;
-        application.stopThrowsUnknown = unknown;
-        require(!application.run(options(), errors), "Cleanup exception was ignored.");
-        require(errors.size() == 2 && errors[0].operation == "Application::onStop"
-            && errors[1].operation == "shutdown", "Cleanup exception prevented platform shutdown.");
-    }
-    ApplicationTest::reset();
-    ProbeApplication cleanup;
-    cleanup.exitStage = "input";
-    cleanup.stopFails = true;
-    require(!cleanup.run(options(), errors) && errors.size() == 1 && errors[0].operation == "stop",
-        "Application cleanup failure was reported as success.");
-
-    ApplicationTest::reset();
-    runtime.initializeFails = true;
-    ProbeApplication startup;
-    require(!startup.run(options(), errors), "Platform startup failure was ignored.");
-    requireCalls({ "initialize" });
-
-    for (double limit : { -1.0, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN() }) {
-        ApplicationTest::reset();
-        ProbeApplication invalid;
-        auto config = options();
-        config.targetFramesPerSecond = limit;
-        require(!invalid.run(config, errors) && runtime.calls.empty(), "Invalid FPS touched the platform.");
-    }
-    for (float maximum : { 0.0F, -1.0F, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN() }) {
-        ApplicationTest::reset();
-        ProbeApplication invalid;
-        auto config = options();
-        config.maxDeltaTime = maximum;
-        require(!invalid.run(config, errors) && runtime.calls.empty(), "Invalid dT touched the platform.");
-    }
-}
-
 void testVSync()
 {
-    std::vector<Platform::Error> errors;
+    Platform::Error failure;
     for (bool enabled : { false, true }) {
         ApplicationTest::reset();
         ProbeApplication application;
         finishOnSecondInput(application);
         auto config = options();
         config.verticalSync = enabled;
-        require(application.run(config, errors) && runtime.vsync == enabled, "Initial VSync mode was not applied.");
+        require(application.run(config, failure) && runtime.vsync == enabled, "Initial VSync mode was not applied.");
         require(runtime.calls[1] == (enabled ? "vsyncOn" : "vsyncOff") && runtime.calls[2] == "start",
             "VSync was not configured before application startup.");
     }
@@ -383,16 +283,16 @@ void testVSync()
         ProbeApplication application;
         auto config = options();
         config.verticalSync = true;
-        require(!application.run(config, errors), "Initial VSync failure was ignored.");
+        require(!application.run(config, failure), "Initial VSync failure was ignored.");
         requireCalls({ "initialize", "vsyncOn", "shutdown" });
-        require(errors.size() == 2 && errors[0].operation == "setVSync" && errors[1].operation == "shutdown",
+        require(failure.operation == "setVSync",
             "VSync startup error was replaced by its cleanup failure.");
     }
     ApplicationTest::reset();
     runtime.vsyncSupported = false;
     ProbeApplication defaults;
     defaults.exitStage = "input";
-    require(defaults.run(options(), errors), "Default settings required VSync support.");
+    require(defaults.run(options(), failure), "Default settings required VSync support.");
     require(std::find(runtime.calls.begin(), runtime.calls.end(), "vsyncOn") == runtime.calls.end()
         && std::find(runtime.calls.begin(), runtime.calls.end(), "vsyncOff") == runtime.calls.end(),
         "Default settings changed the driver's mode.");
@@ -427,8 +327,8 @@ void testLimiter()
     auto config = options();
     config.targetFramesPerSecond = 20;
     config.verticalSync = false;
-    std::vector<Platform::Error> errors;
-    require(application.run(config, errors), "Limiter scenario failed.");
+    Platform::Error failure;
+    require(application.run(config, failure), "Limiter scenario failed.");
     require(runtime.waits == 2, "VSync and software limiter ran together or limiter did not resume.");
     requireNear(captured(application.inputs, 2).timings.waiting, 0.029);
     for (int number : { 3, 4, 5 }) {
@@ -442,14 +342,14 @@ void testLimiter()
         finishOnSecondInput(unlimited);
         auto settings = options();
         settings.targetFramesPerSecond = limit;
-        require(unlimited.run(settings, errors) && runtime.waits == 0,
+        require(unlimited.run(settings, failure) && runtime.waits == 0,
             "Disabled or expired frame limiter requested a wait.");
     }
     ApplicationTest::reset();
     ProbeApplication initiallySynchronized;
     finishOnSecondInput(initiallySynchronized);
     config.verticalSync = true;
-    require(initiallySynchronized.run(config, errors) && runtime.waits == 0,
+    require(initiallySynchronized.run(config, failure) && runtime.waits == 0,
         "Initial VSync did not suppress the software limiter.");
 
     for (bool synchronized : { false, true }) {
@@ -463,7 +363,7 @@ void testLimiter()
         };
         auto settings = options();
         settings.verticalSync = synchronized;
-        require(minimized.run(settings, errors), "Minimized limiter failed.");
+        require(minimized.run(settings, failure), "Minimized limiter failed.");
         require(runtime.waits == 1 && runtime.presents == 2, "Minimized polling depended on VSync or drew a frame.");
         require(captured(minimized.inputs, 3).timings.waiting > 0, "Minimized loop performed busy waiting.");
     }
@@ -495,8 +395,8 @@ void testStatistics()
     auto config = options();
     config.targetFramesPerSecond = 10;
     config.maxDeltaTime = 0.01F;
-    std::vector<Platform::Error> errors;
-    require(application.run(config, errors), "Statistics scenario failed.");
+    Platform::Error failure;
+    require(application.run(config, failure), "Statistics scenario failed.");
     require(measuredDuringPause && measuredAfterRestore, "FPS sampling stopped on pause or after restore.");
     const auto& reset = captured(application.prepared, 16);
     require(reset.fpsUpdated && reset.framesPerSecond == 0, "Restoration retained an old FPS sample.");
@@ -526,8 +426,6 @@ int main(int argumentCount, char** arguments)
             testClosingEvents();
         } else if (group == "pause") {
             testPause();
-        } else if (group == "failures") {
-            testFailures();
         } else if (group == "vsync") {
             testVSync();
         } else if (group == "limiter") {

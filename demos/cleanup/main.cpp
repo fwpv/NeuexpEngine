@@ -18,7 +18,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace Cleanup
 {
@@ -411,12 +410,10 @@ int Engine::applicationMain()
     options.window.minimumWidth = 640;
     options.window.minimumHeight = 420;
     Cleanup::CleanupApplication application;
-    std::vector<Platform::Error> errors;
-    const bool success = application.run(options, errors);
-    bool showDialog = true;
-    for (const auto& error : errors) {
-        Platform::reportError(error, showDialog);
-        showDialog = false;
+    Platform::Error failure;
+    const bool success = application.run(options, failure);
+    if (!success) {
+        Platform::reportError(failure);
     }
     return success ? 0 : 1;
 }

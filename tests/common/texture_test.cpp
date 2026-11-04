@@ -1,3 +1,4 @@
+#include "atlas.h"
 #include "renderer.h"
 #include "platform.h"
 #include "platform_test_diagnostics.h"
@@ -297,6 +298,177 @@ void resources(Renderer2D& renderer, const ResourceFiles& files)
     second = create(renderer, { 1, 1, { 0, 255, 0, 255 } });
     require(renderer.textureStats().count == 1, "Unused texture was not collected before upload.");
 }
+
+void sprites(Renderer2D& renderer)
+{
+    RenderError error;
+    const auto texture = create(renderer, { 2, 2, {
+        255, 0, 0, 255, 0, 255, 0, 255,
+        0, 0, 255, 255, 255, 255, 255, 255 } });
+    Sprite whole(texture);
+    require(whole.size == Size2{2, 2} && !whole.textureRect, "Wrong whole sprite defaults.");
+    whole.size = {80, 80};
+    whole.filter = TextureFilter::Nearest;
+    frame(renderer);
+    renderer.drawSprite(whole);
+    Sprite region(texture, {1, 0, 1, 1});
+    require(region.size == Size2{1, 1}, "Wrong region sprite defaults.");
+    region.size = {80, 40};
+    region.transform.position = {100, 0};
+    renderer.drawSprite(region);
+    // Изменение области не меняет размер; уже принятая команда хранит снимок состояния.
+    region.textureRect = Rect{0, 1, 1, 1};
+    region.transform.position.y = 50;
+    renderer.drawSprite(region);
+    region.visible = false;
+    region.transform.position.y = 100;
+    renderer.drawSprite(region);
+    check(renderer.endFrame(error), error);
+    pixel(10, 10, Red);
+    pixel(70, 10, Green);
+    pixel(10, 70, Blue);
+    pixel(70, 70, White);
+    pixel(100, 0, Green);
+    pixel(179, 39, Green);
+    pixel(140, 70, Blue);
+    pixel(140, 120, Black);
+
+    frame(renderer);
+    region.visible = true;
+    region.size = {20, 10};
+    region.transform = {{100, 100}, Pi / 2, {2, 3}, {10, 5}};
+    renderer.drawSprite(region);
+    // Отрицательный масштаб отражает текстуру относительно origin.
+    whole.transform = {{240, 0}, 0, {-1, 1}, {}};
+    renderer.drawSprite(whole);
+    region.transform.scale = {0, 1};
+    region.transform.position = {30, 150};
+    renderer.drawSprite(region);
+    check(renderer.endFrame(error), error);
+    pixel(90, 85, Blue);
+    pixel(110, 115, Blue);
+    pixel(80, 100, Black);
+    pixel(100, 75, Black);
+    pixel(170, 10, Green);
+    pixel(230, 10, Red);
+    pixel(30, 150, Black);
+
+    frame(renderer);
+    region.transform = {{100, 100}, Pi / 2, {2, 3}, {10, 5}};
+    renderer.drawSprite(region);
+    DrawOptions outline;
+    outline.color = White;
+    outline.lineWidth = 3;
+    renderer.drawPolygon(region.polygon(), outline, ShapeFill::Outline);
+    check(renderer.endFrame(error), error);
+    pixel(100, 100, Blue);
+    pixel(85, 100, White);
+    pixel(100, 80, White);
+    pixel(80, 100, Black);
+
+    // Цвет и альфа текстуры, спрайта и DrawOptions перемножаются.
+    const auto translucent = create(renderer, {1, 1, {255, 255, 255, 128}});
+    Sprite tinted(translucent);
+    tinted.size = {40, 40};
+    tinted.color = {0.5F, 1, 0.25F, 0.5F};
+    tinted.transform.position = {10, 10};
+    DrawOptions parent;
+    parent.transform = Transform2{{40, 40}, 0, {2, 2}, {}}.toAffine();
+    parent.color = {1, 0.5F, 1, 0.5F};
+    frame(renderer);
+    renderer.drawSprite(tinted, parent);
+    check(renderer.endFrame(error), error);
+    const float alpha = (128.0F / 255) * 0.25F;
+    pixel(70, 70, {0.5F * alpha, 0.5F * alpha, 0.25F * alpha});
+    pixel(50, 50, Black);
+
+    // Неполная область больше одного текселя: интерполяция внутри, без соседей снаружи.
+    const auto strip = create(renderer, {4, 1, {
+        0, 255, 0, 255, 255, 0, 0, 255, 0, 0, 255, 255, 0, 255, 0, 255}});
+    Sprite cropped(strip, {1, 0, 2, 1});
+    cropped.size = {100, 40};
+    frame(renderer);
+    renderer.drawSprite(cropped);
+    check(renderer.endFrame(error), error);
+    pixel(0, 10, Red);
+    pixel(99, 10, Blue);
+    pixel(49, 10, {0.51F, 0, 0.49F}, 3);
+}
+
+void atlasChecks(Renderer2D& renderer)
+{
+    ResourceError error;
+    Texture texture;
+    check(renderer.createTexture(Image{2, 1, {255,255,255,0, 255,255,255,255}}, texture, error, true), error);
+    TextureAtlas atlas;
+    check(atlas.load(texture, "# regions\r\nclear 0 0 1 1\nsolid 1 0 1 1\n", error), error);
+    Sprite sprite;
+    require(atlas.createSprite("solid", sprite), "Missing region.");
+    require(sprite.texture == texture && sprite.size == Size2{1, 1}, "Atlas did not share texture or set size.");
+    sprite.size = {20, 10};
+    sprite.transform = {Vector2{50, 60}, 0.7F, Vector2{-2, 3}, Vector2{10, 5}};
+    const auto center = sprite.transform.toAffine().transformPoint(Vector2{10, 5});
+    require(sprite.hitTest(center, true), "Transformed alpha hit missed.");
+    require(!sprite.hitTest(sprite.transform.toAffine().transformPoint(Vector2{21, 5})), "Outside hit accepted.");
+    sprite.color.alpha = 0.25F;
+    require(sprite.hitTest(center, true, 0.2F) && !sprite.hitTest(center, true, 0.3F), "Alpha modulation ignored.");
+    sprite.visible = false;
+    require(!sprite.hitTest(center), "Invisible hit accepted.");
+    require(atlas.createSprite("clear", sprite), "Missing transparent region.");
+    require(sprite.hitTest(Vector2{0.5F, 0.5F}) && !sprite.hitTest(Vector2{0.5F, 0.5F}, true), "Transparency ignored.");
+    require(!sprite.hitTest(Vector2{1, 0.5F}), "Right boundary included.");
+    require(!atlas.load(texture, "solid 0 0 1 1\nsolid 1 0 1 1", error), "Duplicate region accepted.");
+    require(atlas.find("clear") != nullptr, "Failed parse changed atlas.");
+    require(!atlas.load(texture, "outside 2 0 1 1", error), "Outside region accepted.");
+    require(!atlas.createSprite("missing", sprite), "Missing region accepted.");
+    Texture discarded;
+    check(renderer.createTexture(Image{1, 1, {255,255,255,255}}, discarded, error), error);
+    Sprite noPixels(discarded);
+    require(noPixels.hitTest(Vector2{0.5F, 0.5F}) && !noPixels.hitTest(Vector2{0.5F, 0.5F}, true), "Missing pixel contract failed.");
+}
+void spriteErrors(Renderer2D& renderer)
+{
+    RenderError error;
+    const auto texture = create(renderer, {1, 1, {255, 255, 255, 255}});
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    Sprite sprite(texture);
+    const std::array<Rect, 6> invalid = {{
+        {-1, 0, 1, 1}, {0, 0, 2, 1}, {0, 1, 1, 1},
+        {0, 0, -1, 1}, {nan, 0, 1, 1}, {0, 0, 1, nan}}};
+    for (const auto& area : invalid) {
+        sprite.textureRect = area;
+        frame(renderer);
+        renderer.drawSprite(sprite);
+        require(!renderer.endFrame(error) && error == RenderError::InvalidGeometry, "Invalid sprite region accepted.");
+    }
+    sprite.textureRect.reset();
+    sprite.size.width = -1;
+    frame(renderer);
+    renderer.drawSprite(sprite);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidGeometry, "Negative sprite size accepted.");
+    sprite.size = {20, 20};
+    sprite.transform.rotation = nan;
+    frame(renderer);
+    renderer.drawSprite(sprite);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidOptions, "NaN sprite rotation accepted.");
+    sprite.transform = {};
+    sprite.color.alpha = 2;
+    frame(renderer);
+    renderer.drawSprite(sprite);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidOptions, "Invalid sprite color accepted.");
+    sprite = {};
+    frame(renderer);
+    renderer.drawSprite(sprite);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidTexture, "Empty sprite texture accepted.");
+    sprite.visible = false;
+    frame(renderer);
+    renderer.drawSprite(sprite);
+    check(renderer.endFrame(error), error);
+    sprite = Sprite(texture, {1, 1, 0, 0});
+    frame(renderer);
+    renderer.drawSprite(sprite);
+    check(renderer.endFrame(error), error);
+}
 }
 
 int main(int argc, char** argv)
@@ -313,9 +485,9 @@ int main(int argc, char** argv)
         options.width = 64;
         options.height = 64;
         options.title = "Texture checks";
-        std::vector<Platform::Error> errors;
-        const bool initialized = Platform::initialize(options, errors);
-        PlatformTest::reportErrors(errors);
+        Platform::Error failure;
+        const bool initialized = Platform::initialize(options, failure);
+        PlatformTest::reportError(failure);
         require(initialized, "Cannot initialize test window.");
         RenderError renderError;
         check(renderer.initialize(renderError), renderError);
@@ -323,11 +495,13 @@ int main(int argc, char** argv)
         ResourceError error;
         check(files.initialize(error), error);
         const std::string mode = argv[1];
-        if (mode == "resources") {
-            resources(renderer, files);
+        if (mode == "resources" || mode == "sprite_errors" || mode == "atlas") {
+            if (mode == "resources") { resources(renderer, files); }
+            else if (mode == "atlas") { atlasChecks(renderer); }
+            else { spriteErrors(renderer); }
             result = 0;
         } else {
-            require(mode == "pixels" || mode == "sampling" || mode == "integration", "Unknown mode.");
+            require(mode == "pixels" || mode == "sampling" || mode == "integration" || mode == "sprites", "Unknown mode.");
             RenderTest::FramebufferApi api;
             if (!api.load()) {
                 std::cout << "Pixel checks require optional FBO support from the test driver.\n";
@@ -350,6 +524,7 @@ int main(int argc, char** argv)
                 target.initialize();
                 if (mode == "pixels") { pixels(renderer, files); }
                 else if (mode == "sampling") { sampling(renderer); }
+                else if (mode == "sprites") { sprites(renderer); }
                 else { integration(renderer); }
                 result = 0;
             }
@@ -358,8 +533,8 @@ int main(int argc, char** argv)
         std::cerr << exception.what() << '\n';
     }
     renderer.shutdown();
-    std::vector<Platform::Error> errors;
-    Platform::shutdown(errors);
-    PlatformTest::reportErrors(errors);
-    return errors.empty() ? result : 1;
+    Platform::Error failure;
+    Platform::shutdown(failure);
+    PlatformTest::reportError(failure);
+    return failure.operation.empty() ? result : 1;
 }

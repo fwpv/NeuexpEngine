@@ -1,6 +1,10 @@
 #include "window_validation.h"
+#include "platform.h"
 
 #include <limits>
+#include <cstddef>
+#include <optional>
+#include <string>
 
 namespace Platform
 {

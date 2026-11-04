@@ -14,7 +14,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace
 {
@@ -260,10 +259,10 @@ int Engine::applicationMain()
     options.window.minimumWidth = 640;
     options.window.minimumHeight = 480;
     DpiApplication application;
-    std::vector<Platform::Error> errors;
-    const bool success = application.run(options, errors);
-    for (const auto& error : errors) {
-        Platform::reportError(error);
+    Platform::Error failure;
+    const bool success = application.run(options, failure);
+    if (!success) {
+        Platform::reportError(failure);
     }
     return success ? 0 : 1;
 }

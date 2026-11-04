@@ -4,6 +4,7 @@
 #include "math2d.h"
 #include "renderer.h"
 #include "resources.h"
+#include "sprite.h"
 #include "texture.h"
 #include "transform.h"
 
@@ -98,9 +99,13 @@ bool Images::load(Engine::Renderer2D& renderer, Engine::ResourceError& error)
                 std::copy_n(source.pixels.data() + sourceOffset,
                     static_cast<std::size_t>(width) * RgbaChannels, image.pixels.data() + destinationOffset);
             }
-            if (!renderer.createTexture(image, textures[index + static_cast<std::size_t>(frame)], error)) {
+            Engine::Texture texture;
+            if (!renderer.createTexture(image, texture, error)) {
                 return false;
             }
+            auto& sprite = sprites[index + static_cast<std::size_t>(frame)];
+            sprite = Engine::Sprite(texture);
+            sprite.filter = index >= Head ? Engine::TextureFilter::Linear : Engine::TextureFilter::Nearest;
         }
     }
     return true;
@@ -108,20 +113,18 @@ bool Images::load(Engine::Renderer2D& renderer, Engine::ResourceError& error)
 
 void Images::draw(Engine::Renderer2D& renderer, std::size_t image, Engine::Vector2 position, float scale, float angle) const
 {
-    const auto& texture = textures[image];
-    Engine::Rect rectangle{position, Engine::Size2{static_cast<float>(texture.width()) * scale,
-        static_cast<float>(texture.height()) * scale}};
-    Engine::DrawOptions options;
+    Engine::Sprite sprite = sprites[image];
+    sprite.size.width *= scale;
+    sprite.size.height *= scale;
+    sprite.transform.position = position;
     if (image >= Leaf1 && image <= Leaf3) {
+        // Центр задан в единицах сцены и не масштабируется вместе с изображением.
         constexpr float LeafPivot = 17.5F;
-        Engine::Transform2 transform;
-        transform.position = Engine::Vector2{rectangle.position.x + LeafPivot, rectangle.position.y + LeafPivot};
-        transform.rotation = -Engine::degreesToRadians(angle);
-        options.transform = transform.toAffine();
-        rectangle.position = Engine::Vector2{-LeafPivot, -LeafPivot};
+        sprite.transform.position += Engine::Vector2{LeafPivot, LeafPivot};
+        sprite.transform.origin = Engine::Vector2{LeafPivot, LeafPivot};
+        sprite.transform.rotation = -Engine::degreesToRadians(angle);
     }
-    renderer.drawTexture(texture, rectangle, options,
-        Engine::TextureSampling{image >= Head ? Engine::TextureFilter::Linear : Engine::TextureFilter::Nearest});
+    renderer.drawSprite(sprite);
 }
 
 }
