@@ -11,7 +11,6 @@
 #include <optional>
 #include <random>
 #include <string>
-#include <vector>
 
 namespace
 {
@@ -120,10 +119,10 @@ bool CatApplication::onRender(const Engine::FrameInfo& frame, Host::Error& error
 int Engine::applicationMain()
 {
     CatApplication application;
-    std::vector<Platform::Error> errors;
-    const bool success = application.run(applicationOptions(), errors);
-    for (const auto& error : errors) {
-        Platform::reportError(error);
+    Platform::Error failure;
+    const bool success = application.run(applicationOptions(), failure);
+    if (!success) {
+        Platform::reportError(failure);
     }
     return success ? 0 : 1;
 }

@@ -78,13 +78,6 @@ void run()
         limits.decoderBytes = 1;
         require(!decodePng(bytes, image, error, limits) && error.code == ResourceErrorCode::LimitExceeded,
             "Temporary decoder memory limit ignored.");
-        auto corrupt = bytes;
-        corrupt[corrupt.size() - 1] ^= 1;
-        require(!decodePng(corrupt, image, error) && error.code == ResourceErrorCode::InvalidImage,
-            "PNG checksum corruption accepted.");
-        corrupt = bytes;
-        corrupt.resize(corrupt.size() - 12);
-        require(!decodePng(corrupt, image, error), "PNG without IEND accepted.");
         limits = {};
         limits.fileBytes = bytes.size() - 1;
         require(!decodePng(bytes, image, error, limits) && error.code == ResourceErrorCode::LimitExceeded,

@@ -453,9 +453,9 @@ int main(int argc, char** argv)
         options.width = 64;
         options.height = 64;
         options.title = "Texture checks";
-        std::vector<Platform::Error> errors;
-        const bool initialized = Platform::initialize(options, errors);
-        PlatformTest::reportErrors(errors);
+        Platform::Error failure;
+        const bool initialized = Platform::initialize(options, failure);
+        PlatformTest::reportError(failure);
         require(initialized, "Cannot initialize test window.");
         RenderError renderError;
         check(renderer.initialize(renderError), renderError);
@@ -500,8 +500,8 @@ int main(int argc, char** argv)
         std::cerr << exception.what() << '\n';
     }
     renderer.shutdown();
-    std::vector<Platform::Error> errors;
-    Platform::shutdown(errors);
-    PlatformTest::reportErrors(errors);
-    return errors.empty() ? result : 1;
+    Platform::Error failure;
+    Platform::shutdown(failure);
+    PlatformTest::reportError(failure);
+    return failure.operation.empty() ? result : 1;
 }

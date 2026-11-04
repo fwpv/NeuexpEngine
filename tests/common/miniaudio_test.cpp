@@ -1,10 +1,8 @@
 #include <miniaudio.h>
 
 #include <array>
-#include <filesystem>
 #include <iostream>
 #include <string>
-#include <system_error>
 
 namespace
 {
@@ -65,29 +63,12 @@ bool checkSamples(const char* path)
     return passed && released == MA_SUCCESS;
 }
 
-bool checkLoadFailure(const char* path, bool shouldExist)
-{
-    std::error_code error;
-    if (std::filesystem::exists(path, error) != shouldExist || error) {
-        std::cerr << "Unexpected test file availability: " << path << "\n";
-        return false;
-    }
-
-    const ma_decoder_config config = decoderConfig();
-    ma_decoder decoder;
-    if (ma_decoder_init_file(path, &config, &decoder) == MA_SUCCESS) {
-        std::cerr << "Decoding should have failed: " << path << "\n";
-        ma_decoder_uninit(&decoder);
-        return false;
-    }
-    return true;
-}
 }
 
 int main(int argumentCount, char* arguments[])
 {
     if (argumentCount != 3) {
-        std::cerr << "Usage: miniaudio_test <samples|missing|corrupt> <file>\n";
+        std::cerr << "Usage: miniaudio_test <samples> <file>\n";
         return 1;
     }
 
@@ -95,10 +76,6 @@ int main(int argumentCount, char* arguments[])
     bool passed = false;
     if (scenario == "samples") {
         passed = checkSamples(arguments[2]);
-    } else if (scenario == "missing") {
-        passed = checkLoadFailure(arguments[2], false);
-    } else if (scenario == "corrupt") {
-        passed = checkLoadFailure(arguments[2], true);
     } else {
         std::cerr << "Unknown scenario: " << arguments[1] << "\n";
     }

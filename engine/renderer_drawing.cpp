@@ -47,14 +47,14 @@ bool Renderer2D::ready()
 void Renderer2D::setWorldView(const CameraView& view)
 {
     if (ready()) {
-        selectView(view.viewport, view.worldToScreenTransform, Stage::World, firstError);
+        selectView(view.viewport, view.worldToScreenTransform, Stage::World);
     }
 }
 
 void Renderer2D::setUiView(const UiView& view)
 {
     if (ready()) {
-        selectView(view.viewport, view.uiToScreenTransform, Stage::Ui, firstError);
+        selectView(view.viewport, view.uiToScreenTransform, Stage::Ui);
     }
 }
 
@@ -71,7 +71,7 @@ void Renderer2D::drawLine(Vector2 start, Vector2 end, Color color)
 void Renderer2D::drawRectangle(const Rect& bounds, const DrawOptions& options, ShapeFill fill)
 {
     if (ready()) {
-        queueRectangle(bounds, fill, options, firstError);
+        queueRectangle(bounds, fill, options);
     }
 }
 

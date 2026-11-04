@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "detail/cleanup_error.h"
 #include "window_validation.h"
 #include "key_codes.h"
 #include "extension_names.h"
@@ -634,24 +635,19 @@ void reportError(const Error& error, bool)
     std::cerr << '\n';
 }
 
-bool initialize(const WindowOptions& options, std::vector<Error>& errors)
+bool initialize(const WindowOptions& options, Error& error)
 {
-    errors.clear();
+    error = {};
     if (display || initialized) {
-        errors.push_back(Error{"initialize", "Call shutdown before initializing again.", std::nullopt});
+        error = Error{"initialize", "Call shutdown before initializing again.", std::nullopt};
         return false;
     }
-    Error error;
     if (!validateWindowOptions(options, error)) {
-        errors.push_back(error);
         return false;
     }
-    if (initializeX11(options, error)) {
-        return true;
-    }
-    shutdown(errors);
-    errors.insert(errors.begin(), error);
-    return false;
+    Detail::StartupRollback rollback;
+    rollback.committed = initializeX11(options, error);
+    return rollback.committed;
 }
 
 bool getWindowState(WindowState& state, Error& error)
@@ -881,42 +877,42 @@ bool present(Error& error)
     return takeError("glXSwapBuffers", error);
 }
 
-void shutdown(std::vector<Error>& errors)
+bool shutdown(Error& result)
 {
-    errors.clear();
+    result = {};
     if (display) {
         Error error;
         // Отложенная ошибка работы сохраняется отдельно от ошибок очистки.
         if (!synchronize("pending X11 requests before shutdown", error)) {
-            errors.push_back(error);
+            Detail::keepFirstError(result, error);
         }
         if (inputContext) {
             XDestroyIC(inputContext);
             inputContext = nullptr;
             if (!synchronize("XDestroyIC", error)) {
-                errors.push_back(error);
+                Detail::keepFirstError(result, error);
             }
         }
         if (inputMethod) {
             const Status closed = XCloseIM(inputMethod);
             inputMethod = nullptr;
             if (!synchronize("XCloseIM", error)) {
-                errors.push_back(error);
+                Detail::keepFirstError(result, error);
             } else if (!closed) {
-                errors.push_back(Error{"XCloseIM", "Could not close the input method.", std::nullopt});
+                Detail::keepFirstError(result, Error{"XCloseIM", "Could not close the input method.", std::nullopt});
             }
         }
         if (openGLContext) {
             const Bool detached = glXMakeCurrent(display, None, nullptr);
             const bool detachSucceeded = synchronize("glXMakeCurrent (detach)", error);
             if (!detachSucceeded) {
-                errors.push_back(error);
+                Detail::keepFirstError(result, error);
             } else if (!detached) {
-                errors.push_back(Error{"glXMakeCurrent (detach)", "Could not detach the OpenGL context.", std::nullopt});
+                Detail::keepFirstError(result, Error{"glXMakeCurrent (detach)", "Could not detach the OpenGL context.", std::nullopt});
             }
             glXDestroyContext(display, openGLContext);
             if (!synchronize("glXDestroyContext", error)) {
-                errors.push_back(error);
+                Detail::keepFirstError(result, error);
             }
             openGLContext = nullptr;
         }
@@ -935,7 +931,7 @@ void shutdown(std::vector<Error>& errors)
                     pendingError = {};
                 }
                 if (!takeError("XDestroyWindow", error)) {
-                    errors.push_back(error);
+                    Detail::keepFirstError(result, error);
                 }
             }
             window = 0;
@@ -943,7 +939,7 @@ void shutdown(std::vector<Error>& errors)
         if (colorMap) {
             XFreeColormap(display, colorMap);
             if (!synchronize("XFreeColormap", error)) {
-                errors.push_back(error);
+                Detail::keepFirstError(result, error);
             }
             colorMap = 0;
         }
@@ -951,7 +947,7 @@ void shutdown(std::vector<Error>& errors)
         display = nullptr;
         // XCloseDisplay тоже может доставить ошибку; после него нельзя вызывать XGetErrorText.
         if (!takeError("XCloseDisplay", error)) {
-            errors.push_back(error);
+            Detail::keepFirstError(result, error);
         }
     }
     if (handlersInstalled) {
@@ -980,5 +976,6 @@ void shutdown(std::vector<Error>& errors)
         previousLocaleModifiers.clear();
     }
     Detail::resetInput();
+    return result.operation.empty();
 }
 }

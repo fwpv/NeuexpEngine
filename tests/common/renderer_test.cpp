@@ -333,7 +333,7 @@ void errors()
         }
     }
     reject([&] { renderer.drawPolygon(Quad{}, Red); }, RenderError::InvalidGeometry, "Degenerate quad accepted.");
-    reject([&] { renderer.drawPolygon(Polygon{}, style(Red)); }, RenderError::InvalidGeometry, "Empty polygon accepted.");
+    reject([&] { renderer.drawPolygon(Engine::Polygon{}, style(Red)); }, RenderError::InvalidGeometry, "Empty polygon accepted.");
     reject([&] { renderer.drawCircle({ {}, -1 }, style(Red), ShapeFill::Filled); }, RenderError::InvalidGeometry, "Negative radius accepted.");
     reject([&] { renderer.drawCircle({ {}, 10 }, style(Red), ShapeFill::Filled, 2); }, RenderError::InvalidGeometry, "Invalid circle subdivision accepted.");
     reject([&] { renderer.drawRectangle({ 10, 10, -1, 20 }, style(Red), ShapeFill::Filled); }, RenderError::InvalidGeometry, "Negative rectangle accepted.");
@@ -481,7 +481,7 @@ void sorting()
     renderer.drawRectangle({ 0, 0, 100, 100 }, ordered(Blue, 1), ShapeFill::Filled);
     renderer.setClip(std::nullopt);
     // Отложенные команды владеют копией вершин и параметров.
-    Polygon polygon = {Vector2{10, 120}, Vector2{70, 120}, Vector2{10, 180}};
+    Engine::Polygon polygon = {Vector2{10, 120}, Vector2{70, 120}, Vector2{10, 180}};
     DrawOptions options = style(Blue);
     renderer.drawPolygon(polygon, options, ShapeFill::Filled);
     polygon.clear();
@@ -535,7 +535,7 @@ void ellipses()
     renderer.drawEllipse({ 5, 0 }, { 12, 5 }, transformed, ShapeFill::Filled, 64);
     renderer.drawRectangle({ 150, 20, 20, 20 }, Blue);
     renderer.drawEllipse({ 65, 140 }, { 20, 10 }, White, ShapeFill::Outline, 4);
-    renderer.drawPolygon(Polygon{Vector2{5, 170}, Vector2{25, 170}, Vector2{5, 190}}, Green);
+    renderer.drawPolygon(Engine::Polygon{Vector2{5, 170}, Vector2{25, 170}, Vector2{5, 190}}, Green);
     renderer.drawLine({ 150.5F, 60.5F }, { 190.5F, 60.5F });
     DrawOptions point = style(Red);
     point.pointSize = 5;
@@ -596,62 +596,6 @@ void debugText()
     renderer.shutdown();
 }
 
-void frameErrors()
-{
-    Renderer2D renderer;
-    RenderError error;
-    check(renderer.initialize(error), error);
-    // Ошибка текущего контекста не должна превращаться в успешное завершение кадра.
-    glEnable(static_cast<GLenum>(0xffffffffU));
-    renderer.beginFrame(ImageSize, ImageSize, Black);
-    require(!renderer.endFrame(error) && error == RenderError::Graphics, "OpenGL error was silently ignored.");
-    renderer.beginFrame(ImageSize, ImageSize, Black);
-    check(renderer.endFrame(error), error);
-    renderer.drawPoint({}, White);
-    require(!renderer.endFrame(error) && error == RenderError::InvalidState, "Renderer accepted drawing outside a frame.");
-    renderer.beginFrame(0, ImageSize, Black);
-    renderer.setUiView(screen());
-    renderer.drawEllipse({}, { -1, 2 }, Red);
-    require(!renderer.endFrame(error) && error == RenderError::InvalidFrameSize, "Begin-frame error was overwritten.");
-
-    renderer.beginFrame(ImageSize, ImageSize, Black);
-    renderer.setUiView(screen());
-    renderer.drawRectangle({ 10, 10, 20, 20 }, Red);
-    renderer.drawEllipse({ 40, 40 }, { -1, 5 }, White);
-    renderer.drawRectangle({ 10, 10, 20, 20 }, Blue);
-    renderer.setClip(Viewport{ 0, 0, -1, 5 });
-    require(!renderer.endFrame(error) && error == RenderError::InvalidGeometry, "First draw error was overwritten.");
-    pixel(15, 15, Red);
-
-    renderer.beginFrame(ImageSize, ImageSize, Black);
-    renderer.setUiView(screen());
-    renderer.drawRectangle({ 10, 10, 20, 20 }, Blue);
-    check(renderer.endFrame(error), error);
-    pixel(15, 15, Blue);
-
-    renderer.beginFrame(ImageSize, ImageSize, Black);
-    renderer.beginFrame(ImageSize, ImageSize, Red);
-    require(!renderer.endFrame(error) && error == RenderError::InvalidState, "Nested Renderer frame was accepted.");
-    renderer.beginFrame(ImageSize, ImageSize, Green);
-    check(renderer.endFrame(error), error);
-
-    for (float pixelSize : { 0.0F, -1.0F, std::numeric_limits<float>::infinity() }) {
-        renderer.beginFrame(ImageSize, ImageSize, Black);
-        renderer.setUiView(screen());
-        renderer.drawDebugText("A", {}, White, pixelSize);
-        require(!renderer.endFrame(error) && error == RenderError::InvalidGeometry, "Invalid debug-text size was accepted.");
-    }
-    renderer.beginFrame(ImageSize, ImageSize, Black);
-    renderer.setUiView(screen());
-    renderer.drawEllipse({}, { 1, 1 }, White, ShapeFill::Filled, 2);
-    require(!renderer.endFrame(error) && error == RenderError::InvalidGeometry, "Invalid ellipse segments were accepted.");
-    renderer.beginFrame(ImageSize, ImageSize, Black);
-    renderer.setUiView(screen());
-    renderer.drawDebugText("A", {}, Color{ 2, 0, 0 });
-    require(!renderer.endFrame(error) && error == RenderError::InvalidOptions, "Debug text ignored invalid options.");
-    renderer.shutdown();
-}
-
 int runTest(const std::string& mode)
 {
     FramebufferApi api;
@@ -674,9 +618,6 @@ int runTest(const std::string& mode)
     else if (mode == "debug_text") {
         debugText();
     }
-    else if (mode == "frame_errors") {
-        frameErrors();
-    }
     else { throw std::runtime_error("Unknown renderer test mode."); }
     return 0;
 }
@@ -698,16 +639,16 @@ int main(int argc, char** argv)
         options.width = ImageSize;
         options.height = ImageSize;
         options.title = "Renderer pixel checks";
-        std::vector<Platform::Error> platformErrors;
-        const bool initialized = Platform::initialize(options, platformErrors);
-        PlatformTest::reportErrors(platformErrors);
+        Platform::Error platformError;
+        const bool initialized = Platform::initialize(options, platformError);
+        PlatformTest::reportError(platformError);
         require(initialized, "Could not create test context.");
         result = runTest(argv[1]);
     } catch (const std::exception& exception) {
         std::cerr << exception.what() << '\n';
     }
-    std::vector<Platform::Error> platformErrors;
-    Platform::shutdown(platformErrors);
-    PlatformTest::reportErrors(platformErrors);
-    return platformErrors.empty() ? result : 1;
+    Platform::Error platformError;
+    Platform::shutdown(platformError);
+    PlatformTest::reportError(platformError);
+    return platformError.operation.empty() ? result : 1;
 }

@@ -4,12 +4,6 @@
 
 namespace Engine
 {
-enum class TransformError
-{
-    None,
-    NonInvertible
-};
-
 // [m00 m01 m02; m10 m11 m12; 0 0 1], умножение на вектор-столбец (x, y, 1).
 // По умолчанию — тождественное преобразование. Коэффициенты должны быть конечными.
 struct Affine2
@@ -27,8 +21,8 @@ struct Affine2
     // Возвращает охватывающий прямоугольник вдоль осей, а не повёрнутую фигуру.
     Rect transformBounds(const Rect& rectangle) const;
     // При вырожденной матрице или непредставимом результате result не меняется.
-    // error заменяется при каждом вызове; result может совпадать с *this.
-    bool inverse(Affine2& result, TransformError& error) const;
+    // false означает необратимое преобразование; result сохраняется и может совпадать с *this.
+    bool inverse(Affine2& result) const;
 
     Affine2& operator*=(const Affine2& other);
 };

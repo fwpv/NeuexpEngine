@@ -70,9 +70,9 @@ bool runTest()
     options.width = InitialWidth;
     options.height = InitialHeight;
     options.title = "Viewport test";
-    std::vector<Platform::Error> errors;
-    if (!Platform::initialize(options, errors)) {
-        PlatformTest::reportErrors(errors);
+    Platform::Error failure;
+    if (!Platform::initialize(options, failure)) {
+        PlatformTest::reportError(failure);
         return false;
     }
     if (!checkViewport({ 0, 0, InitialWidth, InitialHeight })) {
@@ -151,8 +151,8 @@ int main()
     }
 #endif
     const bool passed = runTest();
-    std::vector<Platform::Error> errors;
-    Platform::shutdown(errors);
-    PlatformTest::reportErrors(errors);
-    return passed && errors.empty() ? 0 : 1;
+    Platform::Error failure;
+    Platform::shutdown(failure);
+    PlatformTest::reportError(failure);
+    return passed && failure.operation.empty() ? 0 : 1;
 }

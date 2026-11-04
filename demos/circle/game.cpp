@@ -13,7 +13,6 @@
 #include <cmath>
 #include <optional>
 #include <string>
-#include <vector>
 
 namespace
 {
@@ -134,12 +133,10 @@ int Game::run()
     options.maxDeltaTime = 0.08f;
     options.targetFramesPerSecond = 120.0;
     CircleApplication application;
-    std::vector<Platform::Error> errors;
-    const bool success = application.run(options, errors);
-    bool showDialog = true;
-    for (const Platform::Error& error : errors) {
-        Platform::reportError(error, showDialog);
-        showDialog = false;
+    Platform::Error failure;
+    const bool success = application.run(options, failure);
+    if (!success) {
+        Platform::reportError(failure);
     }
     return success ? 0 : 1;
 }

@@ -16,7 +16,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace
 {
@@ -370,11 +369,9 @@ int Engine::applicationMain()
     options.window.title = "Renderer town";
     options.window.minimumWidth = 900;
     options.window.minimumHeight = 650;
-    std::vector<Platform::Error> errors;
-    if (!application.run(options, errors)) {
-        for (const auto& error : errors) {
-            Platform::reportError(error);
-        }
+    Platform::Error failure;
+    if (!application.run(options, failure)) {
+        Platform::reportError(failure);
         return 1;
     }
     return 0;

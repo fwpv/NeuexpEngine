@@ -309,10 +309,10 @@ struct NativeWindow
 
 void shutdown()
 {
-    std::vector<Platform::Error> errors;
-    Platform::shutdown(errors);
-    PlatformTest::reportErrors(errors);
-    require(errors.empty(), "Shutdown failed.");
+    Platform::Error failure;
+    Platform::shutdown(failure);
+    PlatformTest::reportError(failure);
+    require(failure.operation.empty(), "Shutdown failed.");
     Platform::WindowState state;
     Platform::Error error;
     require(!Platform::getWindowState(state, error), "State query after shutdown must fail.");
@@ -408,10 +408,10 @@ int runMinimizeOrKeyboard(const std::string& title, bool keyboard)
     options.width = 400;
     options.height = 300;
     options.title = title;
-    std::vector<Platform::Error> errors;
-    const bool initialized = Platform::initialize(options, errors);
+    Platform::Error failure;
+    const bool initialized = Platform::initialize(options, failure);
     if (!initialized) {
-        PlatformTest::reportErrors(errors);
+        PlatformTest::reportError(failure);
     }
     require(initialized, "Could not initialize the test window.");
     NativeWindow native(title);
@@ -499,13 +499,13 @@ void runWindow(Platform::WindowOptions options, const std::string& title, bool e
 {
     Platform::Error error;
     options.title = title;
-    std::vector<Platform::Error> startupErrors;
-    const bool success = Platform::initialize(options, startupErrors);
+    Platform::Error startupError;
+    const bool success = Platform::initialize(options, startupError);
     if (!success) {
-        PlatformTest::reportErrors(startupErrors);
+        PlatformTest::reportError(startupError);
     }
     require(success, "Initialization failed.");
-    require(startupErrors.empty(), "Successful initialization must clear previous errors.");
+    require(startupError.operation.empty(), "Successful initialization must clear previous errors.");
     NativeWindow native(title);
     native.checkTitle(title);
     const std::string changedTitle = u8"Движок — окно 🌌";
@@ -528,8 +528,8 @@ void runWindow(Platform::WindowOptions options, const std::string& title, bool e
     }, "Initial client dimensions do not match the requested size.");
     checkPresentation(native);
     native.checkMinimum(options);
-    require(!Platform::initialize(options, startupErrors) && startupErrors.size() == 1
-        && startupErrors.front().operation == "initialize",
+    require(!Platform::initialize(options, startupError) && !startupError.operation.empty()
+        && startupError.operation == "initialize",
         "Repeated initialization must fail without replacing the window.");
     require(!Platform::isKeyDown(static_cast<Platform::Key>(-1)), "Unknown keys must not map to Space.");
     native.resize();
@@ -606,10 +606,10 @@ int main(int argumentCount, char* arguments[])
         runWindow({ 320, 240, 320, 240 }, title, true);
         Platform::WindowOptions fixedOptions = { 320, 240, 0, 0, false };
         fixedOptions.title = title;
-        std::vector<Platform::Error> startupErrors;
-        const bool initialized = Platform::initialize(fixedOptions, startupErrors);
+        Platform::Error startupError;
+        const bool initialized = Platform::initialize(fixedOptions, startupError);
         if (!initialized) {
-            PlatformTest::reportErrors(startupErrors);
+            PlatformTest::reportError(startupError);
         }
         require(initialized, "Initialization failed.");
         NativeWindow fixedWindow(title);
@@ -621,9 +621,10 @@ int main(int argumentCount, char* arguments[])
         shutdown();
     } catch (const std::exception& exception) {
         std::cerr << exception.what() << '\n';
-        std::vector<Platform::Error> errors;
-        Platform::shutdown(errors);
-        for (const auto& error : errors) {
+        Platform::Error failure;
+        Platform::shutdown(failure);
+        if (!failure.operation.empty()) {
+        const auto& error = failure;
             std::cerr << error.operation << ": " << error.message << '\n';
         }
         return 1;

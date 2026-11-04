@@ -21,11 +21,10 @@ Rect Affine2::transformBounds(const Rect& rectangle) const
     return bounds(transformed(rectangle.corners(), *this));
 }
 
-bool Affine2::inverse(Affine2& result, TransformError& error) const
+bool Affine2::inverse(Affine2& result) const
 {
     const double determinant = static_cast<double>(m00) * m11 - static_cast<double>(m01) * m10;
     if (determinant == 0) {
-        error = TransformError::NonInvertible;
         return false;
     }
 
@@ -39,7 +38,6 @@ bool Affine2::inverse(Affine2& result, TransformError& error) const
     };
     for (double coefficient : coefficients) {
         if (!std::isfinite(coefficient) || std::abs(coefficient) > std::numeric_limits<float>::max()) {
-            error = TransformError::NonInvertible;
             return false;
         }
     }
@@ -47,7 +45,6 @@ bool Affine2::inverse(Affine2& result, TransformError& error) const
         static_cast<float>(coefficients[0]), static_cast<float>(coefficients[1]), static_cast<float>(coefficients[2]),
         static_cast<float>(coefficients[3]), static_cast<float>(coefficients[4]), static_cast<float>(coefficients[5])
     };
-    error = TransformError::None;
     return true;
 }
 

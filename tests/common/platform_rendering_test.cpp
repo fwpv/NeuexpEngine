@@ -186,16 +186,16 @@ int main()
         options.width = 64;
         options.height = 64;
         options.title = "Offscreen rendering test";
-        std::vector<Platform::Error> errors;
-        const bool initialized = Platform::initialize(options, errors);
-        PlatformTest::reportErrors(errors);
+        Platform::Error failure;
+        const bool initialized = Platform::initialize(options, failure);
+        PlatformTest::reportError(failure);
         require(initialized, "Could not initialize the OpenGL context.");
         result = runTest();
     } catch (const std::exception& exception) {
         std::cerr << exception.what() << '\n';
     }
-    std::vector<Platform::Error> errors;
-    Platform::shutdown(errors);
-    PlatformTest::reportErrors(errors);
-    return errors.empty() ? result : 1;
+    Platform::Error failure;
+    Platform::shutdown(failure);
+    PlatformTest::reportError(failure);
+    return failure.operation.empty() ? result : 1;
 }

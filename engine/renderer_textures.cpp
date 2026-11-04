@@ -11,7 +11,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
-#include <new>
+#include <memory>
 #include <utility>
 
 namespace Engine
@@ -96,69 +96,64 @@ bool Renderer2D::createTexture(const Image& image, Texture& result, ResourceErro
         error = {ResourceErrorCode::LimitExceeded, "Texture exceeds the GPU dimensions or memory budget."};
         return false;
     }
-    try {
-        auto texture = std::make_shared<Detail::TextureData>();
-        texture->owner = this;
-        texture->width = image.width;
-        texture->height = image.height;
-        texture->storageWidth = width;
-        texture->storageHeight = height;
-        texture->gpuBytes = bytes;
-        if (keepPixels) {
-            texture->image = std::make_unique<Image>(image);
+    auto texture = std::make_shared<Detail::TextureData>();
+    texture->owner = this;
+    texture->width = image.width;
+    texture->height = image.height;
+    texture->storageWidth = width;
+    texture->storageHeight = height;
+    texture->gpuBytes = bytes;
+    if (keepPixels) {
+        texture->image = std::make_unique<Image>(image);
+    }
+    std::vector<std::uint8_t> pixels(bytes);
+    for (int y = 0; y < height; ++y) {
+        const int sourceY = static_cast<int>((static_cast<std::int64_t>(2 * y + 1)
+            * image.height) / (2 * height));
+        for (int x = 0; x < width; ++x) {
+            const int sourceX = static_cast<int>((static_cast<std::int64_t>(2 * x + 1)
+                * image.width) / (2 * width));
+            const auto source = (static_cast<std::size_t>(sourceY) * static_cast<std::size_t>(image.width)
+                + static_cast<std::size_t>(sourceX)) * 4;
+            const auto target = (static_cast<std::size_t>(y) * storageWidth + static_cast<std::size_t>(x)) * 4;
+            std::copy_n(image.pixels.data() + source, 4, pixels.data() + target);
         }
-        std::vector<std::uint8_t> pixels(bytes);
-        for (int y = 0; y < height; ++y) {
-            const int sourceY = static_cast<int>((static_cast<std::int64_t>(2 * y + 1)
-                * image.height) / (2 * height));
-            for (int x = 0; x < width; ++x) {
-                const int sourceX = static_cast<int>((static_cast<std::int64_t>(2 * x + 1)
-                    * image.width) / (2 * width));
-                const auto source = (static_cast<std::size_t>(sourceY) * static_cast<std::size_t>(image.width)
-                    + static_cast<std::size_t>(sourceX)) * 4;
-                const auto target = (static_cast<std::size_t>(y) * storageWidth + static_cast<std::size_t>(x)) * 4;
-                std::copy_n(image.pixels.data() + source, 4, pixels.data() + target);
-            }
-        }
-        // Резервирование завершается до создания GPU-объекта.
-        textures.reserve(textures.size() + 1);
-        GLint previousTexture = 0;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
-        glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
-        glPushAttrib(GL_PIXEL_MODE_BIT);
-        glPixelTransferi(GL_MAP_COLOR, GL_FALSE);
-        for (GLenum parameter : std::array<GLenum, 4>{GL_RED_SCALE, GL_GREEN_SCALE, GL_BLUE_SCALE, GL_ALPHA_SCALE}) {
-            glPixelTransferf(parameter, 1);
-        }
-        for (GLenum parameter : std::array<GLenum, 4>{GL_RED_BIAS, GL_GREEN_BIAS, GL_BLUE_BIAS, GL_ALPHA_BIAS}) {
-            glPixelTransferf(parameter, 0);
-        }
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
-        glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
-        glGenTextures(1, &texture->id);
-        glBindTexture(GL_TEXTURE_2D, texture->id);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-        const GLenum failure = glGetError();
-        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
-        glPopClientAttrib();
-        glPopAttrib();
-        if (failure != GL_NO_ERROR || texture->id == 0) {
-            glDeleteTextures(1, &texture->id);
-            error = {ResourceErrorCode::Graphics, "Cannot upload texture (OpenGL error " + std::to_string(failure) + ")."};
-            return false;
-        }
-        textures.push_back(texture);
-        result.data = std::move(texture);
-    } catch (const std::bad_alloc&) {
-        error = {ResourceErrorCode::LimitExceeded, "Not enough memory to prepare texture pixels."};
+    }
+    // Резервирование завершается до создания GPU-объекта.
+    textures.reserve(textures.size() + 1);
+    GLint previousTexture = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+    glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
+    glPushAttrib(GL_PIXEL_MODE_BIT);
+    glPixelTransferi(GL_MAP_COLOR, GL_FALSE);
+    for (GLenum parameter : std::array<GLenum, 4>{GL_RED_SCALE, GL_GREEN_SCALE, GL_BLUE_SCALE, GL_ALPHA_SCALE}) {
+        glPixelTransferf(parameter, 1);
+    }
+    for (GLenum parameter : std::array<GLenum, 4>{GL_RED_BIAS, GL_GREEN_BIAS, GL_BLUE_BIAS, GL_ALPHA_BIAS}) {
+        glPixelTransferf(parameter, 0);
+    }
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+    glGenTextures(1, &texture->id);
+    glBindTexture(GL_TEXTURE_2D, texture->id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    const GLenum failure = glGetError();
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
+    glPopClientAttrib();
+    glPopAttrib();
+    if (failure != GL_NO_ERROR || texture->id == 0) {
+        glDeleteTextures(1, &texture->id);
+        error = {ResourceErrorCode::Graphics, "Cannot upload texture (OpenGL error " + std::to_string(failure) + ")."};
         return false;
     }
+    textures.push_back(texture);
+    result.data = std::move(texture);
     error = {};
     return true;
 }
@@ -209,7 +204,7 @@ void Renderer2D::drawSprite(const Sprite& sprite, const DrawOptions& options)
     DrawOptions combined;
     combined.transform = sprite.transform.toAffine();
     combined.color = sprite.color;
-    if (!prepareDraw(options, firstError) || !prepareDraw(combined, firstError)) {
+    if (!prepareDraw(options) || !prepareDraw(combined)) {
         return;
     }
     combined = options;
@@ -227,7 +222,7 @@ void Renderer2D::queueTexture(const Texture& texture, const Rect& rectangle, con
     if (!ready()) {
         return;
     }
-    if (!prepareDraw(options, firstError)) {
+    if (!prepareDraw(options)) {
         return;
     }
     if (!texture.isValid() || texture.data->owner != this) {
@@ -250,7 +245,7 @@ void Renderer2D::queueTexture(const Texture& texture, const Rect& rectangle, con
         }
     }
     const auto previous = commands.size();
-    if (!queueRectangle(rectangle, ShapeFill::Filled, options, firstError)) {
+    if (!queueRectangle(rectangle, ShapeFill::Filled, options)) {
         return;
     }
     if (commands.size() > previous) {

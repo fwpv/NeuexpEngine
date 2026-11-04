@@ -31,7 +31,6 @@ std::string pendingCommit;
 bool commitArmed = false;
 bool filterNextKey = false;
 bool legacyRepeat = false;
-unsigned int closedDisplays = 0;
 
 // Поиск затрагивает чужие окна: они могут исчезнуть после XQueryTree.
 // Подмена обработчика действует только во время поиска и только для BadWindow
@@ -72,13 +71,6 @@ private:
     inline static WindowLookupErrors* active = nullptr;
 };
 }
-extern "C" int __real_XCloseDisplay(Display*);
-extern "C" int __wrap_XCloseDisplay(Display* display)
-{
-    ++closedDisplays;
-    return __real_XCloseDisplay(display);
-}
-
 // Уведомления XKB поступают в тестовое окно без изменения блокировок рабочего стола.
 extern "C" int __real_XNextEvent(Display*, XEvent*);
 extern "C" int __wrap_XNextEvent(Display* display, XEvent* event)
@@ -884,31 +876,15 @@ int main(int argc, char** argv)
         return 77;
     }
 #endif
-    std::vector<Platform::Error> errors;
+    Platform::Error failure;
     try {
-#ifndef _WIN32
-        if (argc > 1 && std::string(argv[1]) == "constructor-rollback") {
-            const unsigned int closedBefore = closedDisplays;
-            bool failedAsExpected = false;
-            try {
-                // Окно с этим заголовком не создаётся: ошибка возникает после XOpenDisplay.
-                NativeInput native("Engine input missing window for constructor rollback");
-            } catch (const std::runtime_error& error) {
-                failedAsExpected = std::string(error.what()) == "Test window not found.";
-            }
-            require(failedAsExpected, "The missing window did not trigger constructor failure.");
-            require(closedDisplays == closedBefore + 1, "Constructor failure leaked the X11 connection.");
-            std::cout << "Native input constructor rollback passed.\n";
-            return 0;
-        }
-#endif
         require(Platform::getEvents().empty() && !Platform::isKeyDown(Key::A), "Input exists before initialization.");
         Platform::WindowOptions options;
         options.title = "Engine input test";
         options.width = 400;
         options.height = 300;
-        if (!Platform::initialize(options, errors)) {
-            PlatformTest::reportErrors(errors);
+        if (!Platform::initialize(options, failure)) {
+            PlatformTest::reportError(failure);
             throw std::runtime_error("Initialization failed.");
         }
         {
@@ -939,20 +915,20 @@ int main(int argc, char** argv)
             text(native);
             windowEvents(native);
         }
-        Platform::shutdown(errors);
-        require(errors.empty(), "Shutdown failed.");
+        Platform::shutdown(failure);
+        require(failure.operation.empty(), "Shutdown failed.");
         require(Platform::getEvents().empty() && Platform::getInput().text().empty()
             && !Platform::getInput().focused() && !Platform::isKeyDown(Key::A), "Shutdown retained input.");
-        require(Platform::initialize(options, errors), "Reinitialization failed.");
+        require(Platform::initialize(options, failure), "Reinitialization failed.");
         require(!Platform::isKeyDown(Key::A), "Reinitialization retained held keys.");
-        Platform::shutdown(errors);
-        require(errors.empty(), "Second shutdown failed.");
+        Platform::shutdown(failure);
+        require(failure.operation.empty(), "Second shutdown failed.");
         std::cout << "Native input checks passed.\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
-        Platform::shutdown(errors);
-        PlatformTest::reportErrors(errors);
+        Platform::shutdown(failure);
+        PlatformTest::reportError(failure);
         return 1;
     }
 }

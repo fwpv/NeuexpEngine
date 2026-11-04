@@ -2,8 +2,6 @@
 
 #include "platform.h"
 
-#include <vector>
-
 namespace PlatformTest
 {
 // Выводить полученную ошибку только при неожиданном отказе операции.
@@ -15,19 +13,19 @@ inline bool checkOperation(bool success, const Platform::Error& error)
     return success;
 }
 
-inline void reportErrors(const std::vector<Platform::Error>& errors)
+inline void reportError(const Platform::Error& failure)
 {
-    for (const auto& error : errors) {
-        Platform::reportError(error, false);
+    if (!failure.operation.empty()) {
+        Platform::reportError(failure, false);
     }
 }
 
-// Исходные ошибки выводятся до очистки; ошибки очистки сохраняются в отдельном списке.
-inline void shutdownAfterFailure(const std::vector<Platform::Error>& errors)
+// Исходная ошибка выводится до очистки, чтобы не потерять причину отказа.
+inline void shutdownAfterFailure(const Platform::Error& failure)
 {
-    reportErrors(errors);
-    std::vector<Platform::Error> cleanupErrors;
-    Platform::shutdown(cleanupErrors);
-    reportErrors(cleanupErrors);
+    PlatformTest::reportError(failure);
+    Platform::Error cleanupError;
+    Platform::shutdown(cleanupError);
+    PlatformTest::reportError(cleanupError);
 }
 }

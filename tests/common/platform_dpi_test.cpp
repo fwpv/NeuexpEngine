@@ -170,15 +170,15 @@ void run()
     options.minimumWidth = 200;
     options.minimumHeight = 150;
     options.title = "DPI test";
-    std::vector<Platform::Error> errors;
+    Platform::Error failure;
 #ifdef _WIN32
     const auto getContext = userFunction<GetDpiContext>("GetThreadDpiAwarenessContext");
     const auto contextsEqual = userFunction<EqualDpiContexts>("AreDpiAwarenessContextsEqual");
     require(getContext && contextsEqual, "DPI awareness APIs unavailable.");
     const HANDLE originalContext = getContext();
 #endif
-    const bool initialized = Platform::initialize(options, errors);
-    PlatformTest::reportErrors(errors);
+    const bool initialized = Platform::initialize(options, failure);
+    PlatformTest::reportError(failure);
     require(initialized, "DPI platform initialization failed.");
     Platform::WindowState state = process();
     require(state.width == 320 && state.height == 240, "Initial client size changed with DPI.");
@@ -274,13 +274,13 @@ void run()
     requestDpi(1.5F);
     require(nearlyEqual(process().systemScale, 1.5F), "DPI failed to recover.");
 #endif
-    Platform::shutdown(errors);
-    PlatformTest::reportErrors(errors);
-    require(errors.empty(), "DPI platform shutdown failed.");
+    Platform::shutdown(failure);
+    PlatformTest::reportError(failure);
+    require(failure.operation.empty(), "DPI platform shutdown failed.");
 #ifdef _WIN32
     require(contextsEqual(getContext(), originalContext) != FALSE, "Thread DPI context was not restored.");
     options.resizable = false;
-    require(Platform::initialize(options, errors), "Fixed DPI window initialization failed.");
+    require(Platform::initialize(options, failure), "Fixed DPI window initialization failed.");
     requestDpi(1.5F);
     state = process();
     checkViewport(state);
@@ -293,14 +293,14 @@ void run()
         && fixedLimits.ptMinTrackSize.y == fixedBounds.bottom - fixedBounds.top
         && fixedLimits.ptMaxTrackSize.x == fixedLimits.ptMinTrackSize.x
         && fixedLimits.ptMaxTrackSize.y == fixedLimits.ptMinTrackSize.y, "Fixed window resizing limits lost after DPI change.");
-    Platform::shutdown(errors);
-    require(errors.empty() && contextsEqual(getContext(), originalContext) != FALSE, "Fixed DPI shutdown failed.");
+    Platform::shutdown(failure);
+    require(failure.operation.empty() && contextsEqual(getContext(), originalContext) != FALSE, "Fixed DPI shutdown failed.");
     WNDCLASSW occupied = {};
     occupied.lpfnWndProc = DefWindowProcW;
     occupied.hInstance = GetModuleHandleW(nullptr);
     occupied.lpszClassName = L"EngineWindow";
     require(RegisterClassW(&occupied) != 0, "Could not arrange initialization failure.");
-    const bool failed = !Platform::initialize(options, errors);
+    const bool failed = !Platform::initialize(options, failure);
     const bool restored = contextsEqual(getContext(), originalContext) != FALSE;
     require(UnregisterClassW(occupied.lpszClassName, occupied.hInstance) != FALSE, "Could not remove occupied class.");
     require(failed && restored, "Failed initialization did not restore DPI context.");
@@ -351,9 +351,9 @@ int main()
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
-        std::vector<Platform::Error> errors;
-        Platform::shutdown(errors);
-        PlatformTest::reportErrors(errors);
+        Platform::Error failure;
+        Platform::shutdown(failure);
+        PlatformTest::reportError(failure);
         return 1;
     }
 }

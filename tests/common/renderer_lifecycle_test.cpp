@@ -145,7 +145,7 @@ private:
         return true;
     }
 
-    void onStop(std::vector<Platform::Error>&) override
+    bool onStop(Platform::Error&) override
     {
         ++stops;
         stopHadContext = glGetString(GL_VERSION) != nullptr;
@@ -153,6 +153,7 @@ private:
         if (failure == Failure::StopException) {
             throw std::runtime_error("Expected cleanup exception.");
         }
+        return true;
     }
 };
 }
@@ -180,13 +181,13 @@ int main()
             options.window.width = 96;
             options.window.height = 96;
             options.targetFramesPerSecond = 0;
-            std::vector<Platform::Error> errors;
-            const bool succeeded = app.run(options, errors);
+            Platform::Error operationError;
+            const bool succeeded = app.run(options, operationError);
             require(succeeded == (failure == Failure::None), "Unexpected application result.");
-            require(errors.size() == (succeeded ? 0U : 1U), "Application lost or duplicated lifecycle errors.");
+            require(operationError.operation.empty() == succeeded, "Application lost or duplicated lifecycle errors.");
             if (failure == Failure::Drawing) {
-                require(errors.front().operation == "Renderer2D::endFrame"
-                    && errors.front().message == renderErrorMessage(RenderError::InvalidGeometry),
+                require(operationError.operation == "Renderer2D::endFrame"
+                    && operationError.message == renderErrorMessage(RenderError::InvalidGeometry),
                     "Frame completion lost its rendering diagnostic.");
             }
             require(app.stops == 1 && app.stopHadContext, "Cleanup did not run before context destruction.");
@@ -200,8 +201,8 @@ int main()
         Platform::WindowOptions window;
         window.width = 96;
         window.height = 96;
-        std::vector<Platform::Error> errors;
-        require(Platform::initialize(window, errors), "Standalone context initialization failed.");
+        Platform::Error operationError;
+        require(Platform::initialize(window, operationError), "Standalone context initialization failed.");
         for (int restart = 0; restart < 2; ++restart) {
             require(standalone.initialize(error), "Renderer restart failed.");
             standalone.beginFrame(96, 96, Black);
@@ -214,14 +215,14 @@ int main()
             standalone.shutdown();
             require(!standalone.isInitialized(), "Renderer shutdown failed.");
         }
-        Platform::shutdown(errors);
-        require(errors.empty(), "Standalone context cleanup failed.");
+        Platform::shutdown(operationError);
+        require(operationError.operation.empty(), "Standalone context cleanup failed.");
         result = 0;
     } catch (const std::exception& exception) {
         std::cerr << exception.what() << '\n';
     }
-    std::vector<Platform::Error> errors;
-    Platform::shutdown(errors);
-    PlatformTest::reportErrors(errors);
-    return errors.empty() ? result : 1;
+    Platform::Error operationError;
+    Platform::shutdown(operationError);
+    PlatformTest::reportError(operationError);
+    return operationError.operation.empty() ? result : 1;
 }

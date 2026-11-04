@@ -53,28 +53,15 @@ void requireNear(double actual, double expected)
 
 namespace Platform
 {
-namespace
+void reportError(const Error&, bool)
 {
-bool operation(const char* name, Error& error)
-{
-    ApplicationTest::runtime.calls.emplace_back(name);
-    if (ApplicationTest::runtime.failingOperation == name) {
-        error = { name, "Injected failure.", 17 };
-        return false;
-    }
-    return true;
-}
 }
 
-bool initialize(const WindowOptions&, std::vector<Error>& errors)
+bool initialize(const WindowOptions&, Error& failure)
 {
     auto& state = ApplicationTest::runtime;
     state.calls.emplace_back("initialize");
-    errors.clear();
-    if (state.initializeFails) {
-        errors.push_back({ "initialize", "Injected startup failure.", 11 });
-        return false;
-    }
+    failure = {};
     state.initialized = true;
     state.closeRequested = state.closeDuringInitialize;
     if (state.closeRequested) {
@@ -86,9 +73,7 @@ bool initialize(const WindowOptions&, std::vector<Error>& errors)
 bool processEvents(Error& error)
 {
     auto& state = ApplicationTest::runtime;
-    if (!operation("processEvents", error)) {
-        return false;
-    }
+    ApplicationTest::runtime.calls.emplace_back("processEvents");
     ++state.polls;
     if (state.polls > 100) {
         error = { "processEvents", "Test frame limit exceeded.", {} };
@@ -107,20 +92,16 @@ bool isCloseRequested()
     return ApplicationTest::runtime.closeRequested;
 }
 
-bool getWindowState(WindowState& window, Error& error)
+bool getWindowState(WindowState& window, Error&)
 {
-    if (!operation("getWindowState", error)) {
-        return false;
-    }
+    ApplicationTest::runtime.calls.emplace_back("getWindowState");
     window = ApplicationTest::runtime.window;
     return true;
 }
 
-bool present(Error& error)
+bool present(Error&)
 {
-    if (!operation("present", error)) {
-        return false;
-    }
+    ApplicationTest::runtime.calls.emplace_back("present");
     ++ApplicationTest::runtime.presents;
     ApplicationTest::advance(std::chrono::milliseconds(6));
     return true;
@@ -149,14 +130,15 @@ const std::vector<Engine::Event>& getEvents()
     return ApplicationTest::runtime.input.events();
 }
 
-void shutdown(std::vector<Error>& errors)
+bool shutdown(Error& failure)
 {
     auto& state = ApplicationTest::runtime;
     state.calls.emplace_back("shutdown");
     state.initialized = false;
-    errors.clear();
+    failure = {};
     if (state.shutdownFails) {
-        errors.push_back({ "shutdown", "Injected cleanup failure.", 29 });
+        failure = { "shutdown", "Injected cleanup failure.", 29 };
     }
+    return failure.operation.empty();
 }
 }

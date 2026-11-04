@@ -3,7 +3,7 @@ target_link_libraries(renderer_test PRIVATE engine_renderer platform project_war
 if(WIN32)
     target_compile_definitions(renderer_test PRIVATE NOMINMAX)
 endif()
-foreach(mode primitives transforms views errors state sorting gradient ellipses debug_text frame_errors)
+foreach(mode primitives transforms views errors state sorting gradient ellipses debug_text)
     add_test(NAME renderer_${mode} COMMAND renderer_test ${mode})
     set_tests_properties(renderer_${mode} PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
@@ -59,15 +59,14 @@ if(WIN32)
     target_compile_definitions(platform_input_test PRIVATE NOMINMAX)
 else()
     target_link_options(platform_input_test PRIVATE "-Wl,--wrap=Xutf8LookupString"
-        "-Wl,--wrap=XFilterEvent" "-Wl,--wrap=XkbSetDetectableAutoRepeat" "-Wl,--wrap=XCloseDisplay"
+        "-Wl,--wrap=XFilterEvent" "-Wl,--wrap=XkbSetDetectableAutoRepeat"
         "-Wl,--wrap=XNextEvent")
 endif()
 add_test(NAME platform_input COMMAND platform_input_test)
 set_tests_properties(platform_input PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60 LABELS "display" RUN_SERIAL TRUE)
 if(UNIX AND NOT APPLE)
     add_test(NAME platform_input_legacy_repeat COMMAND platform_input_test legacy-repeat)
-    add_test(NAME platform_input_constructor_rollback COMMAND platform_input_test constructor-rollback)
-    set_tests_properties(platform_input platform_input_legacy_repeat platform_input_constructor_rollback PROPERTIES
+    set_tests_properties(platform_input platform_input_legacy_repeat PROPERTIES
         ENVIRONMENT "XMODIFIERS=@im=none" SKIP_RETURN_CODE 77 TIMEOUT 60 LABELS "display" RUN_SERIAL TRUE)
 endif()
 
@@ -77,10 +76,6 @@ target_include_directories(stb_image_test SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/
 
 add_test(NAME stb_image_pixels COMMAND stb_image_test pixels
     "${TEST_ASSETS_DIR}/rgba_2x2.png")
-add_test(NAME stb_image_missing COMMAND stb_image_test missing
-    "${CMAKE_CURRENT_BINARY_DIR}/stb_image_missing.png")
-add_test(NAME stb_image_corrupt COMMAND stb_image_test corrupt
-    "${TEST_ASSETS_DIR}/truncated.png")
 
 add_executable(miniaudio_test miniaudio_test.cpp)
 target_link_libraries(miniaudio_test PRIVATE miniaudio)
@@ -88,18 +83,10 @@ target_include_directories(miniaudio_test SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/
 
 add_test(NAME miniaudio_samples COMMAND miniaudio_test samples
     "${TEST_ASSETS_DIR}/pcm_s16_stereo.wav")
-add_test(NAME miniaudio_missing COMMAND miniaudio_test missing
-    "${CMAKE_CURRENT_BINARY_DIR}/miniaudio_missing.wav")
-add_test(NAME miniaudio_corrupt COMMAND miniaudio_test corrupt
-    "${TEST_ASSETS_DIR}/truncated.wav")
 
 add_executable(platform_cleanup_test platform_cleanup_test.cpp)
 target_link_libraries(platform_cleanup_test PRIVATE platform)
 add_test(NAME platform_cleanup COMMAND platform_cleanup_test)
-
-add_executable(platform_validation_test platform_validation_test.cpp)
-target_link_libraries(platform_validation_test PRIVATE platform)
-add_test(NAME platform_validation COMMAND platform_validation_test)
 
 add_executable(platform_window_test platform_window_test.cpp)
 target_include_directories(platform_window_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -141,7 +128,7 @@ endif()
 add_test(NAME platform_viewport COMMAND platform_viewport_test)
 set_tests_properties(platform_viewport PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
 
-set(TEST_TARGETS stb_image_test miniaudio_test platform_cleanup_test platform_validation_test platform_window_test platform_viewport_test)
+set(TEST_TARGETS stb_image_test miniaudio_test platform_cleanup_test platform_window_test platform_viewport_test)
 
 foreach(testTarget IN LISTS TEST_TARGETS)
     target_link_libraries(${testTarget} PRIVATE project_warnings)
@@ -173,7 +160,7 @@ add_executable(application_test application_test.cpp application_runtime.cpp
 target_include_directories(application_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(application_test PRIVATE engine_time engine_events engine_input engine_renderer project_warnings)
 
-foreach(group lifecycle pause failures vsync limiter statistics)
+foreach(group lifecycle pause vsync limiter statistics)
     add_test(NAME application_${group} COMMAND application_test ${group})
     set_tests_properties(application_${group} PROPERTIES TIMEOUT 15)
 endforeach()

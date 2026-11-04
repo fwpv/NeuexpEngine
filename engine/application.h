@@ -4,7 +4,6 @@
 #include "renderer.h"
 
 #include <optional>
-#include <vector>
 
 namespace Engine
 {
@@ -50,10 +49,11 @@ class Application
 public:
     virtual ~Application() = default;
 
-    // false означает ошибку: основная ошибка идёт первой, ошибки очистки — следом.
+    // false означает ошибку; возвращается первая причина отказа.
+    // Дополнительные ошибки очистки выводятся в stderr без диалогов.
     // Очистка приложения выполняется до уничтожения контекста OpenGL, в том числе
-    // при отказе onStart(). Ошибки не показываются пользователю внутри движка.
-    bool run(const ApplicationOptions& options, std::vector<Platform::Error>& errors);
+    // при отказе onStart(). error очищается перед запуском.
+    bool run(const ApplicationOptions& options, Platform::Error& error);
 
     // Явная пауза независима от автоматической паузы свёрнутого окна.
     // Изменения из onInput() применяются к обновлению текущего кадра.
@@ -65,6 +65,7 @@ public:
     void requestExit();
 
 private:
+    bool runFrames(const ApplicationOptions& options, Platform::Error& error);
     bool rendererResult(const char* operation, bool success, RenderError error, Platform::Error& result) const;
 
     Renderer2D graphics;
@@ -94,6 +95,6 @@ protected:
     // Формирование и завершение кадра рендерера. После успешного возврата цикл
     // показывает кадр. Вызывается после onPrepareFrame, в том числе на явной паузе.
     virtual bool onRender(const FrameInfo& frame, Platform::Error& error) = 0;
-    virtual void onStop(std::vector<Platform::Error>& errors);
+    virtual bool onStop(Platform::Error& error);
 };
 }

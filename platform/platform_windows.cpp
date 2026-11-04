@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "detail/cleanup_error.h"
 #include "window_validation.h"
 #include "key_codes.h"
 #include "extension_names.h"
@@ -677,25 +678,19 @@ void reportError(const Error& error, bool showDialog)
     }
 }
 
-bool initialize(const WindowOptions& options, std::vector<Error>& errors)
+bool initialize(const WindowOptions& options, Error& error)
 {
-    errors.clear();
+    error = {};
     if (initialized || windowClassRegistered || window || openGLContext) {
-        errors.push_back(Error{"initialize", "Call shutdown before initializing again.", std::nullopt});
+        error = Error{"initialize", "Call shutdown before initializing again.", std::nullopt};
         return false;
     }
-    Error error;
     if (!validateWindowOptions(options, error)) {
-        errors.push_back(error);
         return false;
     }
-    if (initializeWindows(options, error)) {
-        return true;
-    }
-    // shutdown заменяет переданный список ошибок.
-    shutdown(errors);
-    errors.insert(errors.begin(), error);
-    return false;
+    Detail::StartupRollback rollback;
+    rollback.committed = initializeWindows(options, error);
+    return rollback.committed;
 }
 
 bool getWindowState(WindowState& state, Error& error)
@@ -802,35 +797,35 @@ bool present(Error& error)
     return true;
 }
 
-void shutdown(std::vector<Error>& errors)
+bool shutdown(Error& result)
 {
-    errors.clear();
+    result = {};
     Error inputError;
     if (!takeInputError(inputError)) {
-        errors.push_back(std::move(inputError));
+        Detail::keepFirstError(result, std::move(inputError));
     }
     if (timerResolutionEnabled) {
         // Multimedia API возвращает собственный код, а не GetLastError.
-        const MMRESULT result = timeEndPeriod(1);
-        if (result != TIMERR_NOERROR) {
-            errors.push_back(Error{"timeEndPeriod", "Could not restore the timer resolution.", static_cast<int>(result)});
+        const MMRESULT timerResult = timeEndPeriod(1);
+        if (timerResult != TIMERR_NOERROR) {
+            Detail::keepFirstError(result, Error{"timeEndPeriod", "Could not restore the timer resolution.", static_cast<int>(timerResult)});
         }
         timerResolutionEnabled = false;
     }
     if (openGLContext) {
         // После отказа активации контекст может не быть текущим.
         if (wglGetCurrentContext() == openGLContext && !wglMakeCurrent(nullptr, nullptr)) {
-            errors.push_back(windowsError("wglMakeCurrent (detach)", "Could not detach the OpenGL context.", GetLastError()));
+            Detail::keepFirstError(result, windowsError("wglMakeCurrent (detach)", "Could not detach the OpenGL context.", GetLastError()));
         }
         if (!wglDeleteContext(openGLContext)) {
-            errors.push_back(windowsError("wglDeleteContext", "Could not delete the OpenGL context.", GetLastError()));
+            Detail::keepFirstError(result, windowsError("wglDeleteContext", "Could not delete the OpenGL context.", GetLastError()));
         }
         openGLContext = nullptr;
     }
     if (deviceContext && window) {
         // ReleaseDC не предоставляет расширенную ошибку через GetLastError.
         if (!ReleaseDC(window, deviceContext)) {
-            errors.push_back(windowsError("ReleaseDC", "Could not release the window drawing surface."));
+            Detail::keepFirstError(result, windowsError("ReleaseDC", "Could not release the window drawing surface."));
         }
         deviceContext = nullptr;
     }
@@ -838,22 +833,22 @@ void shutdown(std::vector<Error>& errors)
         const BOOL destroyed = DestroyWindow(window);
         const DWORD code = destroyed ? ERROR_SUCCESS : GetLastError();
         if (!takeInputError(inputError)) {
-            errors.push_back(std::move(inputError));
+            Detail::keepFirstError(result, std::move(inputError));
         }
         if (!destroyed) {
-            errors.push_back(windowsError("DestroyWindow", "Could not destroy the application window.", code));
+            Detail::keepFirstError(result, windowsError("DestroyWindow", "Could not destroy the application window.", code));
         }
         window = nullptr;
     }
     if (windowClassRegistered) {
         if (!UnregisterClassW(WindowClassName, applicationInstance)) {
-            errors.push_back(windowsError("UnregisterClass", "Could not unregister the window class.", GetLastError()));
+            Detail::keepFirstError(result, windowsError("UnregisterClass", "Could not unregister the window class.", GetLastError()));
         }
         windowClassRegistered = false;
     }
     if (previousDpiContext) {
         if (!setDpiContext(previousDpiContext)) {
-            errors.push_back(windowsError("SetThreadDpiAwarenessContext", "Could not restore the thread DPI context.", GetLastError()));
+            Detail::keepFirstError(result, windowsError("SetThreadDpiAwarenessContext", "Could not restore the thread DPI context.", GetLastError()));
         }
         previousDpiContext = nullptr;
     }
@@ -870,5 +865,6 @@ void shutdown(std::vector<Error>& errors)
     windowOptions = {};
     minimumTrackWidth = 0;
     minimumTrackHeight = 0;
+    return result.operation.empty();
 }
 }

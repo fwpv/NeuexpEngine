@@ -138,7 +138,7 @@ public:
     void drawDebugText(std::string_view message, Vector2 position, Color color, float pixel = 2);
 
 private:
-    bool queueRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options, RenderError& error);
+    bool queueRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options);
     void queuePolygon(const Vector2* vertices, std::size_t count, const DrawOptions& options, ShapeFill fill);
 
     bool ready();
@@ -173,10 +173,10 @@ private:
         std::optional<Rect> textureRect;
     };
 
-    bool selectView(const Viewport& area, const Affine2& transform, Stage next, RenderError& error);
-    bool prepareDraw(const DrawOptions& options, RenderError& error) const;
+    bool selectView(const Viewport& area, const Affine2& transform, Stage next);
+    bool prepareDraw(const DrawOptions& options);
     bool submit(Primitive primitive, const Vector2* vertices, std::size_t count,
-        const DrawOptions& options, RenderError& error);
+        const DrawOptions& options);
     void execute(Primitive primitive, const Vector2* vertices, std::size_t count, const DrawOptions& options,
         const std::optional<std::array<Color, 2>>& gradient) const;
     void flush();
