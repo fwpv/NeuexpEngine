@@ -5,6 +5,7 @@
 #include "extension_names.h"
 #include "detail/platform_input.h"
 #include "detail/unicode.h"
+#include "input.h"
 
 #include <windows.h>
 #include <mmsystem.h>
@@ -14,6 +15,9 @@
 #include <iostream>
 #include <memory>
 #include <utility>
+#include <cstddef>
+#include <optional>
+#include <string>
 
 #ifndef WM_DPICHANGED
 #define WM_DPICHANGED 0x02E0
@@ -369,8 +373,12 @@ bool handleInput(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
         }
         const unsigned int bit = 1U << static_cast<unsigned int>(event.button);
         if (down) {
-            heldMouseButtons |= bit;
             SetCapture(handle); // Получаем отпускание и за пределами окна при drag.
+            if (GetCapture() != handle) {
+                recordInputError("SetCapture", "Could not capture the mouse for dragging.");
+                return true;
+            }
+            heldMouseButtons |= bit;
         } else {
             heldMouseButtons &= ~bit;
         }

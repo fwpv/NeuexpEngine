@@ -1,4 +1,6 @@
 #include "ui.h"
+#include "camera.h"
+#include "math2d.h"
 
 #include <cmath>
 #include <limits>

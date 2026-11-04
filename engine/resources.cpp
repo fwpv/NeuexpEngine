@@ -4,6 +4,13 @@
 #include <fstream>
 #include <limits>
 #include <utility>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <ios>
+#include <string>
+#include <system_error>
+#include <vector>
 
 namespace Engine
 {

@@ -1,4 +1,5 @@
 #include "detail/executable_path.h"
+#include "resources.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -8,6 +9,8 @@
 
 #include <string>
 #include <vector>
+#include <cstddef>
+#include <filesystem>
 
 namespace Engine::Detail
 {

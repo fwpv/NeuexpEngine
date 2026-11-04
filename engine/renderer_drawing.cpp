@@ -1,7 +1,13 @@
 #include "renderer.h"
 #include "detail/debug_font.h"
+#include "camera.h"
+#include "geometry.h"
+#include "math2d.h"
+#include "transform.h"
+#include "ui.h"
 
 #include <cmath>
+#include <string_view>
 
 namespace Engine
 {

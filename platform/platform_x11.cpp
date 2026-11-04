@@ -4,6 +4,7 @@
 #include "key_codes.h"
 #include "extension_names.h"
 #include "detail/platform_input.h"
+#include "input.h"
 
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
@@ -16,6 +17,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <iostream>
+#include <istream>
 #include <array>
 #include <clocale>
 #include <cstring>
@@ -25,6 +27,8 @@
 #include <locale>
 #include <memory>
 #include <sstream>
+#include <cstddef>
+#include <optional>
 
 namespace Platform
 {
@@ -65,10 +69,23 @@ Engine::Modifiers readModifiers(unsigned int state)
         (lockedModifiers & LockMask) != 0, (lockedModifiers & numLockMask) != 0};
 }
 
-void changeFocus(bool focused)
+bool changeFocus(bool focused, Error& error)
 {
     if (windowState.focused == focused) {
-        return;
+        return true;
+    }
+    if (focused) {
+        // Lock-флаги запрашиваются при получении фокуса; удержание не восстанавливается.
+        XkbStateRec state = {};
+        const Status result = XkbGetState(display, XkbUseCoreKbd, &state);
+        if (!takeError("XkbGetState", error)) {
+            return false;
+        }
+        if (result != Success) {
+            error = {"XkbGetState", "Could not read the keyboard lock state.", result};
+            return false;
+        }
+        lockedModifiers = state.locked_mods;
     }
     windowState.focused = focused;
     if (inputContext) {
@@ -86,15 +103,10 @@ void changeFocus(bool focused)
     Engine::Event event;
     event.type = focused ? Engine::EventType::FocusGained : Engine::EventType::FocusLost;
     if (focused) {
-        // Lock-флаги запрашиваются при получении фокуса; удержание не восстанавливается.
-        XkbStateRec state = {};
-        if (XkbGetState(display, XkbUseCoreKbd, &state) == Success) {
-            lockedModifiers = state.locked_mods;
-            event.modifiers.capsLock = (state.locked_mods & LockMask) != 0;
-            event.modifiers.numLock = (state.locked_mods & numLockMask) != 0;
-        }
+        event.modifiers = readModifiers(0);
     }
     Detail::queueEvent(event);
+    return true;
 }
 
 bool readPhysicalKeys(Error& error)
@@ -401,8 +413,8 @@ bool updateMinimizedState(Error& error)
         Detail::queueEvent(minimized ? Engine::EventType::WindowMinimized : Engine::EventType::WindowRestored);
     }
     windowState.minimized = minimized;
-    if (minimized) {
-        changeFocus(false);
+    if (minimized && !changeFocus(false, error)) {
+        return false;
     }
     return true;
 }
@@ -618,7 +630,9 @@ bool initializeX11(const WindowOptions& options, Error& error)
     }
     if (windowState.focused) {
         windowState.focused = false;
-        changeFocus(true);
+        if (!changeFocus(true, error)) {
+            return false;
+        }
     }
     viewportNeedsUpdate = true;
     initialized = true;
@@ -811,11 +825,13 @@ bool processEvents(Error& error)
             // Захват мыши/клавиатуры не означает смены фокуса самого окна.
             if (event.xfocus.mode != NotifyGrab && event.xfocus.mode != NotifyUngrab
                 && event.xfocus.detail != NotifyInferior) {
-                changeFocus(event.type == FocusIn && !windowState.minimized);
+                if (!changeFocus(event.type == FocusIn && !windowState.minimized, error)) {
+                    return false;
+                }
             }
         }
-        if (event.type == UnmapNotify) {
-            changeFocus(false);
+        if (event.type == UnmapNotify && !changeFocus(false, error)) {
+            return false;
         }
         if (event.type == MapNotify) {
             if (windowState.minimized) {
@@ -827,7 +843,9 @@ bool processEvents(Error& error)
             minimizedStateChanged = true;
         }
         if (event.type == DestroyNotify && event.xdestroywindow.window == window) {
-            changeFocus(false);
+            if (!changeFocus(false, error)) {
+                return false;
+            }
             Detail::queueEvent(Engine::EventType::WindowDestroyed);
             windowState = {};
             window = 0; // Не уничтожаем уже удалённое сервером окно второй раз.

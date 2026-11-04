@@ -1,6 +1,7 @@
 #pragma once
 
 #include "geometry.h"
+#include "math2d.h"
 
 namespace Engine
 {
@@ -8,13 +9,6 @@ namespace Engine
 // По умолчанию — тождественное преобразование. Коэффициенты должны быть конечными.
 struct Affine2
 {
-    float m00 = 1;
-    float m01 = 0;
-    float m02 = 0;
-    float m10 = 0;
-    float m11 = 1;
-    float m12 = 0;
-
     Vector2 transformPoint(Vector2 point) const;
     // Направления и смещения преобразуются без переноса.
     Vector2 transformVector(Vector2 vector) const;
@@ -25,6 +19,13 @@ struct Affine2
     bool inverse(Affine2& result) const;
 
     Affine2& operator*=(const Affine2& other);
+
+    float m00 = 1;
+    float m01 = 0;
+    float m02 = 0;
+    float m10 = 0;
+    float m11 = 1;
+    float m12 = 0;
 };
 
 // first * second сначала применяет second, затем first, сохраняя в том числе неперпендикулярные оси.
@@ -36,14 +37,14 @@ Quad transformed(const Quad& polygon, const Affine2& transform);
 
 struct Transform2
 {
+    // Порядок: вычесть origin, масштабировать, повернуть, прибавить position.
+    Affine2 toAffine() const;
+
     Vector2 position;
     // Радианы; положительный поворот направляет +x к +y.
     float rotation = 0;
     Vector2 scale = {1, 1};
     // Локальная точка, которая после преобразования попадает в position.
     Vector2 origin;
-
-    // Порядок: вычесть origin, масштабировать, повернуть, прибавить position.
-    Affine2 toAffine() const;
 };
 }

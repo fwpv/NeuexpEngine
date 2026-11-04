@@ -1,5 +1,10 @@
 #include "input.h"
 
+#include <array>
+#include <cstddef>
+#include <string>
+#include <vector>
+
 namespace Engine
 {
 namespace

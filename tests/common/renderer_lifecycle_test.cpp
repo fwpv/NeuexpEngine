@@ -183,6 +183,10 @@ int main()
             options.targetFramesPerSecond = 0;
             Platform::Error operationError;
             const bool succeeded = app.run(options, operationError);
+            if (succeeded != (failure == Failure::None)) {
+                std::cerr << "Lifecycle scenario " << static_cast<int>(failure) << ":\n";
+                PlatformTest::reportError(operationError);
+            }
             require(succeeded == (failure == Failure::None), "Unexpected application result.");
             require(operationError.operation.empty() == succeeded, "Application lost or duplicated lifecycle errors.");
             if (failure == Failure::Drawing) {

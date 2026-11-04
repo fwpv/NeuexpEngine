@@ -1,4 +1,7 @@
 #include "sprite.h"
+#include "geometry.h"
+#include "math2d.h"
+#include "texture.h"
 
 namespace Engine
 {

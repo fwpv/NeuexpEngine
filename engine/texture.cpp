@@ -1,5 +1,6 @@
 #include "texture.h"
 #include "detail/texture_data.h"
+#include "resources.h"
 
 namespace Engine
 {

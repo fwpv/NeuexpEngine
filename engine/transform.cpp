@@ -1,4 +1,6 @@
 #include "transform.h"
+#include "geometry.h"
+#include "math2d.h"
 
 #include <array>
 #include <cmath>

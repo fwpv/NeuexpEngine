@@ -1,11 +1,16 @@
 #include "renderer.h"
 #include "detail/texture_data.h"
+#include "geometry.h"
+#include "math2d.h"
+#include "resources.h"
+#include "sprite.h"
+#include "texture.h"
 
 #ifdef _WIN32
 #include <windows.h>
 #endif
-#include <GL/gl.h>
 
+#include <GL/gl.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -13,6 +18,12 @@
 #include <limits>
 #include <memory>
 #include <utility>
+#include <cstddef>
+#include <filesystem>
+#include <optional>
+#include <string>
+#include <system_error>
+#include <vector>
 
 namespace Engine
 {
@@ -276,6 +287,12 @@ void Renderer2D::executeTexture(const Command& command) const
     // текселей сохраняет внутреннюю интерполяцию и повторяет край без расширений.
     struct Axis
     {
+        float coordinate(float position) const
+        {
+            const float value = start + position * repeats * span;
+            return clamp ? std::clamp(value, minimum, maximum) : value;
+        }
+
         std::array<float, 4> positions = {0, 1, 1, 1};
         int count = 2;
         float halfPixel = 0;
@@ -285,12 +302,6 @@ void Renderer2D::executeTexture(const Command& command) const
         float minimum = 0;
         float maximum = 1;
         bool clamp = false;
-
-        float coordinate(float position) const
-        {
-            const float value = start + position * repeats * span;
-            return clamp ? std::clamp(value, minimum, maximum) : value;
-        }
     };
     const auto axis = [](int size, float repeats, TextureWrap wrap, float start, float span) {
         Axis result;

@@ -31,6 +31,7 @@ std::string pendingCommit;
 bool commitArmed = false;
 bool filterNextKey = false;
 bool legacyRepeat = false;
+bool failLockState = false;
 
 // Поиск затрагивает чужие окна: они могут исчезнуть после XQueryTree.
 // Подмена обработчика действует только во время поиска и только для BadWindow
@@ -70,6 +71,11 @@ private:
     XErrorHandler previous = nullptr;
     inline static WindowLookupErrors* active = nullptr;
 };
+}
+extern "C" Status __real_XkbGetState(Display*, unsigned int, XkbStatePtr);
+extern "C" Status __wrap_XkbGetState(Display* display, unsigned int device, XkbStatePtr state)
+{
+    return failLockState ? BadAlloc : __real_XkbGetState(display, device, state);
 }
 // Уведомления XKB поступают в тестовое окно без изменения блокировок рабочего стола.
 extern "C" int __real_XNextEvent(Display*, XEvent*);
@@ -558,6 +564,32 @@ void keyboard(NativeInput& native)
 #endif
 }
 
+#ifndef _WIN32
+void lockStateFailure(NativeInput& native)
+{
+    native.focus(false);
+    native.frame();
+    require(!Platform::getInput().focused(), "Input did not lose focus before the failure test.");
+    failLockState = true;
+    native.focus(true);
+    native.flush();
+    Platform::Error error;
+    require(!Platform::processEvents(error), "Keyboard lock query failure was reported as success.");
+    require(error.operation == "XkbGetState" && error.nativeCode == BadAlloc && !error.message.empty(),
+        "Keyboard lock query failure lost its diagnostic.");
+    require(!Platform::getInput().focused() && !findEvent(EventType::FocusGained),
+        "Failed keyboard lock query published focus with fabricated modifiers.");
+    Platform::WindowState window;
+    require(Platform::getWindowState(window, error) && !window.focused,
+        "Failed keyboard lock query changed the window focus snapshot.");
+    failLockState = false;
+    native.focus(true);
+    native.frame();
+    require(Platform::getInput().focused() && findEvent(EventType::FocusGained),
+        "Focus did not recover after the keyboard lock query failure.");
+}
+#endif
+
 void mouse(NativeInput& native)
 {
     native.motion(10, 20);
@@ -910,6 +942,7 @@ int main(int argc, char** argv)
             keyboard(native);
 #ifndef _WIN32
             lockStates(native);
+            lockStateFailure(native);
 #endif
             mouse(native);
             text(native);

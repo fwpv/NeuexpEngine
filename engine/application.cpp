@@ -1,12 +1,15 @@
 #include "application.h"
 #include "frame_clock.h"
 #include "detail/cleanup_error.h"
+#include "math2d.h"
+#include "platform.h"
 
 #include <chrono>
 #include <cmath>
 #include <exception>
 #include <thread>
 #include <utility>
+#include <optional>
 
 namespace Engine
 {
@@ -67,10 +70,10 @@ bool Application::run(const ApplicationOptions& options, Platform::Error& error)
             success = false;
         }
     } catch (const std::exception& exception) {
-        Platform::Detail::keepFirstError(error, {"Application::onStop", exception.what(), std::nullopt});
+        Platform::Detail::keepFirstError(error, Platform::Error{"Application::onStop", exception.what(), std::nullopt});
         success = false;
     } catch (...) {
-        Platform::Detail::keepFirstError(error, {"Application::onStop", "Unknown exception during cleanup.", std::nullopt});
+        Platform::Detail::keepFirstError(error, Platform::Error{"Application::onStop", "Unknown exception during cleanup.", std::nullopt});
         success = false;
     }
     graphics.shutdown();

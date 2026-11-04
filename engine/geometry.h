@@ -20,9 +20,6 @@ using Polygon = std::vector<Vector2>;
 // position — угол с минимальными x/y, независимо от направления экранной оси y.
 struct Rect
 {
-    Vector2 position;
-    Size2 size;
-
     constexpr Rect() = default;
     constexpr Rect(Vector2 position, Size2 size)
         : position(position)
@@ -48,20 +45,23 @@ struct Rect
             Vector2{position.x + size.width, position.y + size.height},
             Vector2{position.x, position.y + size.height}};
     }
+
+    Vector2 position;
+    Size2 size;
 };
 
 // Радиус неотрицательный. Нулевые размеры фигур допустимы.
 struct Circle
 {
-    Vector2 center;
-    float radius = 0;
-
     constexpr Circle() = default;
     constexpr Circle(Vector2 center, float radius)
         : center(center)
         , radius(radius)
     {
     }
+
+    Vector2 center;
+    float radius = 0;
 };
 
 

@@ -1,17 +1,25 @@
 #include "renderer.h"
 #include "detail/polygon.h"
 #include "detail/texture_data.h"
+#include "camera.h"
+#include "geometry.h"
+#include "math2d.h"
+#include "texture.h"
+#include "transform.h"
 
 #ifdef _WIN32
 #include <windows.h>
 #endif
-#include <GL/gl.h>
 
+#include <GL/gl.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <cstddef>
+#include <optional>
+#include <vector>
 
 namespace Engine
 {

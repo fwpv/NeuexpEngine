@@ -2,6 +2,7 @@
 
 #include "platform.h"
 #include "renderer.h"
+#include "math2d.h"
 
 #include <optional>
 

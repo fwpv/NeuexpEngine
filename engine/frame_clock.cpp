@@ -1,5 +1,7 @@
 #include "frame_clock.h"
 
+#include <chrono>
+
 namespace Engine
 {
 FrameClock::FrameClock(float maxDeltaTime, Clock::time_point now)

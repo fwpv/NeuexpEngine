@@ -1,9 +1,13 @@
 #include "polygon.h"
 #include "segments.h"
+#include "math2d.h"
 
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <array>
+#include <cstddef>
+#include <vector>
 
 namespace Engine::Detail
 {

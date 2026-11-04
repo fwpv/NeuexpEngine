@@ -18,9 +18,6 @@ constexpr float radiansToDegrees(float radians)
 // Аргументы математических операций должны быть конечными; делители — ненулевыми.
 struct Vector2
 {
-    float x = 0;
-    float y = 0;
-
     constexpr Vector2() = default;
     constexpr Vector2(float x, float y)
         : x(x)
@@ -55,6 +52,9 @@ struct Vector2
         y /= scalar;
         return *this;
     }
+
+    float x = 0;
+    float y = 0;
 };
 
 constexpr Vector2 operator+(Vector2 value)
@@ -133,9 +133,6 @@ constexpr Vector2 lerp(Vector2 first, Vector2 second, float amount)
 
 struct Size2
 {
-    float width = 0;
-    float height = 0;
-
     constexpr Size2() = default;
     constexpr Size2(float width, float height)
         : width(width)
@@ -156,6 +153,9 @@ struct Size2
         height /= scalar;
         return *this;
     }
+
+    float width = 0;
+    float height = 0;
 };
 
 constexpr Size2 operator*(Size2 value, float scalar)
@@ -186,11 +186,6 @@ constexpr bool operator!=(Size2 first, Size2 second)
 // RGBA-компоненты от 0 до 1; автоматическое ограничение значений не выполняется.
 struct Color
 {
-    float red = 1;
-    float green = 1;
-    float blue = 1;
-    float alpha = 1;
-
     constexpr Color() = default;
     constexpr Color(float red, float green, float blue, float alpha = 1)
         : red(red)
@@ -199,6 +194,11 @@ struct Color
         , alpha(alpha)
     {
     }
+
+    float red = 1;
+    float green = 1;
+    float blue = 1;
+    float alpha = 1;
 };
 
 constexpr bool operator==(Color first, Color second)

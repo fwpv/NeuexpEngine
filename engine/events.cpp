@@ -1,7 +1,10 @@
 #include "events.h"
+#include "input.h"
 
 #include <algorithm>
 #include <utility>
+#include <memory>
+#include <optional>
 
 namespace Engine
 {

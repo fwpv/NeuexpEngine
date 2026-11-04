@@ -1,4 +1,7 @@
 #include "camera.h"
+#include "geometry.h"
+#include "math2d.h"
+#include "transform.h"
 
 #include <algorithm>
 #include <cmath>

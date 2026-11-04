@@ -2,12 +2,15 @@
 
 #include <stb_image.h>
 #include <decode_memory.h>
-
 #include <algorithm>
 #include <array>
 #include <limits>
 #include <memory>
 #include <utility>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <vector>
 
 namespace Engine
 {

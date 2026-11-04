@@ -1,5 +1,6 @@
 #include "geometry.h"
 #include "detail/segments.h"
+#include "math2d.h"
 
 #include <algorithm>
 #include <cmath>

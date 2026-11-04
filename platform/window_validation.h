@@ -2,6 +2,8 @@
 
 #include "platform.h"
 
+#include <string>
+
 namespace Platform
 {
 bool validateWindowTitle(const std::string& title, const char* operation, Error& error);

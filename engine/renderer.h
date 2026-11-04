@@ -4,12 +4,18 @@
 #include "ui.h"
 #include "texture.h"
 #include "sprite.h"
+#include "geometry.h"
+#include "math2d.h"
+#include "resources.h"
+#include "transform.h"
 
 #include <array>
 #include <cstddef>
 #include <optional>
 #include <string_view>
 #include <vector>
+#include <memory>
+#include <string>
 
 namespace Engine
 {
