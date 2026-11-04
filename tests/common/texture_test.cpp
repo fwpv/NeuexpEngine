@@ -1,3 +1,4 @@
+#include "atlas.h"
 #include "renderer.h"
 #include "platform.h"
 #include "platform_test_diagnostics.h"
@@ -394,6 +395,37 @@ void sprites(Renderer2D& renderer)
     pixel(49, 10, {0.51F, 0, 0.49F}, 3);
 }
 
+void atlasChecks(Renderer2D& renderer)
+{
+    ResourceError error;
+    Texture texture;
+    check(renderer.createTexture(Image{2, 1, {255,255,255,0, 255,255,255,255}}, texture, error, true), error);
+    TextureAtlas atlas;
+    check(atlas.load(texture, "# regions\r\nclear 0 0 1 1\nsolid 1 0 1 1\n", error), error);
+    Sprite sprite;
+    require(atlas.createSprite("solid", sprite), "Missing region.");
+    require(sprite.texture == texture && sprite.size == Size2{1, 1}, "Atlas did not share texture or set size.");
+    sprite.size = {20, 10};
+    sprite.transform = {Vector2{50, 60}, 0.7F, Vector2{-2, 3}, Vector2{10, 5}};
+    const auto center = sprite.transform.toAffine().transformPoint(Vector2{10, 5});
+    require(sprite.hitTest(center, true), "Transformed alpha hit missed.");
+    require(!sprite.hitTest(sprite.transform.toAffine().transformPoint(Vector2{21, 5})), "Outside hit accepted.");
+    sprite.color.alpha = 0.25F;
+    require(sprite.hitTest(center, true, 0.2F) && !sprite.hitTest(center, true, 0.3F), "Alpha modulation ignored.");
+    sprite.visible = false;
+    require(!sprite.hitTest(center), "Invisible hit accepted.");
+    require(atlas.createSprite("clear", sprite), "Missing transparent region.");
+    require(sprite.hitTest(Vector2{0.5F, 0.5F}) && !sprite.hitTest(Vector2{0.5F, 0.5F}, true), "Transparency ignored.");
+    require(!sprite.hitTest(Vector2{1, 0.5F}), "Right boundary included.");
+    require(!atlas.load(texture, "solid 0 0 1 1\nsolid 1 0 1 1", error), "Duplicate region accepted.");
+    require(atlas.find("clear") != nullptr, "Failed parse changed atlas.");
+    require(!atlas.load(texture, "outside 2 0 1 1", error), "Outside region accepted.");
+    require(!atlas.createSprite("missing", sprite), "Missing region accepted.");
+    Texture discarded;
+    check(renderer.createTexture(Image{1, 1, {255,255,255,255}}, discarded, error), error);
+    Sprite noPixels(discarded);
+    require(noPixels.hitTest(Vector2{0.5F, 0.5F}) && !noPixels.hitTest(Vector2{0.5F, 0.5F}, true), "Missing pixel contract failed.");
+}
 void spriteErrors(Renderer2D& renderer)
 {
     RenderError error;
@@ -463,8 +495,9 @@ int main(int argc, char** argv)
         ResourceError error;
         check(files.initialize(error), error);
         const std::string mode = argv[1];
-        if (mode == "resources" || mode == "sprite_errors") {
+        if (mode == "resources" || mode == "sprite_errors" || mode == "atlas") {
             if (mode == "resources") { resources(renderer, files); }
+            else if (mode == "atlas") { atlasChecks(renderer); }
             else { spriteErrors(renderer); }
             result = 0;
         } else {

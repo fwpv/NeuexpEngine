@@ -31,8 +31,8 @@ int main()
         }
         require(contains(concave, Vector2{2, -1}) && contains(concave, Vector2{0, 3}), "Polygon edge excluded.");
 
-        Polygon redundant = concave;
-        redundant.insert(redundant.begin() + 1, Vector2{1, -1});
+        Polygon redundant = {Vector2{-2, -1}, Vector2{1, -1}, Vector2{4, -1}, Vector2{4, 1},
+            Vector2{0, 1}, Vector2{0, 5}, Vector2{-2, 5}};
         redundant.push_back(redundant.back());
         redundant.push_back(redundant.front());
         std::reverse(redundant.begin(), redundant.end());
