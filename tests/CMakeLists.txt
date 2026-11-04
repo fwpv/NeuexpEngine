@@ -8,3 +8,4 @@ elseif(WIN32)
 endif()
 
 add_subdirectory(vsync)
+add_subdirectory(cleanup_errors)

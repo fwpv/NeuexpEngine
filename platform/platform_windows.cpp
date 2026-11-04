@@ -689,7 +689,8 @@ void reportError(const Error& error, bool showDialog)
 bool initialize(const WindowOptions& options, Error& error)
 {
     error = {};
-    if (initialized || windowClassRegistered || window || openGLContext) {
+    if (initialized || windowClassRegistered || window || deviceContext || openGLContext
+        || previousDpiContext || timerResolutionEnabled) {
         error = Error{"initialize", "Call shutdown before initializing again.", std::nullopt};
         return false;
     }
@@ -817,27 +818,33 @@ bool shutdown(Error& result)
         const MMRESULT timerResult = timeEndPeriod(1);
         if (timerResult != TIMERR_NOERROR) {
             Detail::keepFirstError(result, Error{"timeEndPeriod", "Could not restore the timer resolution.", static_cast<int>(timerResult)});
+        } else {
+            timerResolutionEnabled = false;
         }
-        timerResolutionEnabled = false;
     }
     if (openGLContext) {
         // После отказа активации контекст может не быть текущим.
         if (wglGetCurrentContext() == openGLContext && !wglMakeCurrent(nullptr, nullptr)) {
             Detail::keepFirstError(result, windowsError("wglMakeCurrent (detach)", "Could not detach the OpenGL context.", GetLastError()));
         }
-        if (!wglDeleteContext(openGLContext)) {
-            Detail::keepFirstError(result, windowsError("wglDeleteContext", "Could not delete the OpenGL context.", GetLastError()));
+        if (wglGetCurrentContext() != openGLContext) {
+            if (!wglDeleteContext(openGLContext)) {
+                Detail::keepFirstError(result, windowsError("wglDeleteContext", "Could not delete the OpenGL context.", GetLastError()));
+            } else {
+                openGLContext = nullptr;
+            }
         }
-        openGLContext = nullptr;
     }
-    if (deviceContext && window) {
+    // Зависимые ресурсы сохраняются, пока не освобождён использующий их ресурс.
+    if (!openGLContext && deviceContext && window) {
         // ReleaseDC не предоставляет расширенную ошибку через GetLastError.
         if (!ReleaseDC(window, deviceContext)) {
             Detail::keepFirstError(result, windowsError("ReleaseDC", "Could not release the window drawing surface."));
+        } else {
+            deviceContext = nullptr;
         }
-        deviceContext = nullptr;
     }
-    if (window) {
+    if (!openGLContext && !deviceContext && window) {
         const BOOL destroyed = DestroyWindow(window);
         const DWORD code = destroyed ? ERROR_SUCCESS : GetLastError();
         if (!takeInputError(inputError)) {
@@ -845,22 +852,27 @@ bool shutdown(Error& result)
         }
         if (!destroyed) {
             Detail::keepFirstError(result, windowsError("DestroyWindow", "Could not destroy the application window.", code));
+        } else {
+            window = nullptr;
         }
-        window = nullptr;
     }
-    if (windowClassRegistered) {
+    if (!window && windowClassRegistered) {
         if (!UnregisterClassW(WindowClassName, applicationInstance)) {
             Detail::keepFirstError(result, windowsError("UnregisterClass", "Could not unregister the window class.", GetLastError()));
+        } else {
+            windowClassRegistered = false;
         }
-        windowClassRegistered = false;
     }
     if (previousDpiContext) {
         if (!setDpiContext(previousDpiContext)) {
             Detail::keepFirstError(result, windowsError("SetThreadDpiAwarenessContext", "Could not restore the thread DPI context.", GetLastError()));
+        } else {
+            previousDpiContext = nullptr;
         }
-        previousDpiContext = nullptr;
     }
-    applicationInstance = nullptr;
+    if (!window && !windowClassRegistered) {
+        applicationInstance = nullptr;
+    }
     closeRequested = false;
     initialized = false;
     windowState = {};
@@ -870,9 +882,11 @@ bool shutdown(Error& result)
     mouseInside = false;
     highSurrogate = 0;
     Detail::resetInput();
-    windowOptions = {};
-    minimumTrackWidth = 0;
-    minimumTrackHeight = 0;
+    if (!window) {
+        windowOptions = {};
+        minimumTrackWidth = 0;
+        minimumTrackHeight = 0;
+    }
     return result.operation.empty();
 }
 }

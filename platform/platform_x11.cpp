@@ -57,7 +57,7 @@ unsigned int numLockMask = 0;
 unsigned int altMask = Mod1Mask;
 unsigned int superMask = Mod4Mask;
 std::string previousLocale;
-std::string previousLocaleModifiers;
+std::optional<std::string> previousLocaleModifiers;
 Atom stateMessage = None;
 
 bool takeError(const char* operation, Error& error);
@@ -571,15 +571,32 @@ bool initializeX11(const WindowOptions& options, Error& error)
     // Detectable autorepeat не создаёт KeyRelease перед повторным KeyPress.
     Bool repeatSupported = False;
     detectableRepeat = XkbSetDetectableAutoRepeat(display, True, &repeatSupported) && repeatSupported;
-    previousLocale = std::setlocale(LC_CTYPE, nullptr);
+    const char* oldLocale = std::setlocale(LC_CTYPE, nullptr);
+    if (!oldLocale) {
+        error = {"setlocale (query LC_CTYPE)", "Could not read the current character locale.", std::nullopt};
+        return false;
+    }
+    previousLocale = oldLocale;
     const char* oldModifiers = XSetLocaleModifiers(nullptr);
-    previousLocaleModifiers = oldModifiers ? oldModifiers : "";
-    std::setlocale(LC_CTYPE, "");
-    XSetLocaleModifiers("");
+    // До первой настройки Xlib модификаторы могут быть ещё не определены.
+    if (oldModifiers) {
+        previousLocaleModifiers = oldModifiers;
+    }
+    if (!std::setlocale(LC_CTYPE, "")) {
+        error = {"setlocale (LC_CTYPE)", "Could not select the character locale from the environment.", std::nullopt};
+        return false;
+    }
+    if (!XSetLocaleModifiers("")) {
+        error = {"XSetLocaleModifiers", "Could not configure the input method from the environment.", std::nullopt};
+        return false;
+    }
     inputMethod = XOpenIM(display, nullptr, nullptr, nullptr);
     if (!inputMethod) {
         // Локальный XIM обеспечивает Compose/dead keys, если внешний сервер ввода недоступен.
-        XSetLocaleModifiers("@im=none");
+        if (!XSetLocaleModifiers("@im=none")) {
+            error = {"XSetLocaleModifiers (@im=none)", "Could not configure the local input method.", std::nullopt};
+            return false;
+        }
         inputMethod = XOpenIM(display, nullptr, nullptr, nullptr);
     }
     if (inputMethod) {
@@ -992,12 +1009,12 @@ bool shutdown(Error& result)
         if (!std::setlocale(LC_CTYPE, previousLocale.c_str())) {
             Detail::keepFirstError(result, Error{"setlocale (restore LC_CTYPE)",
                 "Could not restore the previous character locale.", std::nullopt});
-        } else if (!XSetLocaleModifiers(previousLocaleModifiers.c_str())) {
+        } else if (previousLocaleModifiers && !XSetLocaleModifiers(previousLocaleModifiers->c_str())) {
             Detail::keepFirstError(result, Error{"XSetLocaleModifiers (restore)",
                 "Could not restore the previous locale modifiers.", std::nullopt});
         } else {
             previousLocale.clear();
-            previousLocaleModifiers.clear();
+            previousLocaleModifiers.reset();
         }
     }
     Detail::resetInput();
