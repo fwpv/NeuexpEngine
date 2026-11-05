@@ -9,6 +9,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 namespace
 {
@@ -33,12 +34,22 @@ void require(bool condition, const char* message)
     }
 }
 
+std::string_view inputMethodModifier(std::string_view modifiers)
+{
+    const auto start = modifiers.find("@im=");
+    require(start != std::string_view::npos, "Locale modifiers did not specify an input method.");
+    const auto end = modifiers.find('@', start + 1);
+    return modifiers.substr(start, end == std::string_view::npos ? end : end - start);
+}
+
 void checkRestored(const std::string& locale, const std::string& modifiers)
 {
     const char* currentLocale = std::setlocale(LC_CTYPE, nullptr);
     require(currentLocale && locale == currentLocale, "Cleanup did not restore the original character locale.");
     const char* currentModifiers = XSetLocaleModifiers(nullptr);
-    require(currentModifiers && modifiers == currentModifiers, "Cleanup did not restore the original locale modifiers.");
+    // Xlib дописывает XMODIFIERS при восстановлении; действует первое значение категории @im.
+    require(currentModifiers && inputMethodModifier(modifiers) == inputMethodModifier(currentModifiers),
+        "Cleanup did not restore the original locale modifiers.");
 }
 
 void checkStartup(Failure selected, const char* operation, const std::string& locale, const std::string& modifiers)
