@@ -20,5 +20,8 @@ elseif(UNIX AND NOT APPLE)
     target_link_options(platform_locale_errors_test PRIVATE
         "-Wl,--wrap=setlocale" "-Wl,--wrap=XSetLocaleModifiers" "-Wl,--wrap=XOpenIM")
     add_test(NAME platform_locale_errors COMMAND platform_locale_errors_test)
-    set_tests_properties(platform_locale_errors PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
+    add_test(NAME platform_locale_errors_modifiers COMMAND platform_locale_errors_test)
+    set_tests_properties(platform_locale_errors_modifiers PROPERTIES ENVIRONMENT "XMODIFIERS=@im=none")
+    set_tests_properties(platform_locale_errors platform_locale_errors_modifiers PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
 endif()

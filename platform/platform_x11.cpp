@@ -29,6 +29,7 @@
 #include <sstream>
 #include <cstddef>
 #include <optional>
+#include <type_traits>
 
 namespace Platform
 {
@@ -111,12 +112,13 @@ bool changeFocus(bool focused, Error& error)
 
 bool readPhysicalKeys(Error& error)
 {
-    XkbDescPtr keyboard = XkbGetKeyboard(display, XkbAllComponentsMask, XkbUseCoreKbd);
+    const auto freeKeyboard = [](XkbDescPtr keyboard) {
+        XkbFreeKeyboard(keyboard, XkbAllComponentsMask, True);
+    };
+    const std::unique_ptr<XkbDescRec, decltype(freeKeyboard)> keyboard(
+        XkbGetKeyboard(display, XkbAllComponentsMask, XkbUseCoreKbd), freeKeyboard);
     const bool keyboardSucceeded = takeError("XkbGetKeyboard", error);
     if (!keyboard || !keyboard->names || !keyboard->names->keys || !keyboardSucceeded) {
-        if (keyboard) {
-            XkbFreeKeyboard(keyboard, XkbAllComponentsMask, True);
-        }
         if (keyboardSucceeded) {
             error = {"XkbGetKeyboard", "Physical keyboard names are unavailable.", std::nullopt};
         }
@@ -150,7 +152,6 @@ bool readPhysicalKeys(Error& error)
             }
         }
     }
-    XkbFreeKeyboard(keyboard, XkbAllComponentsMask, True);
     numLockMask = XkbKeysymToModifiers(display, XK_Num_Lock);
     altMask = XkbKeysymToModifiers(display, XK_Alt_L) | XkbKeysymToModifiers(display, XK_Alt_R)
         | XkbKeysymToModifiers(display, XK_ISO_Level3_Shift);
@@ -336,12 +337,14 @@ bool updateSystemScale(Error& error)
     float scale = 1;
     XTextProperty resources = {};
     const Status found = XGetTextProperty(display, DefaultRootWindow(display), &resources, XA_RESOURCE_MANAGER);
+    const std::unique_ptr<unsigned char, decltype(&XFree)> resourceOwner(resources.value, XFree);
     if (found && resources.value && resources.encoding == XA_STRING && resources.format == 8) {
-        XrmDatabase database = XrmGetStringDatabase(reinterpret_cast<const char*>(resources.value));
+        const std::unique_ptr<std::remove_pointer_t<XrmDatabase>, decltype(&XrmDestroyDatabase)> database(
+            XrmGetStringDatabase(reinterpret_cast<const char*>(resources.value)), XrmDestroyDatabase);
         if (database) {
             char* type = nullptr;
             XrmValue value = {};
-            if (XrmGetResource(database, "Xft.dpi", "Xft.Dpi", &type, &value) && value.addr) {
+            if (XrmGetResource(database.get(), "Xft.dpi", "Xft.Dpi", &type, &value) && value.addr) {
                 std::string text(value.addr, value.size);
                 if (!text.empty() && text.back() == '\0') {
                     text.pop_back();
@@ -357,11 +360,7 @@ bool updateSystemScale(Error& error)
                     }
                 }
             }
-            XrmDestroyDatabase(database);
         }
-    }
-    if (resources.value) {
-        XFree(resources.value);
     }
     if (!takeError("XGetTextProperty (RESOURCE_MANAGER)", error)) {
         return false;
@@ -759,16 +758,10 @@ bool setVSync(bool enabled, Error& error)
     return false;
 }
 
-bool processEvents(Error& error)
+namespace
 {
-    // Полученные события публикуются и при ошибке обработки.
-    struct FramePublisher
-    {
-        ~FramePublisher()
-        {
-            Detail::finishInputFrame();
-        }
-    } publisher;
+bool processX11Events(Error& error)
+{
     if (initialized && closeRequested && !window) {
         return true;
     }
@@ -889,6 +882,16 @@ bool processEvents(Error& error)
     }
     // Ошибка имеет приоритет над запросом закрытия, если они пришли в одной очереди.
     return takeError("processEvents", error);
+}
+}
+
+bool processEvents(Error& error)
+{
+    const bool success = processX11Events(error);
+    // Публикуем и при отказе API. Выделение памяти выполняется вне деструктора,
+    // чтобы исключение мог обработать цикл Application.
+    Detail::finishInputFrame();
+    return success;
 }
 
 bool isCloseRequested()

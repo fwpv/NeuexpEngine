@@ -141,6 +141,9 @@ void Renderer2D::drawDebugText(std::string_view message, Vector2 position, const
         firstError = RenderError::InvalidGeometry;
         return;
     }
+    if (!prepareDraw(options)) {
+        return;
+    }
     for (char character : message) {
         const unsigned int glyph = Detail::debugGlyph(character);
         for (int row = 0; row < 5; ++row) {

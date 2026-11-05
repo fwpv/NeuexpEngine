@@ -2,7 +2,11 @@
 #include "geometry.h"
 #include "math2d.h"
 #include "texture.h"
+#include "resources.h"
+#include "transform.h"
+
 #include <cmath>
+#include <cstddef>
 
 namespace Engine
 {

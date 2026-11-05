@@ -53,8 +53,22 @@ void requireNear(double actual, double expected)
 
 namespace Platform
 {
-void reportError(const Error&, bool)
+namespace
 {
+bool operation(const char* name, Error& error)
+{
+    ApplicationTest::runtime.calls.emplace_back(name);
+    if (ApplicationTest::runtime.failingOperation == name) {
+        error = {name, "Injected failure.", 17};
+        return false;
+    }
+    return true;
+}
+}
+
+void reportError(const Error& error, bool)
+{
+    ApplicationTest::runtime.reportedErrors.push_back(error);
 }
 
 bool initialize(const WindowOptions&, Error& failure)
@@ -62,6 +76,10 @@ bool initialize(const WindowOptions&, Error& failure)
     auto& state = ApplicationTest::runtime;
     state.calls.emplace_back("initialize");
     failure = {};
+    if (state.initializeFails) {
+        failure = {"initialize", "Injected startup failure.", 11};
+        return false;
+    }
     state.initialized = true;
     state.closeRequested = state.closeDuringInitialize;
     if (state.closeRequested) {
@@ -73,7 +91,9 @@ bool initialize(const WindowOptions&, Error& failure)
 bool processEvents(Error& error)
 {
     auto& state = ApplicationTest::runtime;
-    ApplicationTest::runtime.calls.emplace_back("processEvents");
+    if (!operation("processEvents", error)) {
+        return false;
+    }
     ++state.polls;
     if (state.polls > 100) {
         error = { "processEvents", "Test frame limit exceeded.", {} };
@@ -92,16 +112,20 @@ bool isCloseRequested()
     return ApplicationTest::runtime.closeRequested;
 }
 
-bool getWindowState(WindowState& window, Error&)
+bool getWindowState(WindowState& window, Error& error)
 {
-    ApplicationTest::runtime.calls.emplace_back("getWindowState");
+    if (!operation("getWindowState", error)) {
+        return false;
+    }
     window = ApplicationTest::runtime.window;
     return true;
 }
 
-bool present(Error&)
+bool present(Error& error)
 {
-    ApplicationTest::runtime.calls.emplace_back("present");
+    if (!operation("present", error)) {
+        return false;
+    }
     ++ApplicationTest::runtime.presents;
     ApplicationTest::advance(std::chrono::milliseconds(6));
     return true;

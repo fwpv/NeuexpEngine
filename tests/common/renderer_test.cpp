@@ -596,6 +596,73 @@ void debugText()
     renderer.shutdown();
 }
 
+void frameErrors()
+{
+    Renderer2D renderer;
+    RenderError error;
+    check(renderer.initialize(error), error);
+    // Ошибка текущего контекста не должна превращаться в успешное завершение кадра.
+    glEnable(static_cast<GLenum>(0xffffffffU));
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    require(!renderer.endFrame(error) && error == RenderError::Graphics, "OpenGL error was silently ignored.");
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    check(renderer.endFrame(error), error);
+    renderer.drawPoint(Vector2{}, White);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidState, "Renderer accepted drawing outside a frame.");
+    renderer.beginFrame(0, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawEllipse(Vector2{}, Vector2{-1, 2}, Red);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidFrameSize, "Begin-frame error was overwritten.");
+
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawRectangle(Rect{10, 10, 20, 20}, Red);
+    renderer.drawEllipse(Vector2{40, 40}, Vector2{-1, 5}, White);
+    renderer.drawRectangle(Rect{10, 10, 20, 20}, Blue);
+    renderer.setClip(Viewport{0, 0, -1, 5});
+    require(!renderer.endFrame(error) && error == RenderError::InvalidGeometry, "First draw error was overwritten.");
+    pixel(15, 15, Red);
+
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawRectangle(Rect{10, 10, 20, 20}, Blue);
+    check(renderer.endFrame(error), error);
+    pixel(15, 15, Blue);
+
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.beginFrame(ImageSize, ImageSize, Red);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidState, "Nested Renderer frame was accepted.");
+    renderer.beginFrame(ImageSize, ImageSize, Green);
+    check(renderer.endFrame(error), error);
+
+    for (float pixelSize : {0.0F, -1.0F, std::numeric_limits<float>::infinity()}) {
+        renderer.beginFrame(ImageSize, ImageSize, Black);
+        renderer.setUiView(screen());
+        renderer.drawDebugText("A", Vector2{}, White, pixelSize);
+        require(!renderer.endFrame(error) && error == RenderError::InvalidGeometry, "Invalid debug-text size was accepted.");
+    }
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawEllipse(Vector2{}, Vector2{1, 1}, White, ShapeFill::Filled, 2);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidGeometry, "Invalid ellipse segments were accepted.");
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    renderer.drawDebugText("A", Vector2{}, Color{2, 0, 0});
+    require(!renderer.endFrame(error) && error == RenderError::InvalidOptions, "Debug text ignored invalid options.");
+    for (const char* text : {"", " ", "?"}) {
+        renderer.beginFrame(ImageSize, ImageSize, Black);
+        renderer.drawDebugText(text, Vector2{}, White);
+        require(!renderer.endFrame(error) && error == RenderError::InvalidState,
+            "Empty debug text bypassed view validation.");
+        renderer.beginFrame(ImageSize, ImageSize, Black);
+        renderer.setUiView(screen());
+        renderer.drawDebugText(text, Vector2{}, Color{2, 0, 0});
+        require(!renderer.endFrame(error) && error == RenderError::InvalidOptions,
+            "Empty debug text bypassed option validation.");
+    }
+    renderer.shutdown();
+}
+
 int runTest(const std::string& mode)
 {
     FramebufferApi api;
@@ -617,6 +684,9 @@ int runTest(const std::string& mode)
     }
     else if (mode == "debug_text") {
         debugText();
+    }
+    else if (mode == "frame_errors") {
+        frameErrors();
     }
     else { throw std::runtime_error("Unknown renderer test mode."); }
     return 0;

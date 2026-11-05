@@ -1,6 +1,14 @@
 #include "atlas.h"
+#include "geometry.h"
+#include "resources.h"
+#include "sprite.h"
+#include "texture.h"
+
+#include <cstddef>
 #include <locale>
+#include <map>
 #include <sstream>
+#include <string>
 #include <utility>
 
 namespace Engine

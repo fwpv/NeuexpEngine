@@ -1,7 +1,7 @@
 #include "resources.h"
+#include "decode_memory.h"
 
 #include <stb_image.h>
-#include <decode_memory.h>
 #include <algorithm>
 #include <array>
 #include <limits>

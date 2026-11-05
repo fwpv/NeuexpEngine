@@ -30,6 +30,12 @@ struct CapturedFrame
 class ProbeApplication final : public Engine::Application
 {
 public:
+    std::string failureStage;
+    bool throwFailure = false;
+    bool throwUnknown = false;
+    bool stopFails = false;
+    bool stopThrows = false;
+    bool stopThrowsUnknown = false;
     std::string exitStage;
     std::function<void(ProbeApplication&, const FrameInfo&)> inputAction;
     std::vector<CapturedFrame> inputs;
@@ -38,10 +44,20 @@ public:
     std::vector<CapturedFrame> rendered;
 
 private:
-    bool stage(const char* name, Platform::Error&)
+    bool stage(const char* name, Platform::Error& error)
     {
         runtime.calls.emplace_back(name);
         require(runtime.initialized, "Callback ran outside platform lifetime.");
+        if (failureStage == name) {
+            if (throwUnknown) {
+                throw 7;
+            }
+            if (throwFailure) {
+                throw std::runtime_error("Callback exception.");
+            }
+            error = {name, "Callback failure.", 19};
+            return false;
+        }
         if (exitStage == name) {
             requestExit();
         }
@@ -87,10 +103,20 @@ private:
         return stage("render", error);
     }
 
-    bool onStop(Platform::Error&) override
+    bool onStop(Platform::Error& error) override
     {
         runtime.calls.emplace_back("stop");
         require(runtime.initialized, "Application cleanup ran after platform shutdown.");
+        if (stopThrowsUnknown) {
+            throw 9;
+        }
+        if (stopThrows) {
+            throw std::runtime_error("Cleanup exception.");
+        }
+        if (stopFails) {
+            error = {"stop", "Application cleanup failure.", 31};
+            return false;
+        }
         return true;
     }
 };
@@ -262,6 +288,82 @@ void testPause()
         "Real time stopped during pause.");
 }
 
+void testFailures()
+{
+    Platform::Error error;
+    for (const std::string name : {"start", "input", "update", "prepare", "render"}) {
+        for (int exceptionMode = 0; exceptionMode < 3; ++exceptionMode) {
+            ApplicationTest::reset();
+            runtime.shutdownFails = true;
+            ProbeApplication application;
+            application.failureStage = name;
+            application.throwFailure = exceptionMode == 1;
+            application.throwUnknown = exceptionMode == 2;
+            application.stopFails = true;
+            require(!application.run(options(), error), "Callback failure was ignored.");
+            require(runtime.reportedErrors.size() == 2 && runtime.reportedErrors[0].operation == "stop" && runtime.reportedErrors[1].operation == "shutdown",
+                "Cleanup errors replaced or reordered the primary error.");
+            require(error.operation == (exceptionMode == 0 ? name : "Application::run"),
+                "Wrong primary callback diagnostic.");
+            require(!error.message.empty(), "Primary diagnostic has no message.");
+            if (exceptionMode == 0) {
+                require(error.nativeCode == 19, "Callback native error code was lost.");
+            }
+            require(runtime.presents == 0, "Callback failure was followed by presentation.");
+            require(std::count(runtime.calls.begin(), runtime.calls.end(), "stop") == 1
+                && runtime.calls.back() == "shutdown", "Cleanup was skipped or repeated.");
+        }
+    }
+    for (const std::string operation : {"processEvents", "getWindowState", "present"}) {
+        ApplicationTest::reset();
+        runtime.failingOperation = operation;
+        ProbeApplication application;
+        require(!application.run(options(), error), "Platform failure was ignored.");
+        require(runtime.reportedErrors.empty() && error.operation == operation && error.nativeCode == 17,
+            "Platform error was not preserved.");
+        require(runtime.calls[runtime.calls.size() - 2] == "stop" && runtime.calls.back() == "shutdown",
+            "Platform failure skipped application cleanup.");
+    }
+    for (bool unknown : {false, true}) {
+        ApplicationTest::reset();
+        runtime.shutdownFails = true;
+        ProbeApplication application;
+        application.exitStage = "input";
+        application.stopThrows = !unknown;
+        application.stopThrowsUnknown = unknown;
+        require(!application.run(options(), error), "Cleanup exception was ignored.");
+        require(runtime.reportedErrors.size() == 1 && error.operation == "Application::onStop"
+            && runtime.reportedErrors[0].operation == "shutdown", "Cleanup exception prevented platform shutdown.");
+    }
+    ApplicationTest::reset();
+    ProbeApplication cleanup;
+    cleanup.exitStage = "input";
+    cleanup.stopFails = true;
+    require(!cleanup.run(options(), error) && runtime.reportedErrors.empty() && error.operation == "stop",
+        "Application cleanup failure was reported as success.");
+
+    ApplicationTest::reset();
+    runtime.initializeFails = true;
+    ProbeApplication startup;
+    require(!startup.run(options(), error), "Platform startup failure was ignored.");
+    requireCalls(std::vector<std::string>{"initialize"});
+
+    for (double limit : {-1.0, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()}) {
+        ApplicationTest::reset();
+        ProbeApplication invalid;
+        auto config = options();
+        config.targetFramesPerSecond = limit;
+        require(!invalid.run(config, error) && runtime.calls.empty(), "Invalid FPS touched the platform.");
+    }
+    for (float maximum : {0.0F, -1.0F, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+        ApplicationTest::reset();
+        ProbeApplication invalid;
+        auto config = options();
+        config.maxDeltaTime = maximum;
+        require(!invalid.run(config, error) && runtime.calls.empty(), "Invalid dT touched the platform.");
+    }
+}
+
 void testVSync()
 {
     Platform::Error failure;
@@ -426,6 +528,8 @@ int main(int argumentCount, char** arguments)
             testClosingEvents();
         } else if (group == "pause") {
             testPause();
+        } else if (group == "failures") {
+            testFailures();
         } else if (group == "vsync") {
             testVSync();
         } else if (group == "limiter") {
