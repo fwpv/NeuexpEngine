@@ -24,6 +24,9 @@ struct Runtime
     Engine::InputState input;
     Platform::WindowState window{ 320, 240, true, false };
     std::function<void()> events;
+    std::vector<Platform::Error> reportedErrors;
+    std::string failingOperation;
+    bool initializeFails = false;
     bool initialized = false;
     bool closeRequested = false;
     bool vsync = false;

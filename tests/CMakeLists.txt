@@ -4,6 +4,7 @@ add_subdirectory(common)
 if(UNIX AND NOT APPLE)
     add_subdirectory(linux)
 elseif(WIN32)
+    add_subdirectory(windows)
     add_subdirectory(input_errors)
 endif()
 

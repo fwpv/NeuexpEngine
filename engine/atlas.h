@@ -1,6 +1,10 @@
 #pragma once
 
 #include "sprite.h"
+#include "geometry.h"
+#include "resources.h"
+#include "texture.h"
+
 #include <map>
 #include <string>
 

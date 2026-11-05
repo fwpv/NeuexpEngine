@@ -3,7 +3,7 @@ target_link_libraries(renderer_test PRIVATE engine_renderer platform project_war
 if(WIN32)
     target_compile_definitions(renderer_test PRIVATE NOMINMAX)
 endif()
-foreach(mode primitives transforms views errors state sorting gradient ellipses debug_text)
+foreach(mode primitives transforms views errors state sorting gradient ellipses debug_text frame_errors)
     add_test(NAME renderer_${mode} COMMAND renderer_test ${mode})
     set_tests_properties(renderer_${mode} PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
@@ -160,7 +160,7 @@ add_executable(application_test application_test.cpp application_runtime.cpp
 target_include_directories(application_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(application_test PRIVATE engine_time engine_events engine_input engine_renderer project_warnings)
 
-foreach(group lifecycle pause vsync limiter statistics)
+foreach(group lifecycle pause failures vsync limiter statistics)
     add_test(NAME application_${group} COMMAND application_test ${group})
     set_tests_properties(application_${group} PROPERTIES TIMEOUT 15)
 endforeach()
@@ -183,3 +183,7 @@ foreach(mode pixels sampling integration resources sprites sprite_errors atlas)
     set_tests_properties(texture_${mode} PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
 endforeach()
+
+add_executable(platform_validation_test platform_validation_test.cpp)
+target_link_libraries(platform_validation_test PRIVATE platform project_warnings)
+add_test(NAME platform_validation COMMAND platform_validation_test)
