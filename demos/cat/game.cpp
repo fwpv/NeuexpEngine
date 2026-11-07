@@ -1,4 +1,5 @@
 #include "game.h"
+#include "atlas.h"
 #include "camera.h"
 #include "geometry.h"
 #include "math2d.h"
@@ -18,8 +19,43 @@
 
 namespace Cat
 {
-Game::Game(std::uint32_t routeSeed, std::uint32_t leavesSeed)
-    : world(routeSeed)
+namespace
+{
+bool loadAnimation(Engine::Renderer2D& renderer, const Engine::ResourceFiles& files,
+    const std::string& name, std::size_t frameCount,
+    Engine::Animation& animation, Engine::ResourceError& error)
+{
+    Engine::Image image;
+    if (!files.loadPng("cat/" + name + "_atlas.png", image, error)) {
+        return false;
+    }
+    // Файлы атласов сохраняют исходные пиксели; чёрный становится прозрачным только в игре.
+    for (std::size_t pixel = 0; pixel < image.pixels.size(); pixel += 4) {
+        image.pixels[pixel + 3] = image.pixels[pixel] == 0 && image.pixels[pixel + 1] == 0
+            && image.pixels[pixel + 2] == 0 ? 0 : 255;
+    }
+    Engine::Texture texture;
+    Engine::TextureAtlas atlas;
+    if (!renderer.createTexture(image, texture, error)
+        || !atlas.load(texture, files, "cat/" + name + ".atlas", error)) {
+        return false;
+    }
+    std::vector<Engine::Rect> frames;
+    for (std::size_t index = 0; index < frameCount; ++index) {
+        const auto* area = atlas.find(std::to_string(index));
+        if (!area) {
+            error = Engine::ResourceError{Engine::ResourceErrorCode::InvalidImage,
+                "Missing animation frame: " + name + "/" + std::to_string(index)};
+            return false;
+        }
+        frames.push_back(*area);
+    }
+    return animation.load(texture, frames, 0.03F, error);
+}
+}
+
+Game::Game(std::uint32_t routeSeed, std::uint32_t leavesSeed, const Images& images)
+    : world(routeSeed, images)
     , foliage(leavesSeed)
 {
 }
@@ -57,57 +93,54 @@ bool Images::load(Engine::Renderer2D& renderer, Engine::ResourceError& error)
     if (!files.initialize(error)) {
         return false;
     }
-    constexpr std::array<std::string_view, Feet + 1> Files{
+    constexpr std::array<std::string_view, ArtCount> Files{
         "platform.png", "platform2.png", "platform3.png", "grib.png", "flower2.png", "flower1.png",
-        "label1.png", "label2.png", "label3.png", "head5.png", "head4.png", "head1.png", "head2.png", "head3.png", "feet.png"
+        "label1.png", "label2.png", "label3.png"
     };
     for (std::size_t index = 0; index < Files.size(); ++index) {
-        Engine::Image source;
-        if (!files.loadPng("cat/" + std::string(Files[index]), source, error)) {
+        Engine::Image image;
+        if (!files.loadPng("cat/" + std::string(Files[index]), image, error)) {
             return false;
         }
-        // Чёрный — цветовой ключ; альфа-канал исходных PNG не используется.
+        // Чёрный — цветовой ключ статических изображений.
         constexpr std::size_t RgbaChannels = 4;
-        for (std::size_t pixel = 0; pixel < source.pixels.size(); pixel += RgbaChannels) {
-            source.pixels[pixel + 3] = source.pixels[pixel] == 0 && source.pixels[pixel + 1] == 0
-                && source.pixels[pixel + 2] == 0 ? 0 : 255;
+        for (std::size_t pixel = 0; pixel < image.pixels.size(); pixel += RgbaChannels) {
+            image.pixels[pixel + 3] = image.pixels[pixel] == 0 && image.pixels[pixel + 1] == 0
+                && image.pixels[pixel + 2] == 0 ? 0 : 255;
         }
-        const bool leaf = index >= Leaf1 && index <= Leaf3;
-        constexpr int LeafTextureSize = 64;
-        constexpr int FeetWidth = 180;
-        constexpr int FeetHeight = 53;
-        constexpr int FeetColumns = 2;
-        constexpr int FeetFrames = ArtCount - Feet;
-        if ((leaf && (source.width > LeafTextureSize || source.height > LeafTextureSize))
-            || (index == Feet && (source.width < FeetColumns * FeetWidth
-                || source.height < FeetFrames / FeetColumns * FeetHeight))) {
-            error = Engine::ResourceError{Engine::ResourceErrorCode::InvalidImage, "Unexpected dimensions: " + std::string(Files[index])};
-            return false;
-        }
-        const int frames = index == Feet ? FeetFrames : 1;
-        for (int frame = 0; frame < frames; ++frame) {
-            const int width = index == Feet ? FeetWidth : source.width;
-            const int height = index == Feet ? FeetHeight : source.height;
-            const int left = index == Feet ? frame % FeetColumns * width : 0;
-            const int top = index == Feet ? frame / FeetColumns * height : 0;
-            // Листья дополнены до 64x64: OpenGL 1.1 не должен растягивать их тексели.
-            Engine::Image image{leaf ? LeafTextureSize : width, leaf ? LeafTextureSize : height, std::vector<std::uint8_t>{}};
-            image.pixels.resize(static_cast<std::size_t>(image.width) * static_cast<std::size_t>(image.height) * RgbaChannels);
-            for (int row = 0; row < height; ++row) {
-                const auto sourceOffset = static_cast<std::size_t>((top + row) * source.width + left) * RgbaChannels;
-                const auto destinationOffset = static_cast<std::size_t>(row * image.width) * RgbaChannels;
-                std::copy_n(source.pixels.data() + sourceOffset,
-                    static_cast<std::size_t>(width) * RgbaChannels, image.pixels.data() + destinationOffset);
-            }
-            Engine::Texture texture;
-            if (!renderer.createTexture(image, texture, error)) {
+        if (index >= Leaf1 && index <= Leaf3) {
+            constexpr int LeafTextureSize = 64;
+            if (image.width > LeafTextureSize || image.height > LeafTextureSize) {
+                error = Engine::ResourceError{Engine::ResourceErrorCode::InvalidImage,
+                    "Unexpected dimensions: " + std::string(Files[index])};
                 return false;
             }
-            auto& sprite = sprites[index + static_cast<std::size_t>(frame)];
-            sprite = Engine::Sprite(texture);
-            sprite.filter = index >= Head ? Engine::TextureFilter::Linear : Engine::TextureFilter::Nearest;
+            // Дополнение до 64x64 предотвращает растягивание текселей листьев в OpenGL 1.1.
+            std::vector<std::uint8_t> pixels(LeafTextureSize * LeafTextureSize * RgbaChannels);
+            for (int row = 0; row < image.height; ++row) {
+                std::copy_n(image.pixels.data() + static_cast<std::size_t>(row * image.width) * RgbaChannels,
+                    static_cast<std::size_t>(image.width) * RgbaChannels,
+                    pixels.data() + static_cast<std::size_t>(row * LeafTextureSize) * RgbaChannels);
+            }
+            image.pixels.swap(pixels);
+            image.width = LeafTextureSize;
+            image.height = LeafTextureSize;
         }
+        Engine::Texture texture;
+        if (!renderer.createTexture(image, texture, error)) {
+            return false;
+        }
+        sprites[index] = Engine::Sprite(texture);
+        sprites[index].filter = Engine::TextureFilter::Nearest;
     }
+    if (!loadAnimation(renderer, files, "head", 5, head, error)
+        || !loadAnimation(renderer, files, "feet", 12, feet, error)) {
+        return false;
+    }
+    // Атлас обрезан на 9 пустых пикселей слева; сохраняем положение относительно лап.
+    head.transform.position.x = 9;
+    head.setMode(Engine::AnimationMode::Clamp);
+    head.setFrame(head.frameCount() / 2);
     return true;
 }
 

@@ -52,7 +52,7 @@ struct Leaf
 class World
 {
 public:
-    explicit World(std::uint32_t seed);
+    World(std::uint32_t seed, const Images& images);
     World(const World&) = delete;
     World& operator=(const World&) = delete;
     World(World&&) = delete;
