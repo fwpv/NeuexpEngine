@@ -416,6 +416,25 @@ void padding(Renderer2D& renderer)
     check(renderer.endFrame(error), error);
     pixel(0, 0, sample(1, 1, TextureWrap::Clamp, TextureWrap::Clamp));
     pixel(119, 39, sample(3, 1, TextureWrap::Clamp, TextureWrap::Clamp));
+    // Nearest: поворот и отражение целочисленной области не захватывают соседей атласа.
+    region.filter = TextureFilter::Nearest;
+    region.transform = {{150, 20}, Pi / 2, {1, 1}, {}};
+    frame(renderer);
+    renderer.drawSprite(region);
+    check(renderer.endFrame(error), error);
+    for (int offset : {0, 1, 39, 40, 79, 80, 118, 119}) {
+        pixel(130, 20 + offset, sample(1 + offset / 40, 1, TextureWrap::Clamp, TextureWrap::Clamp));
+    }
+    pixel(109, 80, Black);
+    pixel(150, 80, Black);
+    region.transform = {{150, 20}, 0, {-1, 2}, {}};
+    frame(renderer);
+    renderer.drawSprite(region);
+    check(renderer.endFrame(error), error);
+    pixel(30, 20, sample(3, 1, TextureWrap::Clamp, TextureWrap::Clamp));
+    pixel(149, 99, sample(1, 1, TextureWrap::Clamp, TextureWrap::Clamp));
+    pixel(29, 60, Black);
+    pixel(150, 60, Black);
     TextureSampling excessive;
     excessive.wrapX = TextureWrap::Repeat;
     excessive.repeats.x = 1000000;
