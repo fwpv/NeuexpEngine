@@ -29,8 +29,9 @@ Platform::Platform(int id, Engine::Vector2 position, Art art)
 {
 }
 
-World::World(std::uint32_t seed)
-    : physics(cat.physicalBody(), surfaces)
+World::World(std::uint32_t seed, const Images& images)
+    : cat(images)
+    , physics(cat.physicalBody(), surfaces)
     , controller(physics)
     , routeRandom(seed)
 {
@@ -338,7 +339,7 @@ void World::draw(Engine::Renderer2D& renderer, const Images& images, const Engin
     for (const auto& platform : platforms) {
         platform.draw(renderer, images, visible);
     }
-    cat.draw(renderer, images);
+    cat.draw(renderer);
 }
 
 }

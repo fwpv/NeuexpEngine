@@ -62,9 +62,9 @@ void Animation::stop()
     playing = false;
     finished = false;
     elapsed = 0;
-    frameIndex = 0;
+    frameIndex = frames.empty() || playbackDirection == AnimationDirection::Forward ? 0 : frames.size() - 1;
     if (!frames.empty()) {
-        textureRect = frames.front().textureRect;
+        textureRect = frames[frameIndex].textureRect;
     }
 }
 
@@ -77,6 +77,43 @@ void Animation::restart()
 void Animation::setMode(AnimationMode value)
 {
     playbackMode = value;
+}
+
+double Animation::frameStart(std::size_t index) const
+{
+    double start = 0;
+    if (playbackDirection == AnimationDirection::Forward) {
+        for (std::size_t position = 0; position < index; ++position) {
+            start += frames[position].duration;
+        }
+    } else {
+        for (std::size_t position = frames.size(); position > index + 1; --position) {
+            start += frames[position - 1].duration;
+        }
+    }
+    return start;
+}
+
+void Animation::setFrame(std::size_t index)
+{
+    if (index >= frames.size()) {
+        throw std::out_of_range("Animation frame index is out of range.");
+    }
+    elapsed = frameStart(index);
+    frameIndex = index;
+    textureRect = frames[index].textureRect;
+    finished = false;
+}
+
+void Animation::setDirection(AnimationDirection value)
+{
+    if (playbackDirection == value) {
+        return;
+    }
+    const double timeInFrame = frames.empty() || finished ? 0 : elapsed - frameStart(frameIndex);
+    playbackDirection = value;
+    elapsed = frames.empty() ? 0 : frameStart(frameIndex) + timeInFrame;
+    finished = false;
 }
 
 void Animation::setSpeed(double value)
@@ -102,13 +139,23 @@ void Animation::update(double deltaTime)
     if (playbackMode == AnimationMode::Once) {
         if (advance >= duration - elapsed) {
             elapsed = duration;
-            frameIndex = frames.size() - 1;
-            textureRect = frames.back().textureRect;
+            frameIndex = playbackDirection == AnimationDirection::Forward ? frames.size() - 1 : 0;
+            textureRect = frames[frameIndex].textureRect;
             playing = false;
             finished = true;
             return;
         }
         elapsed += advance;
+    } else if (playbackMode == AnimationMode::Clamp) {
+        const std::size_t last = playbackDirection == AnimationDirection::Forward ? frames.size() - 1 : 0;
+        const double lastStart = frameStart(last);
+        if (elapsed >= lastStart || advance >= lastStart - elapsed) {
+            const double remaining = elapsed >= lastStart ? 0 : lastStart - elapsed;
+            const double local = elapsed >= lastStart ? elapsed - lastStart : 0;
+            elapsed = lastStart + std::fmod(local + std::fmod(advance - remaining, frames[last].duration), frames[last].duration);
+        } else {
+            elapsed += advance;
+        }
     } else {
         // Пропускаем полные циклы без перебора кадров каждого прохода.
         const double remainder = std::fmod(advance, duration);
@@ -119,10 +166,14 @@ void Animation::update(double deltaTime)
 
 void Animation::selectFrame()
 {
-    double end = frames.front().duration;
-    frameIndex = 0;
-    while (frameIndex + 1 < frames.size() && elapsed >= end) {
-        ++frameIndex;
+    frameIndex = playbackDirection == AnimationDirection::Forward ? 0 : frames.size() - 1;
+    double end = frames[frameIndex].duration;
+    for (std::size_t visited = 1; visited < frames.size() && elapsed >= end; ++visited) {
+        if (playbackDirection == AnimationDirection::Forward) {
+            ++frameIndex;
+        } else {
+            --frameIndex;
+        }
         end += frames[frameIndex].duration;
     }
     textureRect = frames[frameIndex].textureRect;

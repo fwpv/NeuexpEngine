@@ -1,6 +1,7 @@
 #pragma once
 
 #include "physics.h"
+#include "animation.h"
 #include "math2d.h"
 
 #include <cstddef>
@@ -25,9 +26,7 @@ enum Art : std::size_t
     Leaf1,
     Leaf2,
     Leaf3,
-    Head,
-    Feet = Head + 5,
-    ArtCount = Feet + 12
+    ArtCount
 };
 
 struct Controls
@@ -41,19 +40,17 @@ struct Controls
 class Cat
 {
 public:
-    Cat();
+    explicit Cat(const Images& images);
     Engine::Vector2 position() const;
     Body& physicalBody();
     void updateAnimation(float duration, const Controls& controls, bool supported);
-    void draw(Engine::Renderer2D& renderer, const Images& images) const;
+    void draw(Engine::Renderer2D& renderer) const;
 
 private:
     Body body;
     bool grounded = false;
-    int headFrame = (Feet - Head) / 2;
-    int feetFrame = 0;
-    float animationTime = 0;
-    float frameTime = 0;
+    Engine::Animation head;
+    Engine::Animation feet;
 };
 
 class CatController

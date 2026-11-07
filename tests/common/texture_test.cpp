@@ -190,6 +190,83 @@ void animationChecks(Renderer2D& renderer)
     uniform.update(100);
     require(uniform.isFinished() && uniform.currentFrame() == 0, "Single-frame completion failed.");
 
+    Animation reverse;
+    check(reverse.load(texture, sequence, failure), failure);
+    require(reverse.frameCount() == 3, "Wrong animation frame count.");
+    reverse.setFrame(1);
+    require(reverse.currentFrame() == 1 && reverse.elapsedTime() == 0.125 && !reverse.isPlaying(), "Selecting paused frame failed.");
+    reverse.play();
+    reverse.update(0.0625);
+    reverse.setDirection(AnimationDirection::Backward);
+    require(reverse.currentFrame() == 1 && reverse.elapsedTime() == 0.1875, "Direction change lost current frame time.");
+    reverse.update(0.1875);
+    require(reverse.currentFrame() == 0, "Backward transition failed.");
+    reverse.update(0.125);
+    require(reverse.currentFrame() == 2 && reverse.elapsedTime() == 0, "Backward loop failed.");
+    reverse.update(5000.125);
+    require(reverse.currentFrame() == 1, "Backward multi-cycle update failed.");
+    reverse.setMode(AnimationMode::Once);
+    reverse.restart();
+    require(reverse.currentFrame() == 2, "Backward restart did not select last frame.");
+    reverse.update(0.5);
+    require(reverse.isFinished() && reverse.currentFrame() == 0 && !reverse.isPlaying(), "Backward Once failed.");
+    reverse.setDirection(AnimationDirection::Forward);
+    require(!reverse.isFinished() && reverse.currentFrame() == 0 && !reverse.isPlaying(), "Reversing finished animation failed.");
+    reverse.play();
+    reverse.update(0.125);
+    require(reverse.currentFrame() == 1, "Cannot play away from finished endpoint.");
+    reverse.setFrame(2);
+    require(reverse.isPlaying() && reverse.elapsedTime() == 0.375, "Selecting active frame failed.");
+    reverse.update(0.125);
+    require(reverse.isFinished(), "Selected final frame did not complete.");
+    reverse.setFrame(0);
+    require(!reverse.isFinished() && !reverse.isPlaying(), "Frame selection did not clear finished.");
+    bool invalidIndex = false;
+    try {
+        reverse.setFrame(reverse.frameCount());
+    } catch (const std::out_of_range&) {
+        invalidIndex = true;
+    }
+    require(invalidIndex && reverse.currentFrame() == 0, "Invalid frame index changed state.");
+
+    const std::vector<Rect> equalFrames{Rect{0, 0, 1, 1}, Rect{1, 0, 1, 1}, Rect{2, 0, 1, 1}};
+    Animation held;
+    check(held.load(texture, equalFrames, 0.125, failure), failure);
+    held.setMode(AnimationMode::Clamp);
+    held.setFrame(1);
+    held.play();
+    held.update(10.0625);
+    require(held.currentFrame() == 2 && held.isPlaying() && !held.isFinished(), "Clamp must keep playing at endpoint.");
+    held.setDirection(AnimationDirection::Backward);
+    held.update(0.0625);
+    require(held.currentFrame() == 1, "Clamp lost partial interval when reversing.");
+    held.update(10.0625);
+    require(held.currentFrame() == 0 && !held.isFinished(), "Backward Clamp failed.");
+    held.setDirection(AnimationDirection::Forward);
+    held.update(0.0625);
+    require(held.currentFrame() == 1, "Backward endpoint lost partial interval.");
+    held.pause();
+    held.setFrame(held.currentFrame());
+    held.play();
+    held.update(0.0625);
+    require(held.currentFrame() == 1, "Frame selection did not reset partial interval.");
+    held.update(0.0625);
+    require(held.currentFrame() == 2, "Frame duration after selection changed.");
+
+    for (const auto direction : {AnimationDirection::Forward, AnimationDirection::Backward}) {
+        for (const int fps : {30, 60, 120}) {
+            Animation sample;
+            check(sample.load(texture, sequence, failure), failure);
+            sample.setDirection(direction);
+            sample.restart();
+            for (int step = 0; step < fps * 2 + fps / 5; ++step) {
+                sample.update(1.0 / fps);
+            }
+            require(sample.currentFrame() == 1 && std::abs(sample.elapsedTime() - 0.2) < 1e-12,
+                "Directional playback depends on FPS.");
+        }
+    }
+
     auto invalid = sequence;
     invalid[1].textureRect.size.width = 2;
     require(!animation.load(texture, invalid, failure), "Different frame sizes accepted.");
