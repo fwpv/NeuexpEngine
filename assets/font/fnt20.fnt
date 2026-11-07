@@ -1,6 +1,7 @@
 bitmap_font 1
 texture fnt20.png
 lineHeight 37
+fallback 63
 # glyph codepoint x y width height offsetX offsetY advanceX
 glyph 32 0 0 0 0 7 37 7
 glyph 33 120 106 5 19 2 11 8

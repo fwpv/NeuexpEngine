@@ -108,24 +108,6 @@ bool Images::load(Engine::Renderer2D& renderer, Engine::ResourceError& error)
             image.pixels[pixel + 3] = image.pixels[pixel] == 0 && image.pixels[pixel + 1] == 0
                 && image.pixels[pixel + 2] == 0 ? 0 : 255;
         }
-        if (index >= Leaf1 && index <= Leaf3) {
-            constexpr int LeafTextureSize = 64;
-            if (image.width > LeafTextureSize || image.height > LeafTextureSize) {
-                error = Engine::ResourceError{Engine::ResourceErrorCode::InvalidImage,
-                    "Unexpected dimensions: " + std::string(Files[index])};
-                return false;
-            }
-            // Дополнение до 64x64 предотвращает растягивание текселей листьев в OpenGL 1.1.
-            std::vector<std::uint8_t> pixels(LeafTextureSize * LeafTextureSize * RgbaChannels);
-            for (int row = 0; row < image.height; ++row) {
-                std::copy_n(image.pixels.data() + static_cast<std::size_t>(row * image.width) * RgbaChannels,
-                    static_cast<std::size_t>(image.width) * RgbaChannels,
-                    pixels.data() + static_cast<std::size_t>(row * LeafTextureSize) * RgbaChannels);
-            }
-            image.pixels.swap(pixels);
-            image.width = LeafTextureSize;
-            image.height = LeafTextureSize;
-        }
         Engine::Texture texture;
         if (!renderer.createTexture(image, texture, error)) {
             return false;
