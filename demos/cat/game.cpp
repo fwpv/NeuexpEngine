@@ -13,6 +13,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -63,9 +64,18 @@ Game::Game(std::uint32_t routeSeed, std::uint32_t leavesSeed, const Images& imag
 void Game::update(float duration, const Controls& controls)
 {
     // Листья используют позицию после движения; маршрут — до движения.
+    const float previousX = world.catPosition().x;
     world.update(duration, controls, visibleWidth);
+    distance += std::abs(static_cast<double>(world.catPosition().x) - previousX);
     foliage.update(duration, world.catPosition().x - 101.25F);
 }
+bool Game::isOver() const
+{
+    // Опора кота ниже сцены на высоту его изображения: кот полностью скрылся.
+    constexpr float FallBoundary = 700 + 123.75F;
+    return world.catPosition().y >= FallBoundary;
+}
+
 bool Game::prepareView(int width, int height, Engine::CameraError& error)
 {
     const float scale = std::min(static_cast<float>(width) / 935, static_cast<float>(height) / 700);
@@ -107,24 +117,6 @@ bool Images::load(Engine::Renderer2D& renderer, Engine::ResourceError& error)
         for (std::size_t pixel = 0; pixel < image.pixels.size(); pixel += RgbaChannels) {
             image.pixels[pixel + 3] = image.pixels[pixel] == 0 && image.pixels[pixel + 1] == 0
                 && image.pixels[pixel + 2] == 0 ? 0 : 255;
-        }
-        if (index >= Leaf1 && index <= Leaf3) {
-            constexpr int LeafTextureSize = 64;
-            if (image.width > LeafTextureSize || image.height > LeafTextureSize) {
-                error = Engine::ResourceError{Engine::ResourceErrorCode::InvalidImage,
-                    "Unexpected dimensions: " + std::string(Files[index])};
-                return false;
-            }
-            // Дополнение до 64x64 предотвращает растягивание текселей листьев в OpenGL 1.1.
-            std::vector<std::uint8_t> pixels(LeafTextureSize * LeafTextureSize * RgbaChannels);
-            for (int row = 0; row < image.height; ++row) {
-                std::copy_n(image.pixels.data() + static_cast<std::size_t>(row * image.width) * RgbaChannels,
-                    static_cast<std::size_t>(image.width) * RgbaChannels,
-                    pixels.data() + static_cast<std::size_t>(row * LeafTextureSize) * RgbaChannels);
-            }
-            image.pixels.swap(pixels);
-            image.width = LeafTextureSize;
-            image.height = LeafTextureSize;
         }
         Engine::Texture texture;
         if (!renderer.createTexture(image, texture, error)) {

@@ -97,8 +97,7 @@ void Renderer2D::drawEllipse(Vector2 center, Vector2 radii, const DrawOptions& o
     if (!ready()) {
         return;
     }
-    if (!std::isfinite(center.x) || !std::isfinite(center.y)
-        || !std::isfinite(radii.x) || !std::isfinite(radii.y) || radii.x < 0 || radii.y < 0 || segments < 3) {
+    if (radii.x < 0 || radii.y < 0 || segments < 3) {
         firstError = RenderError::InvalidGeometry;
         return;
     }
@@ -137,7 +136,7 @@ void Renderer2D::drawDebugText(std::string_view message, Vector2 position, const
     if (!ready()) {
         return;
     }
-    if (!std::isfinite(pixel) || pixel <= 0 || !std::isfinite(position.x) || !std::isfinite(position.y)) {
+    if (pixel <= 0) {
         firstError = RenderError::InvalidGeometry;
         return;
     }

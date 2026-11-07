@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cassert>
+
 namespace Engine
 {
 inline constexpr float Pi = 3.14159265358979323846F;
@@ -15,7 +17,8 @@ constexpr float radiansToDegrees(float radians)
 }
 
 // Общий тип координат, смещений, скоростей и направлений. Единицы задаёт вызывающий код.
-// Аргументы математических операций должны быть конечными; делители — ненулевыми.
+// Конечные аргументы и представимые результаты арифметики — ответственность вызывающего кода.
+// Делители должны быть ненулевыми; нарушение проверяется assert в отладочной сборке.
 struct Vector2
 {
     constexpr Vector2() = default;
@@ -48,6 +51,7 @@ struct Vector2
 
     constexpr Vector2& operator/=(float scalar)
     {
+        assert(scalar != 0);
         x /= scalar;
         y /= scalar;
         return *this;
@@ -131,6 +135,7 @@ constexpr Vector2 lerp(Vector2 first, Vector2 second, float amount)
     return first + (second - first) * amount;
 }
 
+// Конечность размеров и представимость результатов — предусловия арифметики.
 struct Size2
 {
     constexpr Size2() = default;
@@ -149,6 +154,7 @@ struct Size2
 
     constexpr Size2& operator/=(float scalar)
     {
+        assert(scalar != 0);
         width /= scalar;
         height /= scalar;
         return *this;

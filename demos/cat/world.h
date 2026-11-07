@@ -72,7 +72,6 @@ private:
     void addPlatform(int x, int y, Art art, float top = 0, float bottom = 0);
     void decorate(Platform& platform);
     void updateMotion(float duration, const Controls& controls);
-    void returnToTop();
     bool overlaps(int x, int y) const;
     void generate(float catX, float horizon);
     void generateNormal(float catX, float horizon);

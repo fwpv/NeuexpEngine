@@ -22,8 +22,7 @@ Vector2 CameraView::worldToScreen(Vector2 point) const
 bool Viewport::contains(Vector2 point) const
 {
     const Rect screen = bounds();
-    return std::isfinite(point.x) && std::isfinite(point.y)
-        && point.x >= screen.position.x && point.y >= screen.position.y
+    return point.x >= screen.position.x && point.y >= screen.position.y
         && point.x < screen.position.x + screen.size.width
         && point.y < screen.position.y + screen.size.height;
 }
@@ -45,7 +44,8 @@ bool Camera2::createView(const Viewport& area, CameraView& result, CameraError& 
         error = CameraError::InvalidViewport;
         return false;
     }
-    if (!std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(zoom) || zoom <= 0
+    // referenceSize участвует в вычислении целочисленных размеров viewport.
+    if (zoom <= 0
         || !std::isfinite(referenceSize.width) || !std::isfinite(referenceSize.height)
         || referenceSize.width <= 0 || referenceSize.height <= 0
         || (mode != ViewportMode::Expand && mode != ViewportMode::Fit)) {

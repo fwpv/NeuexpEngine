@@ -1,5 +1,6 @@
 #include "renderer.h"
 #include "detail/texture_data.h"
+#include "detail/font_data.h"
 #include "geometry.h"
 #include "math2d.h"
 #include "resources.h"
@@ -38,6 +39,93 @@ int powerOfTwo(int value)
     return result;
 }
 
+// Ограничивает объём геометрии при программном повторении дополненных текстур.
+constexpr double MaximumTextureQuads = 65536;
+
+struct TextureAxisSegment
+{
+    float begin;
+    float end;
+    float textureBegin;
+    float textureEnd;
+};
+
+class TextureAxis
+{
+public:
+    TextureAxis(int imageSize, int storageSize, float start, float span,
+        float repeats, TextureWrap wrap, TextureFilter filter);
+    std::size_t segmentCount() const { return count; }
+    TextureAxisSegment segment(std::size_t index) const;
+
+private:
+    std::array<TextureAxisSegment, 3> segments{};
+    std::size_t count = 1;
+    bool tiled = false;
+    float storage;
+    float start;
+    float span;
+    float repeats;
+};
+
+TextureAxis::TextureAxis(int imageSize, int storageSize, float start, float span,
+    float repeats, TextureWrap wrap, TextureFilter filter)
+    : storage(static_cast<float>(storageSize))
+    , start(start)
+    , span(span)
+    , repeats(repeats)
+{
+    // Целочисленной области Nearest не нужна компенсация линейной фильтрации.
+    const bool nearestRegion = filter == TextureFilter::Nearest && repeats == 1
+        && start == std::floor(start) && span == std::floor(span) && span > 0;
+    if (nearestRegion || (wrap == TextureWrap::Repeat && imageSize == storageSize)) {
+        segments[0] = {0, 1, start / storage, start / storage + (span / storage) * repeats};
+    } else if (wrap == TextureWrap::Clamp) {
+        // GL_CLAMP в 1.1 смешивает край с рамкой; ограничиваем UV центрами крайних текселей.
+        const float halfPixel = std::min(0.5F, span / 2);
+        const float minimum = start + halfPixel;
+        const float maximum = start + span - halfPixel;
+        const std::array<float, 4> positions{0,
+            std::min(halfPixel / span / repeats, 1.0F),
+            std::min((span - halfPixel) / span / repeats, 1.0F), 1};
+        count = 3;
+        for (std::size_t index = 0; index < count; ++index) {
+            const float begin = positions[index];
+            const float end = positions[index + 1];
+            segments[index] = {begin, end,
+                std::clamp(start + begin * repeats * span, minimum, maximum) / storage,
+                std::clamp(start + end * repeats * span, minimum, maximum) / storage};
+        }
+    } else {
+        tiled = true;
+        const double tiles = std::ceil(static_cast<double>(repeats));
+        count = static_cast<std::size_t>(2 * tiles);
+        if (repeats - (tiles - 1) <= 0.5 / span) {
+            --count;
+        }
+    }
+}
+
+TextureAxisSegment TextureAxis::segment(std::size_t index) const
+{
+    if (!tiled) {
+        return segments[index];
+    }
+    const double tile = static_cast<double>(index / 2);
+    const double end = std::min(1.0, static_cast<double>(repeats) - tile);
+    const double seam = 0.5 / span;
+    if (index % 2 == 0) {
+        // Первый полутексель читается у копии первого столбца/строки за краем изображения.
+        // Так Linear смешивает последний тексель с первым, не затрагивая пустое дополнение.
+        const double seamEnd = std::min(seam, end);
+        return {static_cast<float>(tile / repeats), static_cast<float>((tile + seamEnd) / repeats),
+            (start + span) / storage, (start + span + static_cast<float>(seamEnd) * span) / storage};
+    }
+    return {static_cast<float>((tile + seam) / repeats), static_cast<float>((tile + end) / repeats),
+        (start + 0.5F) / storage, (start + static_cast<float>(end) * span) / storage};
+}
+
+// repeats используется в ceil и преобразовании к целому числу участков.
 bool valid(const TextureSampling& sampling)
 {
     const auto wrap = [](TextureWrap value) { return value == TextureWrap::Clamp || value == TextureWrap::Repeat; };
@@ -46,6 +134,35 @@ bool valid(const TextureSampling& sampling)
         && std::isfinite(sampling.repeats.x) && sampling.repeats.x > 0
         && std::isfinite(sampling.repeats.y) && sampling.repeats.y > 0;
 }
+}
+
+void Detail::prepareTextGeometry(TextData& text)
+{
+    for (std::size_t mode = 0; mode < text.vertices.size(); ++mode) {
+        const auto filter = mode == 0 ? TextureFilter::Nearest : TextureFilter::Linear;
+        auto& vertices = text.vertices[mode];
+        vertices.reserve(text.glyphs.size() * (mode == 0 ? 4 : 36));
+        for (const auto& glyph : text.glyphs) {
+            const TextureAxis horizontal(text.texture.width(), 1, glyph.area.position.x,
+                glyph.area.size.width, 1, TextureWrap::Clamp, filter);
+            const TextureAxis vertical(text.texture.height(), 1, glyph.area.position.y,
+                glyph.area.size.height, 1, TextureWrap::Clamp, filter);
+            for (std::size_t row = 0; row < vertical.segmentCount(); ++row) {
+                const auto y = vertical.segment(row);
+                for (std::size_t column = 0; column < horizontal.segmentCount(); ++column) {
+                    const auto x = horizontal.segment(column);
+                    const auto positions = Rect{x.begin, y.begin, x.end - x.begin, y.end - y.begin}.corners();
+                    const auto coordinates = Rect{x.textureBegin, y.textureBegin,
+                        x.textureEnd - x.textureBegin, y.textureEnd - y.textureBegin}.corners();
+                    for (std::size_t index = 0; index < positions.size(); ++index) {
+                        vertices.push_back(TextVertex{glyph.bounds.position + Vector2{
+                            glyph.bounds.size.width * positions[index].x, glyph.bounds.size.height * positions[index].y},
+                            coordinates[index]});
+                    }
+                }
+            }
+        }
+    }
 }
 
 bool Renderer2D::setTextureBudget(std::size_t bytes, ResourceError& error)
@@ -117,21 +234,30 @@ bool Renderer2D::createTexture(const Image& image, Texture& result, ResourceErro
     if (keepPixels) {
         texture->image = std::make_unique<Image>(image);
     }
-    std::vector<std::uint8_t> pixels(bytes);
-    for (int y = 0; y < height; ++y) {
-        const int sourceY = static_cast<int>((static_cast<std::int64_t>(2 * y + 1)
-            * image.height) / (2 * height));
-        for (int x = 0; x < width; ++x) {
-            const int sourceX = static_cast<int>((static_cast<std::int64_t>(2 * x + 1)
-                * image.width) / (2 * width));
-            const auto source = (static_cast<std::size_t>(sourceY) * static_cast<std::size_t>(image.width)
-                + static_cast<std::size_t>(sourceX)) * 4;
-            const auto target = (static_cast<std::size_t>(y) * storageWidth + static_cast<std::size_t>(x)) * 4;
-            std::copy_n(image.pixels.data() + source, 4, pixels.data() + target);
+    std::vector<std::uint8_t> pixels;
+    const std::uint8_t* uploadPixels = image.pixels.data();
+    if (width != image.width || height != image.height) {
+        pixels.resize(bytes);
+        const auto rowBytes = static_cast<std::size_t>(image.width) * 4;
+        const auto storageRowBytes = storageWidth * 4;
+        // За правым и нижним краем — копия противоположного края для Repeat;
+        // остальное дополнение остаётся прозрачным чёрным.
+        for (int y = 0; y < image.height; ++y) {
+            const auto* source = image.pixels.data() + static_cast<std::size_t>(y) * rowBytes;
+            auto* target = pixels.data() + static_cast<std::size_t>(y) * storageRowBytes;
+            std::copy_n(source, rowBytes, target);
+            if (width > image.width) {
+                std::copy_n(source, 4, target + rowBytes);
+            }
         }
+        if (height > image.height) {
+            std::copy_n(pixels.data(), storageRowBytes,
+                pixels.data() + static_cast<std::size_t>(image.height) * storageRowBytes);
+        }
+        uploadPixels = pixels.data();
     }
-    // Резервирование завершается до создания GPU-объекта.
-    textures.reserve(textures.size() + 1);
+    // Добавляем до создания GPU-объекта, чтобы перераспределение вектора не могло вызвать его утечку.
+    textures.push_back(texture);
     GLint previousTexture = 0;
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
     glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
@@ -153,17 +279,17 @@ bool Renderer2D::createTexture(const Image& image, Texture& result, ResourceErro
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, uploadPixels);
     const GLenum failure = glGetError();
     glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
     glPopClientAttrib();
     glPopAttrib();
     if (failure != GL_NO_ERROR || texture->id == 0) {
         glDeleteTextures(1, &texture->id);
+        textures.pop_back();
         error = {ResourceErrorCode::Graphics, "Cannot upload texture (OpenGL error " + std::to_string(failure) + ")."};
         return false;
     }
-    textures.push_back(texture);
     result.data = std::move(texture);
     error = {};
     return true;
@@ -244,11 +370,17 @@ void Renderer2D::queueTexture(const Texture& texture, const Rect& rectangle, con
         firstError = RenderError::InvalidOptions;
         return;
     }
+    const auto segmentCount = [](int size, int storage, float repeats, TextureWrap wrap) {
+        return wrap == TextureWrap::Repeat ? (size == storage ? 1.0 : 2 * std::ceil(static_cast<double>(repeats))) : 3.0;
+    };
+    if (segmentCount(texture.width(), texture.data->storageWidth, sampling.repeats.x, sampling.wrapX)
+        * segmentCount(texture.height(), texture.data->storageHeight, sampling.repeats.y, sampling.wrapY) > MaximumTextureQuads) {
+        firstError = RenderError::InvalidOptions;
+        return;
+    }
     if (textureRect) {
         const auto& area = *textureRect;
-        if (!std::isfinite(area.position.x) || !std::isfinite(area.position.y)
-            || !std::isfinite(area.size.width) || !std::isfinite(area.size.height)
-            || area.position.x < 0 || area.position.y < 0 || area.size.width < 0 || area.size.height < 0
+        if (area.position.x < 0 || area.position.y < 0 || area.size.width < 0 || area.size.height < 0
             || static_cast<double>(area.position.x) + area.size.width > texture.width()
             || static_cast<double>(area.position.y) + area.size.height > texture.height()) {
             firstError = RenderError::InvalidGeometry;
@@ -277,71 +409,32 @@ void Renderer2D::executeTexture(const Command& command) const
     const GLint filter = sampling.filter == TextureFilter::Nearest ? GL_NEAREST : GL_LINEAR;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, sampling.wrapX == TextureWrap::Repeat ? GL_REPEAT : GL_CLAMP);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, sampling.wrapY == TextureWrap::Repeat ? GL_REPEAT : GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, sampling.wrapX == TextureWrap::Repeat && texture.width == texture.storageWidth ? GL_REPEAT : GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, sampling.wrapY == TextureWrap::Repeat && texture.height == texture.storageHeight ? GL_REPEAT : GL_CLAMP);
     glMatrixMode(GL_TEXTURE);
     glLoadIdentity();
     glMatrixMode(GL_MODELVIEW);
     glColor4f(color.red, color.green, color.blue, color.alpha);
-    // GL_CLAMP в 1.1 смешивает край с цветом рамки. Разбиение у центров крайних
-    // текселей сохраняет внутреннюю интерполяцию и повторяет край без расширений.
-    struct Axis
-    {
-        float coordinate(float position) const
-        {
-            const float value = start + position * repeats * span;
-            return clamp ? std::clamp(value, minimum, maximum) : value;
-        }
-
-        std::array<float, 4> positions = {0, 1, 1, 1};
-        int count = 2;
-        float halfPixel = 0;
-        float repeats = 1;
-        float start = 0;
-        float span = 1;
-        float minimum = 0;
-        float maximum = 1;
-        bool clamp = false;
-    };
-    const auto axis = [](int size, float repeats, TextureWrap wrap, float start, float span) {
-        Axis result;
-        result.halfPixel = 0.5F / static_cast<float>(size);
-        result.repeats = repeats;
-        result.start = start;
-        result.span = span;
-        result.minimum = start + std::min(result.halfPixel, span / 2);
-        result.maximum = start + span - std::min(result.halfPixel, span / 2);
-        result.clamp = wrap == TextureWrap::Clamp;
-        if (result.clamp) {
-            if (span > 0) {
-                result.positions = {0, std::min((result.minimum - start) / span / repeats, 1.0F),
-                    std::min((result.maximum - start) / span / repeats, 1.0F), 1};
-            }
-            result.count = 4;
-        }
-        return result;
-    };
     const Rect area = command.textureRect.value_or(Rect{0, 0,
         static_cast<float>(texture.width), static_cast<float>(texture.height)});
-    const float width = static_cast<float>(texture.width);
-    const float height = static_cast<float>(texture.height);
-    const Axis horizontal = axis(texture.storageWidth, sampling.repeats.x, sampling.wrapX,
-        area.position.x / width, area.size.width / width);
-    const Axis vertical = axis(texture.storageHeight, sampling.repeats.y, sampling.wrapY,
-        area.position.y / height, area.size.height / height);
+    const TextureAxis horizontal(texture.width, texture.storageWidth, area.position.x,
+        area.size.width, sampling.repeats.x, sampling.wrapX, sampling.filter);
+    const TextureAxis vertical(texture.height, texture.storageHeight, area.position.y,
+        area.size.height, sampling.repeats.y, sampling.wrapY, sampling.filter);
     const Vector2 origin = command.vertices[0];
     const Vector2 extent = command.vertices[2] - origin;
     glBegin(GL_QUADS);
-    for (int y = 1; y < vertical.count; ++y) {
-        for (int x = 1; x < horizontal.count; ++x) {
-            const float left = horizontal.positions[static_cast<std::size_t>(x - 1)];
-            const float right = horizontal.positions[static_cast<std::size_t>(x)];
-            const float top = vertical.positions[static_cast<std::size_t>(y - 1)];
-            const float bottom = vertical.positions[static_cast<std::size_t>(y)];
-            const Quad positions = Rect{left, top, right - left, bottom - top}.corners();
-            for (const auto position : positions) {
-                glTexCoord2f(horizontal.coordinate(position.x), vertical.coordinate(position.y));
-                const auto point = command.options.transform.transformPoint(origin + Vector2{extent.x * position.x, extent.y * position.y});
+    for (std::size_t row = 0; row < vertical.segmentCount(); ++row) {
+        const auto y = vertical.segment(row);
+        for (std::size_t column = 0; column < horizontal.segmentCount(); ++column) {
+            const auto x = horizontal.segment(column);
+            const Quad positions = Rect{x.begin, y.begin, x.end - x.begin, y.end - y.begin}.corners();
+            const Quad coordinates = Rect{x.textureBegin, y.textureBegin,
+                x.textureEnd - x.textureBegin, y.textureEnd - y.textureBegin}.corners();
+            for (std::size_t index = 0; index < positions.size(); ++index) {
+                glTexCoord2f(coordinates[index].x, coordinates[index].y);
+                const auto point = command.options.transform.transformPoint(origin
+                    + Vector2{extent.x * positions[index].x, extent.y * positions[index].y});
                 glVertex2f(point.x, point.y);
             }
         }

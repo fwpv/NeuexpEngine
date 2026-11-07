@@ -6,6 +6,8 @@
 #include "renderer.h"
 #include "resources.h"
 #include "camera.h"
+#include "font.h"
+#include "ui.h"
 
 #include <cmath>
 #include <optional>
@@ -42,6 +44,9 @@ private:
 
     std::optional<Cat::Game> game;
     Cat::Images images;
+    Engine::BitmapFont distanceFont;
+    Engine::TextLayout distanceText;
+    long long displayedDistance = -1;
     bool verticalSync = false;
     int displayedFps = -1;
 };
@@ -61,6 +66,12 @@ bool CatApplication::onStart(Host::Error& error)
     Engine::ResourceError resourceError;
     if (!images.load(getRenderer(), resourceError)) {
         error = Platform::Error{"cat", resourceError.message, std::optional<int>{}};
+        return false;
+    }
+    Engine::ResourceFiles files;
+    if (!files.initialize(resourceError)
+        || !getRenderer().loadFont(files, "cat/font.fnt", distanceFont, resourceError)) {
+        error = Host::Error{"cat", resourceError.message, std::nullopt};
         return false;
     }
     game.emplace(std::random_device{}(), std::random_device{}(), images);
@@ -89,6 +100,9 @@ bool CatApplication::onUpdate(const Engine::FrameInfo& frame, Host::Error&)
         Host::isKeyDown(Engine::Key::ArrowLeft), Host::isKeyPressed(Engine::Key::ArrowUp),
         Host::isKeyPressed(Engine::Key::ArrowDown)};
     game->update(frame.deltaTime, controls);
+    if (game->isOver()) {
+        game.emplace(std::random_device{}(), std::random_device{}(), images);
+    }
     return true;
 }
 
@@ -98,6 +112,15 @@ bool CatApplication::onPrepareFrame(const Engine::FrameInfo& frame, Host::Error&
         && !game->prepareView(frame.window.width, frame.window.height, viewError)) {
         error = Platform::Error{"cat", "Cannot calculate game viewport.", std::optional<int>{}};
         return false;
+    }
+    const auto distance = static_cast<long long>(game->distanceTravelled());
+    if (distance != displayedDistance) {
+        Engine::ResourceError failure;
+        if (!distanceFont.layout(u8"Пройдено: " + std::to_string(distance), distanceText, failure)) {
+            error = Host::Error{"cat", failure.message, std::nullopt};
+            return false;
+        }
+        displayedDistance = distance;
     }
     const int fps = static_cast<int>(std::round(frame.framesPerSecond));
     if (fps != displayedFps) {
@@ -111,8 +134,20 @@ bool CatApplication::onPrepareFrame(const Engine::FrameInfo& frame, Host::Error&
 
 bool CatApplication::onRender(const Engine::FrameInfo& frame, Host::Error& error)
 {
+    Engine::UiView ui;
+    Engine::UiError failure;
+    if (!Engine::UiCanvas{}.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, ui, failure)) {
+        error = Host::Error{"cat", "Cannot calculate HUD viewport.", std::nullopt};
+        return false;
+    }
     beginFrame(frame.window.width, frame.window.height, Engine::Color{245.0F / 255, 250.0F / 255, 245.0F / 255});
     game->draw(getRenderer(), images);
+    auto& renderer = getRenderer();
+    renderer.setUiView(ui);
+    Engine::DrawOptions textOptions;
+    textOptions.color = Engine::Color{0, 0, 0};
+    renderer.drawText(distanceText, Engine::Vector2{12, ui.size.height - 12 - distanceText.size().height},
+        textOptions, Engine::TextureFilter::Nearest);
     return endFrame(error);
 }
 }

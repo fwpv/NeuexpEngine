@@ -25,20 +25,9 @@ namespace Engine
 {
 namespace
 {
-bool finite(Vector2 point)
-{
-    return std::isfinite(point.x) && std::isfinite(point.y);
-}
-
-bool finite(const Affine2& transform)
-{
-    return std::isfinite(transform.m00) && std::isfinite(transform.m01) && std::isfinite(transform.m02)
-        && std::isfinite(transform.m10) && std::isfinite(transform.m11) && std::isfinite(transform.m12);
-}
-
 bool valid(Color color)
 {
-    const auto component = [](float value) { return std::isfinite(value) && value >= 0 && value <= 1; };
+    const auto component = [](float value) { return value >= 0 && value <= 1; };
     return component(color.red) && component(color.green) && component(color.blue) && component(color.alpha);
 }
 
@@ -160,7 +149,7 @@ bool Renderer2D::selectView(const Viewport& area, const Affine2& transform, Stag
         return false;
     }
     const std::int64_t viewportY = static_cast<std::int64_t>(frameHeight) - area.y - area.height;
-    if (area.width <= 0 || area.height <= 0 || !finite(transform)
+    if (area.width <= 0 || area.height <= 0
         || viewportY < std::numeric_limits<int>::min() || viewportY > std::numeric_limits<int>::max()) {
         firstError = RenderError::InvalidView;
         return false;
@@ -247,9 +236,10 @@ bool Renderer2D::prepareDraw(const DrawOptions& options)
         firstError = RenderError::InvalidState;
         return false;
     }
-    if (!valid(options.color) || !finite(options.transform)
-        || !std::isfinite(options.lineWidth) || options.lineWidth <= 0
-        || !std::isfinite(options.pointSize) || options.pointSize <= 0
+    // NaN в ключе нарушает строгий порядок, необходимый std::stable_sort.
+    if (!valid(options.color)
+        || options.lineWidth <= 0
+        || options.pointSize <= 0
         || !std::isfinite(options.order)) {
         firstError = RenderError::InvalidOptions;
         return false;
@@ -269,7 +259,7 @@ bool Renderer2D::submit(Primitive primitive, const Vector2* vertices, std::size_
     DrawOptions screenOptions = options;
     screenOptions.transform = viewTransform * options.transform;
     commands.push_back(Command{primitive, std::vector<Vector2>(vertices, vertices + count),
-        screenOptions, clip, std::nullopt, Texture{}, TextureSampling{}, std::nullopt});
+        screenOptions, clip, std::nullopt, Texture{}, TextureSampling{}, std::nullopt, std::nullopt});
     return true;
 }
 
@@ -314,7 +304,9 @@ void Renderer2D::flush()
     });
     for (const Command& command : commands) {
         applyClip(command.clip);
-        if (command.texture.isValid()) {
+        if (command.text) {
+            executeText(command);
+        } else if (command.texture.isValid()) {
             executeTexture(command);
         } else {
             execute(command.primitive, command.vertices.data(), command.vertices.size(), command.options, command.gradient);
@@ -329,10 +321,6 @@ void Renderer2D::drawPoint(Vector2 point, const DrawOptions& options)
     if (!ready()) {
         return;
     }
-    if (!finite(point)) {
-        firstError = RenderError::InvalidGeometry;
-        return;
-    }
     submit(Primitive::Points, &point, 1, options);
 }
 
@@ -341,18 +329,13 @@ void Renderer2D::drawLine(Vector2 start, Vector2 end, const DrawOptions& options
     if (!ready()) {
         return;
     }
-    if (!finite(start) || !finite(end)) {
-        firstError = RenderError::InvalidGeometry;
-        return;
-    }
     const std::array<Vector2, 2> vertices = {start, end};
     submit(Primitive::Lines, vertices.data(), vertices.size(), options);
 }
 
 bool Renderer2D::queueRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options)
 {
-    if (!finite(rectangle.position) || !std::isfinite(rectangle.size.width) || !std::isfinite(rectangle.size.height)
-        || rectangle.size.width < 0 || rectangle.size.height < 0 || !valid(fill)) {
+    if (rectangle.size.width < 0 || rectangle.size.height < 0 || !valid(fill)) {
         firstError = RenderError::InvalidGeometry;
         return false;
     }
@@ -385,7 +368,7 @@ void Renderer2D::drawCircle(const Circle& circle, const DrawOptions& options, Sh
     if (!ready()) {
         return;
     }
-    if (!finite(circle.center) || !std::isfinite(circle.radius) || circle.radius < 0 || segments < 3 || !valid(fill)) {
+    if (circle.radius < 0 || segments < 3 || !valid(fill)) {
         firstError = RenderError::InvalidGeometry;
         return;
     }

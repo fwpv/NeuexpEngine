@@ -1,5 +1,6 @@
 #include "window_validation.h"
 #include "platform.h"
+#include "detail/unicode.h"
 
 #include <limits>
 #include <cstddef>
@@ -19,45 +20,10 @@ bool validateWindowTitle(const std::string& title, const char* operation, Error&
 {
     bool valid = title.size() <= static_cast<std::size_t>(std::numeric_limits<int>::max());
     for (std::size_t index = 0; valid && index < title.size();) {
-        const auto first = static_cast<unsigned char>(title[index++]);
-        if (first == 0) {
-            valid = false;
-        } else if (first < 0x80) {
-            continue;
-        } else {
-            // Первый байт задаёт число продолжений; каждый следующий байт имеет вид 10xxxxxx.
-            int continuationCount = 0;
-            unsigned int codePoint = 0;
-            unsigned int minimumCodePoint = 0;
-            if (first >= 0xC2 && first <= 0xDF) {
-                continuationCount = 1;
-                codePoint = first & 0x1FU;
-                minimumCodePoint = 0x80;
-            } else if (first >= 0xE0 && first <= 0xEF) {
-                continuationCount = 2;
-                codePoint = first & 0x0FU;
-                minimumCodePoint = 0x800;
-            } else if (first >= 0xF0 && first <= 0xF4) {
-                continuationCount = 3;
-                codePoint = first & 0x07U;
-                minimumCodePoint = 0x10000;
-            } else {
-                valid = false;
-            }
-            for (int part = 0; valid && part < continuationCount; ++part) {
-                if (index == title.size()) {
-                    valid = false;
-                    break;
-                }
-                const auto byte = static_cast<unsigned char>(title[index++]);
-                valid = (byte & 0xC0U) == 0x80U;
-                codePoint = (codePoint << 6U) | (byte & 0x3FU);
-            }
-            // Избыточные кодировки, суррогаты UTF-16 и значения вне Unicode недопустимы.
-            valid = valid && codePoint >= minimumCodePoint && codePoint <= 0x10FFFF
-                && !(codePoint >= 0xD800 && codePoint <= 0xDFFF);
-        }
+        std::uint32_t code = 0;
+        valid = Engine::Detail::nextUtf8(title, index, code) && code != 0;
     }
+
     if (!valid) {
         error = {operation, "Window title must be valid UTF-8 without embedded null characters.", std::nullopt};
     }

@@ -107,7 +107,7 @@ int main()
         require(!camera.createView({ 0, 0, 800, -1 }, view, error) && error == CameraError::InvalidViewport && unchanged(), "Negative viewport accepted.");
         require(!camera.createView({ std::numeric_limits<int>::max(), 0, 100, 100 }, view, error)
             && error == CameraError::InvalidViewport, "Overflowing viewport accepted.");
-        const float invalidValues[] = { 0, -1, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN() };
+        const float invalidValues[] = { 0, -1 };
         for (float invalid : invalidValues) {
             camera.zoom = invalid;
             require(!camera.createView({ 0, 0, 800, 600 }, view, error) && error == CameraError::InvalidCamera, "Invalid zoom accepted.");
@@ -116,11 +116,15 @@ int main()
             require(!camera.createView({ 0, 0, 800, 600 }, view, error) && error == CameraError::InvalidCamera, "Invalid reference size accepted.");
             camera.referenceSize = { 800, 600 };
         }
-        camera.position.x = std::numeric_limits<float>::quiet_NaN();
-        require(!camera.createView({ 0, 0, 800, 600 }, view, error) && error == CameraError::InvalidCamera, "Invalid camera position accepted.");
+        // Размер участвует в преобразовании к int, поэтому NaN/Inf здесь отклоняются.
+        for (float invalid : {std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+            camera.mode = ViewportMode::Fit;
+            camera.referenceSize.width = invalid;
+            require(!camera.createView({0, 0, 800, 600}, view, error) && error == CameraError::InvalidCamera,
+                "Unsafe viewport conversion accepted.");
+        }
         camera = {};
         require(camera.createView({ 0, 0, 800, 600 }, view, error) && error == CameraError::None, "Camera did not recover after invalid settings.");
-        require(!view.screenToWorld({ std::numeric_limits<float>::quiet_NaN(), 0 }, world), "Invalid mouse accepted.");
         require(!CameraView{}.screenToWorld({}, world), "Uninitialized view accepted input.");
         const CameraView valid = view;
         camera.zoom = std::numeric_limits<float>::min();

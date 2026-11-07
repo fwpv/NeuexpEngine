@@ -1,0 +1,6 @@
+bitmap_font 1
+texture missing.png
+lineHeight 3
+fallback 63
+glyph 32 0 0 0 0 0 0 1
+glyph 63 0 0 1 1 0 0 1

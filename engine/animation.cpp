@@ -14,9 +14,7 @@ bool Animation::load(const Texture& source, const std::vector<AnimationFrame>& s
     double total = 0;
     for (const auto& frame : sequence) {
         const Rect& area = frame.textureRect;
-        if (!std::isfinite(frame.duration) || frame.duration <= 0
-            || !std::isfinite(area.position.x) || !std::isfinite(area.position.y)
-            || !std::isfinite(area.size.width) || !std::isfinite(area.size.height)
+        if (frame.duration <= 0
             || area.position.x < 0 || area.position.y < 0 || area.size.width <= 0 || area.size.height <= 0
             || area.size != sequence.front().textureRect.size
             || static_cast<double>(area.position.x) + area.size.width > source.width()
@@ -118,16 +116,16 @@ void Animation::setDirection(AnimationDirection value)
 
 void Animation::setSpeed(double value)
 {
-    if (!std::isfinite(value) || value < 0) {
-        throw std::invalid_argument("Animation speed must be finite and nonnegative.");
+    if (value < 0) {
+        throw std::invalid_argument("Animation speed must be nonnegative.");
     }
     playbackSpeed = value;
 }
 
 void Animation::update(double deltaTime)
 {
-    if (!std::isfinite(deltaTime) || deltaTime < 0) {
-        throw std::invalid_argument("Animation deltaTime must be finite and nonnegative.");
+    if (deltaTime < 0) {
+        throw std::invalid_argument("Animation deltaTime must be nonnegative.");
     }
     if (!playing || deltaTime == 0 || playbackSpeed == 0) {
         return;
