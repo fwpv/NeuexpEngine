@@ -1,4 +1,5 @@
 #include "atlas.h"
+#include "animation.h"
 #include "renderer.h"
 #include "platform.h"
 #include "platform_test_diagnostics.h"
@@ -85,6 +86,141 @@ TextureSampling nearest()
     TextureSampling result;
     result.filter = TextureFilter::Nearest;
     return result;
+}
+
+void animationChecks(Renderer2D& renderer)
+{
+    const auto texture = create(renderer, Image{3, 1, std::vector<std::uint8_t>{
+        255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255}}, true);
+    const std::vector<AnimationFrame> sequence{
+        AnimationFrame{Rect{0, 0, 1, 1}, 0.125},
+        AnimationFrame{Rect{1, 0, 1, 1}, 0.25},
+        AnimationFrame{Rect{2, 0, 1, 1}, 0.125}};
+    ResourceError failure;
+    Animation animation;
+    animation.play();
+    animation.update(1);
+    require(!animation.isPlaying() && !animation.isFinished(), "Empty animation started.");
+    check(animation.load(texture, sequence, failure), failure);
+    require(animation.currentFrame() == 0 && !animation.isPlaying(), "Load must stop on first frame.");
+    animation.size = {60, 60};
+    animation.transform.position = {20, 20};
+    animation.color = Color{0.5F, 1, 1, 1};
+    animation.filter = TextureFilter::Nearest;
+    animation.play();
+    animation.update(0.125);
+    require(animation.currentFrame() == 1 && animation.elapsedTime() == 0.125, "Exact frame boundary failed.");
+    require(animation.size == Size2{60, 60} && animation.transform.position == Vector2{20, 20}
+        && animation.color.red == 0.5F && animation.texture == texture, "Frame change altered sprite properties.");
+    require(animation.hitTest(Vector2{30, 30}, true), "Animated sprite hit test failed.");
+    frame(renderer);
+    renderer.drawSprite(animation);
+    RenderError error;
+    check(renderer.endFrame(error), error);
+    pixel(30, 30, Green);
+    require(animation.elapsedTime() == 0.125, "Rendering advanced animation.");
+
+    animation.pause();
+    animation.update(10);
+    require(animation.elapsedTime() == 0.125 && !animation.isPlaying(), "Pause advanced time.");
+    animation.play();
+    animation.update(0.25);
+    require(animation.currentFrame() == 2, "Resume lost elapsed time.");
+    animation.update(0.125);
+    require(animation.currentFrame() == 0 && animation.elapsedTime() == 0 && !animation.isFinished(), "Loop boundary failed.");
+    animation.update(5000.25);
+    require(animation.currentFrame() == 1 && animation.elapsedTime() == 0.25, "Multiple cycles failed.");
+    animation.stop();
+    require(animation.currentFrame() == 0 && animation.elapsedTime() == 0 && !animation.isPlaying(), "Stop failed.");
+
+    animation.setMode(AnimationMode::Once);
+    animation.restart();
+    animation.update(0.375);
+    require(animation.currentFrame() == 2 && !animation.isFinished(), "Last frame completed too early.");
+    animation.update(0.125);
+    require(animation.isFinished() && !animation.isPlaying() && animation.currentFrame() == 2
+        && animation.elapsedTime() == 0.5, "Once completion failed.");
+    animation.play();
+    animation.update(10);
+    require(animation.isFinished() && !animation.isPlaying() && animation.elapsedTime() == 0.5,
+        "Completed animation restarted implicitly.");
+    animation.restart();
+    require(!animation.isFinished() && animation.isPlaying() && animation.currentFrame() == 0, "Restart failed.");
+    animation.setSpeed(2);
+    animation.update(0.0625);
+    require(animation.currentFrame() == 1, "Playback speed ignored.");
+    animation.setSpeed(0);
+    animation.update(5);
+    require(animation.elapsedTime() == 0.125 && animation.isPlaying(), "Zero speed failed.");
+    animation.setSpeed(1);
+    Animation independent = animation;
+    independent.update(0.25);
+    require(animation.currentFrame() == 1 && independent.currentFrame() == 2, "Instances share playback state.");
+
+    for (const int fps : {30, 60, 120}) {
+        Animation sample;
+        check(sample.load(texture, sequence, failure), failure);
+        sample.restart();
+        for (int step = 0; step < fps * 2 + fps / 5; ++step) {
+            sample.update(1.0 / fps);
+        }
+        require(sample.currentFrame() == 1 && std::abs(sample.elapsedTime() - 0.2) < 1e-12,
+            "Playback depends on FPS.");
+        sample.setMode(AnimationMode::Once);
+        sample.restart();
+        int completions = 0;
+        for (int step = 0; step < fps * 2; ++step) {
+            const bool wasFinished = sample.isFinished();
+            sample.update(1.0 / fps);
+            if (!wasFinished && sample.isFinished()) {
+                ++completions;
+            }
+        }
+        require(completions == 1 && sample.currentFrame() == 2, "Once must complete exactly once.");
+    }
+
+    Animation uniform;
+    check(uniform.load(texture, std::vector<Rect>{Rect{0, 0, 1, 1}, Rect{1, 0, 1, 1}}, 0.125, failure), failure);
+    uniform.restart();
+    uniform.update(0.125);
+    require(uniform.currentFrame() == 1, "Uniform frame duration failed.");
+    check(uniform.load(texture, std::vector<Rect>{Rect{0, 0, 1, 1}}, 0.125, failure), failure);
+    uniform.setMode(AnimationMode::Once);
+    uniform.restart();
+    uniform.update(100);
+    require(uniform.isFinished() && uniform.currentFrame() == 0, "Single-frame completion failed.");
+
+    auto invalid = sequence;
+    invalid[1].textureRect.size.width = 2;
+    require(!animation.load(texture, invalid, failure), "Different frame sizes accepted.");
+    invalid = sequence;
+    invalid[1].duration = 0;
+    require(!animation.load(texture, invalid, failure), "Zero duration accepted.");
+    invalid[1].duration = std::numeric_limits<double>::infinity();
+    require(!animation.load(texture, invalid, failure), "Infinite duration accepted.");
+    invalid = sequence;
+    invalid[1].textureRect.position.x = 3;
+    require(!animation.load(texture, invalid, failure), "Out-of-texture frame accepted.");
+    require(!animation.load(Texture{}, sequence, failure), "Invalid texture accepted.");
+    require(!animation.load(texture, std::vector<AnimationFrame>{}, failure), "Empty sequence accepted.");
+    require(animation.currentFrame() == 1 && animation.elapsedTime() == 0.125 && animation.isPlaying(),
+        "Failed load altered playback.");
+    for (const double value : {-1.0, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()}) {
+        bool rejected = false;
+        try {
+            animation.setSpeed(value);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        require(rejected && animation.speed() == 1, "Invalid speed accepted or changed state.");
+        rejected = false;
+        try {
+            animation.update(value);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        require(rejected && animation.elapsedTime() == 0.125, "Invalid time accepted or changed state.");
+    }
 }
 
 void pixels(Renderer2D& renderer, const ResourceFiles& files)
@@ -501,7 +637,7 @@ int main(int argc, char** argv)
             else { spriteErrors(renderer); }
             result = 0;
         } else {
-            require(mode == "pixels" || mode == "sampling" || mode == "integration" || mode == "sprites", "Unknown mode.");
+            require(mode == "pixels" || mode == "sampling" || mode == "integration" || mode == "sprites" || mode == "animation", "Unknown mode.");
             RenderTest::FramebufferApi api;
             if (!api.load()) {
                 std::cout << "Pixel checks require optional FBO support from the test driver.\n";
@@ -522,7 +658,8 @@ int main(int argc, char** argv)
                     "Cannot process test window events.");
                 RenderTest::RenderTarget target(api, WindowSize);
                 target.initialize();
-                if (mode == "pixels") { pixels(renderer, files); }
+                if (mode == "animation") { animationChecks(renderer); }
+                else if (mode == "pixels") { pixels(renderer, files); }
                 else if (mode == "sampling") { sampling(renderer); }
                 else if (mode == "sprites") { sprites(renderer); }
                 else { integration(renderer); }
