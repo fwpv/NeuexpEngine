@@ -1,5 +1,6 @@
 #include "renderer.h"
 #include "detail/texture_data.h"
+#include "detail/font_data.h"
 #include "geometry.h"
 #include "math2d.h"
 #include "resources.h"
@@ -132,6 +133,35 @@ bool valid(const TextureSampling& sampling)
         && std::isfinite(sampling.repeats.x) && sampling.repeats.x > 0
         && std::isfinite(sampling.repeats.y) && sampling.repeats.y > 0;
 }
+}
+
+void Detail::prepareTextGeometry(TextData& text, const TextureData& texture)
+{
+    for (std::size_t mode = 0; mode < text.vertices.size(); ++mode) {
+        const auto filter = mode == 0 ? TextureFilter::Nearest : TextureFilter::Linear;
+        auto& vertices = text.vertices[mode];
+        vertices.reserve(text.glyphs.size() * (mode == 0 ? 4 : 36));
+        for (const auto& glyph : text.glyphs) {
+            const TextureAxis horizontal(texture.width, texture.storageWidth, glyph.area.position.x,
+                glyph.area.size.width, 1, TextureWrap::Clamp, filter);
+            const TextureAxis vertical(texture.height, texture.storageHeight, glyph.area.position.y,
+                glyph.area.size.height, 1, TextureWrap::Clamp, filter);
+            for (std::size_t row = 0; row < vertical.segmentCount(); ++row) {
+                const auto y = vertical.segment(row);
+                for (std::size_t column = 0; column < horizontal.segmentCount(); ++column) {
+                    const auto x = horizontal.segment(column);
+                    const auto positions = Rect{x.begin, y.begin, x.end - x.begin, y.end - y.begin}.corners();
+                    const auto coordinates = Rect{x.textureBegin, y.textureBegin,
+                        x.textureEnd - x.textureBegin, y.textureEnd - y.textureBegin}.corners();
+                    for (std::size_t index = 0; index < positions.size(); ++index) {
+                        vertices.push_back(TextVertex{glyph.bounds.position + Vector2{
+                            glyph.bounds.size.width * positions[index].x, glyph.bounds.size.height * positions[index].y},
+                            coordinates[index]});
+                    }
+                }
+            }
+        }
+    }
 }
 
 bool Renderer2D::setTextureBudget(std::size_t bytes, ResourceError& error)

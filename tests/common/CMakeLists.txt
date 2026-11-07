@@ -178,7 +178,7 @@ if(WIN32)
 endif()
 add_custom_command(TARGET texture_test POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${TEST_ASSETS_DIR}" "$<TARGET_FILE_DIR:texture_test>/assets")
-foreach(mode pixels sampling integration resources sprites sprite_errors atlas animation padding)
+foreach(mode pixels sampling integration resources sprites sprite_errors atlas animation padding font text)
     add_test(NAME texture_${mode} COMMAND texture_test ${mode})
     set_tests_properties(texture_${mode} PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
@@ -187,3 +187,7 @@ endforeach()
 add_executable(platform_validation_test platform_validation_test.cpp)
 target_link_libraries(platform_validation_test PRIVATE platform project_warnings)
 add_test(NAME platform_validation COMMAND platform_validation_test)
+
+if(MSVC)
+    target_compile_options(texture_test PRIVATE /utf-8)
+endif()

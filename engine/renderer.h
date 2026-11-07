@@ -1,6 +1,7 @@
 #pragma once
 
 #include "camera.h"
+#include "font.h"
 #include "ui.h"
 #include "texture.h"
 #include "sprite.h"
@@ -85,6 +86,12 @@ public:
     // этого выбора нужно освободить все ссылки и вызвать collectUnusedTextures().
     bool loadTexture(const ResourceFiles& files, const std::string& name, Texture& result,
         ResourceError& error, bool keepPixels = false);
+    // PNG используется как альфа-маска: RGB нормализуется в белый в памяти.
+    bool loadFont(const ResourceFiles& files, const std::string& name, BitmapFont& result, ResourceError& error);
+    // Позиция задаёт начало логической области; options.transform применяется после переноса.
+    // Раскладка рисуется одной командой с подготовленным массивом геометрии.
+    void drawText(const TextLayout& text, Vector2 position, const DrawOptions& options = {},
+        TextureFilter filter = TextureFilter::Linear);
     // Удаляет ресурсы без пользовательских ссылок и команд; также вызывается в beginFrame().
     void collectUnusedTextures();
     TextureStats textureStats() const;
@@ -177,6 +184,7 @@ private:
         Texture texture;
         TextureSampling sampling;
         std::optional<Rect> textureRect;
+        std::shared_ptr<const Detail::TextData> text;
     };
 
     bool selectView(const Viewport& area, const Affine2& transform, Stage next);
@@ -186,6 +194,7 @@ private:
     void execute(Primitive primitive, const Vector2* vertices, std::size_t count, const DrawOptions& options,
         const std::optional<std::array<Color, 2>>& gradient) const;
     void flush();
+    void executeText(const Command& command) const;
     void executeTexture(const Command& command) const;
     void queueTexture(const Texture& texture, const Rect& bounds, const DrawOptions& options,
         const TextureSampling& sampling, const std::optional<Rect>& textureRect);

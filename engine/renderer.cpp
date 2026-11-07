@@ -269,7 +269,7 @@ bool Renderer2D::submit(Primitive primitive, const Vector2* vertices, std::size_
     DrawOptions screenOptions = options;
     screenOptions.transform = viewTransform * options.transform;
     commands.push_back(Command{primitive, std::vector<Vector2>(vertices, vertices + count),
-        screenOptions, clip, std::nullopt, Texture{}, TextureSampling{}, std::nullopt});
+        screenOptions, clip, std::nullopt, Texture{}, TextureSampling{}, std::nullopt, nullptr});
     return true;
 }
 
@@ -314,7 +314,9 @@ void Renderer2D::flush()
     });
     for (const Command& command : commands) {
         applyClip(command.clip);
-        if (command.texture.isValid()) {
+        if (command.text) {
+            executeText(command);
+        } else if (command.texture.isValid()) {
             executeTexture(command);
         } else {
             execute(command.primitive, command.vertices.data(), command.vertices.size(), command.options, command.gradient);

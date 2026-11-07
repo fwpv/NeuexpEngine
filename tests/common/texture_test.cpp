@@ -797,6 +797,175 @@ void spriteErrors(Renderer2D& renderer)
     renderer.drawSprite(sprite);
     check(renderer.endFrame(error), error);
 }
+BitmapFont testFont(Renderer2D& renderer)
+{
+    Image image{5, 3, std::vector<std::uint8_t>(60, 255)};
+    for (std::size_t pixel = 0; pixel < 15; ++pixel) {
+        image.pixels[pixel * 4 + 3] = static_cast<std::uint8_t>(40 + pixel * 14);
+    }
+    const auto texture = create(renderer, image);
+    BitmapFont font;
+    ResourceError error;
+    check(font.load(texture,
+        "bitmap_font 1\ntexture test.png\nlineHeight 5\nfallback 63\n"
+        "glyph 32 0 0 0 0 0 0 2\n"
+        "glyph 63 0 0 1 3 0 0 2\n"
+        "glyph 65 1 0 2 3 -1 1 3\n"
+        "glyph 66 3 0 2 3 0 0 3\n"
+        "glyph 1040 1 0 2 3 -1 1 3\n", error), error);
+    return font;
+}
+
+void fontChecks(Renderer2D& renderer, const ResourceFiles& files)
+{
+    auto font = testFont(renderer);
+    ResourceError error;
+    BitmapFont loaded;
+    check(renderer.loadFont(files, "fonts/test.fnt", loaded, error), error);
+    require(loaded.lineHeight() == 3 && loaded.find(65), "File font did not load relative image.");
+    require(!renderer.loadFont(files, "fonts/missing_image.fnt", loaded, error) && loaded.find(65),
+        "Missing image changed loaded font.");
+    TextLayout text;
+    check(font.layout(u8"A АB", text, error), error);
+    require(text.size() == Size2{11, 5} && text.lineCount() == 1 && text.glyphs().size() == 3,
+        "Unicode or advances are incorrect.");
+    require(text.glyphs()[1].codepoint == 1040 && text.glyphs()[1].bounds.position == Vector2{4, 1},
+        "Cyrillic offset is incorrect.");
+    require(text.inkBounds() == Rect{-1, 0, 11, 4}, "Incorrect ink bounds.");
+    check(font.layout(" A\r\n\nB\r", text, error), error);
+    require(text.lineCount() == 4 && text.size() == Size2{5, 20}, "Empty lines or CRLF incorrect.");
+    check(font.layout("", text, error), error);
+    require(text.size() == Size2{} && text.lineCount() == 0 && text.glyphs().empty(), "Empty text incorrect.");
+    check(font.layout("  ", text, error), error);
+    require(text.size() == Size2{4, 5} && text.glyphs().empty(), "Space created geometry.");
+    check(font.layout("\tA", text, error), error);
+    require(text.size().width == 11, "Tab advance incorrect.");
+    check(font.layout(std::string("A\xff") + u8"😀", text, error), error);
+    require(text.glyphs().size() == 3 && text.glyphs()[1].codepoint == 63 && text.glyphs()[2].codepoint == 63,
+        "Missing or invalid Unicode did not use fallback.");
+    for (const auto& invalid : {std::string("\xc0\xaf"), std::string("\xed\xa0\x80"), std::string("\xf4\x90\x80\x80"), std::string("\xe2\x82")}) {
+        check(font.layout(invalid, text, error), error);
+        require(text.glyphs().size() == invalid.size(), "Invalid UTF-8 consumption changed.");
+    }
+    TextLayoutOptions options;
+    options.width = 7;
+    check(font.layout("AA BB", text, error, options), error);
+    require(text.lineCount() == 2 && text.size() == Size2{7, 10}
+        && text.glyphs()[2].bounds.position == Vector2{0, 5}, "Word wrap incorrect.");
+    check(font.layout("AAAAA", text, error, options), error);
+    require(text.lineCount() == 3, "Long word was not split.");
+    options.width = 1;
+    check(font.layout("AB", text, error, options), error);
+    require(text.lineCount() == 2 && text.size().width == 3, "Narrow wrap failed to advance.");
+    options = {20, 2, 1, TextAlignment::Right};
+    check(font.layout("A\nBB", text, error, options), error);
+    require(text.size() == Size2{20, 22} && text.glyphs()[0].bounds.position == Vector2{12, 2},
+        "Scaling, spacing or right alignment incorrect.");
+    options.alignment = TextAlignment::Center;
+    check(font.layout("A", text, error, options), error);
+    require(text.glyphs()[0].bounds.position.x == 5, "Center alignment incorrect.");
+    const auto previous = text.size();
+    options.scale = 0;
+    require(!font.layout("A", text, error, options) && text.size() == previous, "Invalid layout changed output.");
+    require(!font.layout(std::string(65537, 'A'), text, error) && error.code == ResourceErrorCode::LimitExceeded,
+        "Text size limit ignored.");
+    Texture texture = create(renderer, Image{1, 1, {255, 255, 255, 255}});
+    const std::string valid = "bitmap_font 1\ntexture a.png\nlineHeight 5\nfallback 63\n"
+        "glyph 32 0 0 0 0 0 0 2\nglyph 63 0 0 1 1 0 0 2\n";
+    for (const auto& invalid : {valid + "glyph 63 0 0 1 1 0 0 2\n", valid + "unknown 1\n",
+            valid + "glyph 65 1 0 1 1 0 0 2\n", valid + "glyph 55296 0 0 1 1 0 0 2\n",
+            std::string("bitmap_font 2\n"), valid + "lineHeight 8\n"}) {
+        require(!font.load(texture, invalid, error) && font.find(65), "Invalid font replaced old resource.");
+    }
+    font = {};
+    require(text.isValid(), "Layout lost texture with font destruction.");
+}
+
+void textRendering(Renderer2D& renderer, const ResourceFiles& files)
+{
+    auto font = testFont(renderer);
+    ResourceError error;
+    TextLayout text;
+    check(font.layout(u8"A BА\nAB ?", text, error, TextLayoutOptions{20, 4, 1, TextAlignment::Center}), error);
+    font = {};
+    RenderError renderError;
+    for (auto filter : {TextureFilter::Nearest, TextureFilter::Linear}) {
+        for (float angle : {0.0F, 0.37F}) {
+            std::vector<std::uint8_t> reference;
+            for (bool clipped : {false, true}) {
+                frame(renderer, Color{0.1F, 0.2F, 0.3F});
+                if (clipped) {
+                    renderer.setClip(Viewport{40, 30, 60, 90});
+                }
+                DrawOptions options;
+                options.color = {0.7F, 0.4F, 1, 0.6F};
+                options.transform = Transform2{Vector2{95, 40}, angle, Vector2{-1.3F, 1.1F}, Vector2{}}.toAffine();
+                renderer.drawText(text, Vector2{3, 2}, options, filter);
+                check(renderer.endFrame(renderError), renderError);
+                std::vector<std::uint8_t> pixels(WindowSize * WindowSize * 4);
+                glReadPixels(0, 0, WindowSize, WindowSize, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+                if (reference.empty()) {
+                    reference = pixels;
+                } else {
+                    for (std::size_t index = 0; index < pixels.size(); ++index) {
+                        const int x = static_cast<int>((index / 4) % WindowSize);
+                        const int y = WindowSize - 1 - static_cast<int>((index / 4) / WindowSize);
+                        if (x >= 40 && x < 100 && y >= 30 && y < 120) {
+                            require(pixels[index] == reference[index], "Clipping changed text inside the clip.");
+                        } else if (index % 4 < 3) {
+                            const std::array<int, 3> background{26, 51, 77};
+                            require(std::abs(static_cast<int>(pixels[index]) - background[index % 4]) <= 1,
+                                "Text escaped clipping.");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    frame(renderer);
+    renderer.drawText(text, Vector2{20, 20});
+    DrawOptions behind;
+    behind.layer = -1;
+    behind.color = Red;
+    renderer.drawRectangle(Rect{0, 0, 256, 256}, behind);
+    renderer.drawRectangle(Rect{100, 100, 10, 10}, Blue);
+    check(renderer.endFrame(renderError), renderError);
+    pixel(0, 0, Red);
+    pixel(105, 105, Blue);
+    auto measuredFont = testFont(renderer);
+    TextLayout single;
+    check(measuredFont.layout("A", single, error), error);
+    frame(renderer);
+    renderer.drawText(single, Vector2{20, 20}, DrawOptions{}, TextureFilter::Nearest);
+    check(renderer.endFrame(renderError), renderError);
+    // Метрика A: offset(-1,1), область (1,0,2,3). Альфа первого текселя — 54.
+    pixel(19, 21, Color{54.0F / 255, 54.0F / 255, 54.0F / 255});
+    pixel(18, 21, Black);
+    pixel(21, 21, Black);
+    pixel(19, 20, Black);
+    pixel(19, 24, Black);
+    TextLayout empty;
+    check(measuredFont.layout("", empty, error), error);
+    frame(renderer);
+    renderer.drawText(empty, Vector2{});
+    check(renderer.endFrame(renderError), renderError);
+    frame(renderer);
+    renderer.drawText(single, Vector2{}, DrawOptions{}, static_cast<TextureFilter>(-1));
+    require(!renderer.endFrame(renderError) && renderError == RenderError::InvalidOptions, "Invalid text filter accepted.");
+    frame(renderer);
+    renderer.drawText(TextLayout{}, Vector2{});
+    require(!renderer.endFrame(renderError) && renderError == RenderError::InvalidTexture, "Invalid layout accepted.");
+    BitmapFont mask;
+    check(renderer.loadFont(files, "fonts/test.fnt", mask, error), error);
+    check(mask.layout("A", single, error, TextLayoutOptions{0, 20, 0, TextAlignment::Left}), error);
+    frame(renderer);
+    renderer.drawText(single, Vector2{20, 20});
+    check(renderer.endFrame(renderError), renderError);
+    // В PNG этот тексель зелёный с альфой 128; загрузчик шрифта оставляет только маску.
+    pixel(25, 25, Color{128.0F / 255, 128.0F / 255, 128.0F / 255});
+
+}
+
 }
 
 int main(int argc, char** argv)
@@ -823,13 +992,14 @@ int main(int argc, char** argv)
         ResourceError error;
         check(files.initialize(error), error);
         const std::string mode = argv[1];
-        if (mode == "resources" || mode == "sprite_errors" || mode == "atlas") {
+        if (mode == "resources" || mode == "sprite_errors" || mode == "atlas" || mode == "font") {
             if (mode == "resources") { resources(renderer, files); }
             else if (mode == "atlas") { atlasChecks(renderer); }
+            else if (mode == "font") { fontChecks(renderer, files); }
             else { spriteErrors(renderer); }
             result = 0;
         } else {
-            require(mode == "pixels" || mode == "sampling" || mode == "integration" || mode == "sprites" || mode == "animation" || mode == "padding", "Unknown mode.");
+            require(mode == "pixels" || mode == "sampling" || mode == "integration" || mode == "sprites" || mode == "animation" || mode == "padding" || mode == "text", "Unknown mode.");
             RenderTest::FramebufferApi api;
             if (!api.load()) {
                 std::cout << "Pixel checks require optional FBO support from the test driver.\n";
@@ -850,7 +1020,8 @@ int main(int argc, char** argv)
                     "Cannot process test window events.");
                 RenderTest::RenderTarget target(api, WindowSize);
                 target.initialize();
-                if (mode == "padding") { padding(renderer); }
+                if (mode == "text") { textRendering(renderer, files); }
+                else if (mode == "padding") { padding(renderer); }
                 else if (mode == "animation") { animationChecks(renderer); }
                 else if (mode == "pixels") { pixels(renderer, files); }
                 else if (mode == "sampling") { sampling(renderer); }
