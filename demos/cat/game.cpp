@@ -13,6 +13,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -63,9 +64,18 @@ Game::Game(std::uint32_t routeSeed, std::uint32_t leavesSeed, const Images& imag
 void Game::update(float duration, const Controls& controls)
 {
     // Листья используют позицию после движения; маршрут — до движения.
+    const float previousX = world.catPosition().x;
     world.update(duration, controls, visibleWidth);
+    distance += std::abs(static_cast<double>(world.catPosition().x) - previousX);
     foliage.update(duration, world.catPosition().x - 101.25F);
 }
+bool Game::isOver() const
+{
+    // Опора кота ниже сцены на высоту его изображения: кот полностью скрылся.
+    constexpr float FallBoundary = 700 + 123.75F;
+    return world.catPosition().y >= FallBoundary;
+}
+
 bool Game::prepareView(int width, int height, Engine::CameraError& error)
 {
     const float scale = std::min(static_cast<float>(width) / 935, static_cast<float>(height) / 700);

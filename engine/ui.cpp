@@ -29,7 +29,7 @@ bool UiCanvas::createView(const Viewport& area, UiView& result, UiError& error) 
         error = UiError::InvalidViewport;
         return false;
     }
-    if (!std::isfinite(scale) || scale <= 0) {
+    if (scale <= 0) {
         error = UiError::InvalidScale;
         return false;
     }

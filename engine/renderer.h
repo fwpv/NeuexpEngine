@@ -58,6 +58,9 @@ struct DrawOptions
     float order = 0;
 };
 
+// Координаты, размеры, цвета и коэффициенты преобразований должны быть конечными.
+// Это предусловие вызывающего кода; диагностика NaN/Inf в обычном рисовании не гарантируется.
+// Ключ сортировки и числа повторений проверяются из-за требований алгоритмов.
 // Рисует в текущий графический контекст в потоке приложения. Контекст должен оставаться
 // действующим от initialize() до shutdown(). Одновременно кадром управляет только один рендерер;
 // прямые изменения состояния OpenGL внутри кадра не поддерживаются.
@@ -184,7 +187,7 @@ private:
         Texture texture;
         TextureSampling sampling;
         std::optional<Rect> textureRect;
-        std::shared_ptr<const Detail::TextData> text;
+        std::optional<TextLayout> text;
     };
 
     bool selectView(const Viewport& area, const Affine2& transform, Stage next);

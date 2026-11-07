@@ -31,7 +31,6 @@ public:
 private:
     std::shared_ptr<Detail::TextureData> data;
     friend class Renderer2D;
-    friend class BitmapFont;
 };
 
 enum class TextureFilter

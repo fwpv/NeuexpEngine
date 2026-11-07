@@ -125,6 +125,7 @@ TextureAxisSegment TextureAxis::segment(std::size_t index) const
         (start + 0.5F) / storage, (start + static_cast<float>(end) * span) / storage};
 }
 
+// repeats используется в ceil и преобразовании к целому числу участков.
 bool valid(const TextureSampling& sampling)
 {
     const auto wrap = [](TextureWrap value) { return value == TextureWrap::Clamp || value == TextureWrap::Repeat; };
@@ -135,16 +136,16 @@ bool valid(const TextureSampling& sampling)
 }
 }
 
-void Detail::prepareTextGeometry(TextData& text, const TextureData& texture)
+void Detail::prepareTextGeometry(TextData& text)
 {
     for (std::size_t mode = 0; mode < text.vertices.size(); ++mode) {
         const auto filter = mode == 0 ? TextureFilter::Nearest : TextureFilter::Linear;
         auto& vertices = text.vertices[mode];
         vertices.reserve(text.glyphs.size() * (mode == 0 ? 4 : 36));
         for (const auto& glyph : text.glyphs) {
-            const TextureAxis horizontal(texture.width, texture.storageWidth, glyph.area.position.x,
+            const TextureAxis horizontal(text.texture.width(), 1, glyph.area.position.x,
                 glyph.area.size.width, 1, TextureWrap::Clamp, filter);
-            const TextureAxis vertical(texture.height, texture.storageHeight, glyph.area.position.y,
+            const TextureAxis vertical(text.texture.height(), 1, glyph.area.position.y,
                 glyph.area.size.height, 1, TextureWrap::Clamp, filter);
             for (std::size_t row = 0; row < vertical.segmentCount(); ++row) {
                 const auto y = vertical.segment(row);
@@ -379,9 +380,7 @@ void Renderer2D::queueTexture(const Texture& texture, const Rect& rectangle, con
     }
     if (textureRect) {
         const auto& area = *textureRect;
-        if (!std::isfinite(area.position.x) || !std::isfinite(area.position.y)
-            || !std::isfinite(area.size.width) || !std::isfinite(area.size.height)
-            || area.position.x < 0 || area.position.y < 0 || area.size.width < 0 || area.size.height < 0
+        if (area.position.x < 0 || area.position.y < 0 || area.size.width < 0 || area.size.height < 0
             || static_cast<double>(area.position.x) + area.size.width > texture.width()
             || static_cast<double>(area.position.y) + area.size.height > texture.height()) {
             firstError = RenderError::InvalidGeometry;

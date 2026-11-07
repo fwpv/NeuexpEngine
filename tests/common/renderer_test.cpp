@@ -341,15 +341,10 @@ void errors()
     options.lineWidth = 0;
     reject([&] { renderer.drawLine({}, { 50, 50 }, options); },
         RenderError::InvalidOptions, "Zero line width accepted.");
-    options = style(Red);
-    options.transform.m02 = std::numeric_limits<float>::infinity();
-    reject([&] { renderer.drawRectangle({ 0, 0, 50, 50 }, options); },
-        RenderError::InvalidOptions, "Invalid transform accepted.");
     reject([&] { renderer.setClip(Viewport{ 0, 0, -1, 10 }); },
         RenderError::InvalidClip, "Invalid clip accepted.");
 
     reject([&] { renderer.drawGradientRectangle({ 180, 70, 30, 30 }, { 2, 0, 0 }, White, style(White)); }, RenderError::InvalidOptions, "Invalid gradient color was accepted.");
-    reject([&] { renderer.drawGradientRectangle({ 180, 70, 30, 30 }, White, { 0, 0, std::numeric_limits<float>::quiet_NaN() }, style(White)); }, RenderError::InvalidOptions, "Nonfinite gradient color was accepted.");
 
     for (float invalid : { std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN() }) {
         options = style(Red);
@@ -635,7 +630,7 @@ void frameErrors()
     renderer.beginFrame(ImageSize, ImageSize, Green);
     check(renderer.endFrame(error), error);
 
-    for (float pixelSize : {0.0F, -1.0F, std::numeric_limits<float>::infinity()}) {
+    for (float pixelSize : {0.0F, -1.0F}) {
         renderer.beginFrame(ImageSize, ImageSize, Black);
         renderer.setUiView(screen());
         renderer.drawDebugText("A", Vector2{}, White, pixelSize);

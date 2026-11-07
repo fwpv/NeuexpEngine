@@ -54,7 +54,8 @@ public:
     void setFrame(std::size_t index);
     std::size_t frameCount() const { return frames.size(); }
     AnimationDirection direction() const { return playbackDirection; }
-    // Скорость >= 0, deltaTime >= 0, оба конечны; иначе std::invalid_argument.
+    // Конечность скорости и deltaTime — предусловие вызывающего кода.
+    // Отрицательные значения отклоняются с std::invalid_argument.
     // Переполнение deltaTime * speed также отклоняется без изменения состояния.
     void setSpeed(double value);
     // Вызывать на этапе обновления. Меняет только textureRect и состояние проигрывания.

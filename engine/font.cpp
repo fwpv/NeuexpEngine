@@ -1,6 +1,5 @@
 #include "font.h"
 #include "detail/font_data.h"
-#include "detail/texture_data.h"
 #include "detail/unicode.h"
 
 #include <algorithm>
@@ -131,12 +130,28 @@ const FontGlyph* BitmapFont::find(std::uint32_t codepoint) const
 bool BitmapFont::layout(std::string_view text, TextLayout& result, ResourceError& error,
     const TextLayoutOptions& options) const
 {
-    if (!isValid()) {
+    return result.build(*this, text, error, options);
+}
+
+Texture BitmapFont::texture() const
+{
+    return data ? data->texture : Texture{};
+}
+
+std::uint32_t BitmapFont::fallbackCodepoint() const
+{
+    return data ? data->fallback : 0;
+}
+
+bool TextLayout::build(const BitmapFont& font, std::string_view text, ResourceError& error,
+    const TextLayoutOptions& options)
+{
+    if (!font.isValid()) {
         error = {ResourceErrorCode::InvalidState, "Load a font before laying out text."};
         return false;
     }
-    if (!std::isfinite(options.width) || options.width < 0 || !std::isfinite(options.scale) || options.scale <= 0
-        || !std::isfinite(options.lineSpacing) || options.lineSpacing < 0
+    if (options.width < 0 || options.scale <= 0
+        || options.lineSpacing < 0
         || (options.alignment != TextAlignment::Left && options.alignment != TextAlignment::Center
             && options.alignment != TextAlignment::Right)) {
         return fail(error, "Invalid text layout options.");
@@ -163,7 +178,7 @@ bool BitmapFont::layout(std::string_view text, TextLayout& result, ResourceError
         }
     }
     auto placed = std::make_shared<Detail::TextData>();
-    placed->texture = data->texture;
+    placed->texture = font.texture();
     struct Line
     {
         std::size_t begin;
@@ -174,10 +189,10 @@ bool BitmapFont::layout(std::string_view text, TextLayout& result, ResourceError
     float x = 0;
     float y = 0;
     std::size_t lineBegin = 0;
-    const float step = (data->lineHeight + options.lineSpacing) * options.scale;
+    const float step = (font.lineHeight() + options.lineSpacing) * options.scale;
     const auto glyphFor = [&](std::uint32_t code) -> const FontGlyph& {
-        const auto* glyph = find(code);
-        return glyph ? *glyph : data->glyphs.at(data->fallback);
+        const auto* glyph = font.find(code);
+        return glyph ? *glyph : *font.find(font.fallbackCodepoint());
     };
     const auto finishLine = [&] {
         lines.push_back(Line{lineBegin, placed->glyphs.size(), x});
@@ -216,7 +231,7 @@ bool BitmapFont::layout(std::string_view text, TextLayout& result, ResourceError
             }
         }
         for (std::size_t letter = wordBegin; letter < index; ++letter) {
-            const auto code = find(codes[letter]) ? codes[letter] : data->fallback;
+            const auto code = font.find(codes[letter]) ? codes[letter] : font.fallbackCodepoint();
             const auto& glyph = glyphFor(code);
             const float advance = glyph.advance * options.scale;
             if (options.width > 0 && x > 0 && x + advance > options.width) {
@@ -232,7 +247,7 @@ bool BitmapFont::layout(std::string_view text, TextLayout& result, ResourceError
     }
     if (!codes.empty()) {
         finishLine();
-        placed->size.height = data->lineHeight * options.scale + static_cast<float>(lines.size() - 1) * step;
+        placed->size.height = font.lineHeight() * options.scale + static_cast<float>(lines.size() - 1) * step;
         placed->size.width = options.width;
         for (const auto& line : lines) {
             placed->size.width = std::max(placed->size.width, line.width);
@@ -242,8 +257,11 @@ bool BitmapFont::layout(std::string_view text, TextLayout& result, ResourceError
     bool ink = false;
     for (const auto& line : lines) {
         const float remaining = placed->size.width - line.width;
-        const float offset = options.alignment == TextAlignment::Center ? remaining / 2
+        float offset = options.alignment == TextAlignment::Center ? remaining / 2
             : options.alignment == TextAlignment::Right ? remaining : 0;
+        if (options.roundAlignment) {
+            offset = std::round(offset);
+        }
         for (std::size_t index = line.begin; index < line.end; ++index) {
             auto& bounds = placed->glyphs[index].bounds;
             bounds.position.x += offset;
@@ -266,10 +284,21 @@ bool BitmapFont::layout(std::string_view text, TextLayout& result, ResourceError
         || !std::isfinite(placed->inkBounds.size.width) || !std::isfinite(placed->inkBounds.size.height)) {
         return fail(error, "Text dimensions overflow.");
     }
-    Detail::prepareTextGeometry(*placed, *data->texture.data);
-    result.data = std::move(placed);
+    Detail::prepareTextGeometry(*placed);
+    data = std::move(placed);
     error = {};
     return true;
+}
+
+Texture TextLayout::texture() const
+{
+    return data ? data->texture : Texture{};
+}
+
+const std::vector<TextVertex>& TextLayout::vertices(TextureFilter filter) const
+{
+    static const std::vector<TextVertex> empty;
+    return data ? data->vertices[filter == TextureFilter::Nearest ? 0 : 1] : empty;
 }
 
 bool TextLayout::isValid() const

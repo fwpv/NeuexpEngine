@@ -81,7 +81,7 @@ private:
                     {x, 215}, {}, cyan, error)
                 || !add(fonts[1], u8"Перенос по словам: русский и English text.\n"
                     u8"Сверхдлинноесловобезпробеловдляпроверкипереноса.",
-                    {x, 248}, TextLayoutOptions{330, 1, 4, alignment}, white, error)) {
+                    {x, 248}, TextLayoutOptions{330, 1, 4, alignment, true}, white, error)) {
                 return false;
             }
         }
@@ -94,7 +94,7 @@ private:
                 {580, 470}, {}, white, error)
             || !add(fonts[1], u8"Поворот, движение и отсечение текста", {24, 585}, {}, cyan, error)
             || !fonts[1].layout(u8"Поворот / Rotate\nОтсечение / Clip", animated, failure,
-                TextLayoutOptions{270, 1.5F, 3, TextAlignment::Center})
+                TextLayoutOptions{270, 1.5F, 3, TextAlignment::Center, true})
             || !add(fonts[1], u8"Зелёная рамка: логический размер. Розовая: границы глифов.",
                 {24, 780}, {}, cyan, error)) {
             if (!failure.message.empty()) {

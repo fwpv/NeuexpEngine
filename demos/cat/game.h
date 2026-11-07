@@ -36,6 +36,8 @@ public:
     // После update(), до draw(): положительные размеры окна и камера, следующая за котом.
     bool prepareView(int width, int height, Engine::CameraError& error);
     void update(float duration, const Controls& controls);
+    bool isOver() const;
+    double distanceTravelled() const { return distance; }
     void draw(Engine::Renderer2D& renderer, const Images& images) const;
 
 private:
@@ -43,5 +45,6 @@ private:
     Foliage foliage;
     Engine::CameraView view;
     float visibleWidth = 935;
+    double distance = 0;
 };
 }

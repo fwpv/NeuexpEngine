@@ -6,7 +6,6 @@
 #include <windows.h>
 #endif
 #include <GL/gl.h>
-#include <cmath>
 #include <filesystem>
 #include <utility>
 
@@ -46,36 +45,36 @@ void Renderer2D::drawText(const TextLayout& text, Vector2 position, const DrawOp
     if (!ready() || !prepareDraw(options)) {
         return;
     }
-    if (!text.isValid() || text.data->texture.data->owner != this) {
+    const Texture texture = text.texture();
+    if (!text.isValid() || texture.data->owner != this) {
         firstError = RenderError::InvalidTexture;
         return;
     }
-    if (!std::isfinite(position.x) || !std::isfinite(position.y)
-        || (filter != TextureFilter::Nearest && filter != TextureFilter::Linear)) {
+    if ((filter != TextureFilter::Nearest && filter != TextureFilter::Linear)) {
         firstError = RenderError::InvalidOptions;
         return;
     }
     DrawOptions translated = options;
     translated.transform = options.transform * Transform2{position, 0, Vector2{1, 1}, Vector2{}}.toAffine();
-    if (!prepareDraw(translated) || text.data->glyphs.empty() || options.color.alpha == 0) {
+    if (!prepareDraw(translated) || text.glyphs().empty() || options.color.alpha == 0) {
         return;
     }
     TextureSampling sampling;
     sampling.filter = filter;
     translated.transform = viewTransform * translated.transform;
-    const auto& mesh = text.data->vertices[filter == TextureFilter::Nearest ? 0 : 1];
+    const auto& mesh = text.vertices(filter);
     std::vector<Vector2> positions;
     positions.reserve(mesh.size());
     for (const auto& vertex : mesh) {
         positions.push_back(translated.transform.transformPoint(vertex.position));
     }
     commands.push_back(Command{Primitive::Quads, std::move(positions), translated, clip, std::nullopt,
-        text.data->texture, sampling, std::nullopt, text.data});
+        texture, sampling, std::nullopt, text});
 }
 
 void Renderer2D::executeText(const Command& command) const
 {
-    const auto& vertices = command.text->vertices[command.sampling.filter == TextureFilter::Nearest ? 0 : 1];
+    const auto& vertices = command.text->vertices(command.sampling.filter);
     const auto& color = command.options.color;
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, command.texture.data->id);
@@ -87,6 +86,9 @@ void Renderer2D::executeText(const Command& command) const
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
     glMatrixMode(GL_TEXTURE);
     glLoadIdentity();
+    // Раскладка не знает размер GPU-хранилища: нормализация выполняется здесь.
+    glScalef(1.0F / static_cast<float>(command.texture.data->storageWidth),
+        1.0F / static_cast<float>(command.texture.data->storageHeight), 1);
     glMatrixMode(GL_MODELVIEW);
     glColor4f(color.red, color.green, color.blue, color.alpha);
     glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT);
@@ -97,10 +99,13 @@ void Renderer2D::executeText(const Command& command) const
     glEnableClientState(GL_VERTEX_ARRAY);
     glEnableClientState(GL_TEXTURE_COORD_ARRAY);
     glVertexPointer(2, GL_FLOAT, sizeof(Vector2), command.vertices.data());
-    glTexCoordPointer(2, GL_FLOAT, sizeof(Detail::TextVertex), &vertices.front().uv);
+    glTexCoordPointer(2, GL_FLOAT, sizeof(TextVertex), &vertices.front().texel);
     glDrawArrays(GL_QUADS, 0, static_cast<GLsizei>(vertices.size()));
     glPopClientAttrib();
     glDisable(GL_TEXTURE_2D);
+    glMatrixMode(GL_TEXTURE);
+    glLoadIdentity();
+    glMatrixMode(GL_MODELVIEW);
 }
 
 }

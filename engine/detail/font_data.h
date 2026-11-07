@@ -13,11 +13,6 @@ struct FontData
     std::uint32_t fallback = 0;
     std::map<std::uint32_t, FontGlyph> glyphs;
 };
-struct TextVertex
-{
-    Vector2 position;
-    Vector2 uv;
-};
 struct TextData
 {
     Texture texture;
@@ -28,6 +23,5 @@ struct TextData
     std::array<std::vector<TextVertex>, 2> vertices;
 };
 bool parseFont(const std::string& description, FontData& result, ResourceError& error);
-struct TextureData;
-void prepareTextGeometry(TextData& text, const TextureData& texture);
+void prepareTextGeometry(TextData& text);
 }

@@ -9,6 +9,7 @@
 
 namespace Engine
 {
+// Конечность координат, размеров и настроек — предусловие вызывающего кода.
 struct Sprite
 {
     Sprite() = default;

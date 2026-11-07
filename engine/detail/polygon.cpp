@@ -34,9 +34,6 @@ bool triangulatePolygon(const Vector2* vertices, std::size_t vertexCount, std::v
     triangles.clear();
     for (std::size_t index = 0; index < vertexCount; ++index) {
         const Vector2 point = vertices[index];
-        if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
-            return false;
-        }
         if (contour.empty() || point != contour.back()) {
             contour.push_back(point);
         }

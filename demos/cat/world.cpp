@@ -250,24 +250,10 @@ void World::update(float duration, const Controls& controls, float visibleWidth)
     cat.updateAnimation(duration, controls, physics.hasSupport());
 }
 
-void World::returnToTop()
-{
-    const Body& body = cat.physicalBody();
-    physics.reset(Engine::Vector2{body.position.x, 0}, Engine::Vector2{body.velocity.x, 500});
-    controller.cancelJump();
-}
-
 void World::updateMotion(float duration, const Controls& controls)
 {
-    constexpr float ReturnHeight = 700 + 123.75F;
-    if (cat.position().y >= ReturnHeight) {
-        returnToTop();
-    }
     controller.beginFrame(controls);
     physics.update(duration, controller.motionRequest());
-    if (cat.position().y >= ReturnHeight) {
-        returnToTop();
-    }
     controller.advanceTime(duration);
 }
 

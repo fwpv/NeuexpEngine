@@ -30,7 +30,7 @@ struct UiView
 
 struct UiCanvas
 {
-    // scale конечный и положительный; area имеет положительные размеры.
+    // Конечность scale — предусловие; положительность scale и размеров area проверяется.
     // result не меняется при отказе; error заменяется при каждом вызове.
     bool createView(const Viewport& area, UiView& result, UiError& error) const;
 
