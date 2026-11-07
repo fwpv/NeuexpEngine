@@ -10,6 +10,7 @@
 #endif
 #include <GL/gl.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -326,6 +327,101 @@ void pixels(Renderer2D& renderer, const ResourceFiles& files)
     pixel(60, 10, { 0, 128.0F / 255, 127.0F / 255 });
     pixel(10, 60, Blue);
     pixel(60, 60, { 64.0F / 255, 64.0F / 255, 1 });
+}
+
+void padding(Renderer2D& renderer)
+{
+    Image image{5, 3, std::vector<std::uint8_t>(5 * 3 * 4, 255)};
+    for (int y = 0; y < 3; ++y) {
+        for (int x = 0; x < 5; ++x) {
+            const auto offset = static_cast<std::size_t>((y * 5 + x) * 4);
+            image.pixels[offset] = static_cast<std::uint8_t>(x * 51);
+            image.pixels[offset + 1] = static_cast<std::uint8_t>(y * 100);
+            image.pixels[offset + 2] = static_cast<std::uint8_t>((x + y) * 20);
+        }
+    }
+    const auto texture = create(renderer, image, true);
+    require(texture.width() == 5 && texture.height() == 3 && texture.image()->pixels == image.pixels,
+        "Padding changed public dimensions or retained pixels.");
+    RenderError error;
+    frame(renderer);
+    renderer.drawTexture(texture, Rect{0, 0, 137, 83});
+    check(renderer.endFrame(error), error);
+    GLint width = 0;
+    GLint height = 0;
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
+    require(width == 8 && height == 4 && renderer.textureStats().gpuBytes == 128, "Unexpected padded GPU size.");
+    std::array<std::uint8_t, 8 * 4 * 4> uploaded{};
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, uploaded.data());
+    require(glGetError() == GL_NO_ERROR, "Cannot read padded texture.");
+    for (int y = 0; y < 4; ++y) {
+        for (int x = 0; x < 8; ++x) {
+            for (int channel = 0; channel < 4; ++channel) {
+                const auto target = static_cast<std::size_t>((y * 8 + x) * 4 + channel);
+                const auto source = static_cast<std::size_t>(((y % 3) * 5 + x % 5) * 4 + channel);
+                const int expected = x <= 5 ? image.pixels[source] : 0;
+                require(uploaded[target] == expected, "GPU pixels were stretched or padding is incorrect.");
+            }
+        }
+    }
+    const auto sample = [&](int x, int y, TextureWrap wrapX, TextureWrap wrapY) {
+        x = wrapX == TextureWrap::Repeat ? (x % 5 + 5) % 5 : std::clamp(x, 0, 4);
+        y = wrapY == TextureWrap::Repeat ? (y % 3 + 3) % 3 : std::clamp(y, 0, 2);
+        const auto offset = static_cast<std::size_t>((y * 5 + x) * 4);
+        return Color{image.pixels[offset] / 255.0F, image.pixels[offset + 1] / 255.0F,
+            image.pixels[offset + 2] / 255.0F};
+    };
+    for (const auto filter : {TextureFilter::Nearest, TextureFilter::Linear}) {
+        for (const auto wrapX : {TextureWrap::Clamp, TextureWrap::Repeat}) {
+            for (const auto wrapY : {TextureWrap::Clamp, TextureWrap::Repeat}) {
+                TextureSampling options;
+                options.filter = filter;
+                options.wrapX = wrapX;
+                options.wrapY = wrapY;
+                options.repeats = {2.5F, 1.75F};
+                frame(renderer);
+                renderer.drawTexture(texture, Rect{0, 0, 137, 83}, DrawOptions{}, options);
+                check(renderer.endFrame(error), error);
+                for (int y = 0; y < 83; y += 7) {
+                    for (int x = 0; x < 137; x += 9) {
+                        const float u = (static_cast<float>(x) + 0.5F) / 137 * 5 * options.repeats.x;
+                        const float v = (static_cast<float>(y) + 0.5F) / 83 * 3 * options.repeats.y;
+                        Color expected;
+                        if (filter == TextureFilter::Nearest) {
+                            expected = sample(static_cast<int>(std::floor(u)), static_cast<int>(std::floor(v)), wrapX, wrapY);
+                        } else {
+                            const int left = static_cast<int>(std::floor(u - 0.5F));
+                            const int top = static_cast<int>(std::floor(v - 0.5F));
+                            const float dx = u - 0.5F - static_cast<float>(left);
+                            const float dy = v - 0.5F - static_cast<float>(top);
+                            const auto mix = [](Color a, Color b, float t) {
+                                return Color{a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t,
+                                    a.blue + (b.blue - a.blue) * t};
+                            };
+                            expected = mix(mix(sample(left, top, wrapX, wrapY), sample(left + 1, top, wrapX, wrapY), dx),
+                                mix(sample(left, top + 1, wrapX, wrapY), sample(left + 1, top + 1, wrapX, wrapY), dx), dy);
+                        }
+                        pixel(x, y, expected, 3);
+                    }
+                }
+            }
+        }
+    }
+    Sprite region(texture, Rect{1, 1, 3, 1});
+    region.size = {120, 40};
+    frame(renderer);
+    renderer.drawSprite(region);
+    check(renderer.endFrame(error), error);
+    pixel(0, 0, sample(1, 1, TextureWrap::Clamp, TextureWrap::Clamp));
+    pixel(119, 39, sample(3, 1, TextureWrap::Clamp, TextureWrap::Clamp));
+    TextureSampling excessive;
+    excessive.wrapX = TextureWrap::Repeat;
+    excessive.repeats.x = 1000000;
+    frame(renderer);
+    renderer.drawTexture(texture, Rect{0, 0, 137, 83}, DrawOptions{}, excessive);
+    require(!renderer.endFrame(error) && error == RenderError::InvalidOptions, "Unbounded repeated geometry accepted.");
 }
 
 void sampling(Renderer2D& renderer)
@@ -714,7 +810,7 @@ int main(int argc, char** argv)
             else { spriteErrors(renderer); }
             result = 0;
         } else {
-            require(mode == "pixels" || mode == "sampling" || mode == "integration" || mode == "sprites" || mode == "animation", "Unknown mode.");
+            require(mode == "pixels" || mode == "sampling" || mode == "integration" || mode == "sprites" || mode == "animation" || mode == "padding", "Unknown mode.");
             RenderTest::FramebufferApi api;
             if (!api.load()) {
                 std::cout << "Pixel checks require optional FBO support from the test driver.\n";
@@ -735,7 +831,8 @@ int main(int argc, char** argv)
                     "Cannot process test window events.");
                 RenderTest::RenderTarget target(api, WindowSize);
                 target.initialize();
-                if (mode == "animation") { animationChecks(renderer); }
+                if (mode == "padding") { padding(renderer); }
+                else if (mode == "animation") { animationChecks(renderer); }
                 else if (mode == "pixels") { pixels(renderer, files); }
                 else if (mode == "sampling") { sampling(renderer); }
                 else if (mode == "sprites") { sprites(renderer); }

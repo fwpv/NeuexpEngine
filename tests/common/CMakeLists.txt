@@ -178,7 +178,7 @@ if(WIN32)
 endif()
 add_custom_command(TARGET texture_test POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_directory "${TEST_ASSETS_DIR}" "$<TARGET_FILE_DIR:texture_test>/assets")
-foreach(mode pixels sampling integration resources sprites sprite_errors atlas animation)
+foreach(mode pixels sampling integration resources sprites sprite_errors atlas animation padding)
     add_test(NAME texture_${mode} COMMAND texture_test ${mode})
     set_tests_properties(texture_${mode} PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)

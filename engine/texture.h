@@ -49,7 +49,9 @@ struct TextureSampling
     TextureFilter filter = TextureFilter::Linear;
     TextureWrap wrapX = TextureWrap::Clamp;
     TextureWrap wrapY = TextureWrap::Clamp;
-    // Число повторений целого изображения по осям; конечные положительные значения.
+    // Число повторений исходного изображения без дополнения; конечные положительные значения.
+    // Для дополненной оси Repeat требует до 2*ceil(repeats) участков, Clamp — 3.
+    // Произведение по осям не должно превышать 65536; иначе InvalidOptions.
     Vector2 repeats = {1, 1};
 };
 
