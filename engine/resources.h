@@ -48,6 +48,10 @@ bool validateImage(const Image& image, ResourceError& error, const ResourceLimit
 bool decodePng(const std::vector<std::uint8_t>& bytes, Image& result,
     ResourceError& error, const ResourceLimits& limits = {});
 
+// Абсолютный каталог исполняемого файла, независимо от cwd и расположения ассетов.
+// При ошибке result не меняется.
+bool executableDirectory(std::filesystem::path& result, ResourceError& error);
+
 class ResourceFiles
 {
 public:

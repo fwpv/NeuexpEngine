@@ -14,7 +14,10 @@ struct Event
     bool checked = false;
 };
 
-namespace Detail { struct Slot; }
+namespace Detail
+{
+struct Slot;
+}
 
 // Подписку хранит получатель. При захвате this она должна уничтожаться раньше получателя.
 class Subscription

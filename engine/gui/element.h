@@ -129,7 +129,9 @@ private:
     float scroll = 0;
 };
 
-class Screen : public Container {};
+class Screen : public Container
+{
+};
 
 class Label : public Element
 {
