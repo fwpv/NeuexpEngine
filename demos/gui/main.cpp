@@ -126,16 +126,16 @@ private:
         pause = std::make_shared<UI::Screen>();
         auto mainPanel = panel(mainMenu, Size2{340, 340});
         add<UI::Label>(mainPanel, Size2{310, 34}, u8"ОРБИТА / МЕНЮ");
-        auto start = addButton(mainPanel, 260, u8"Начать");
+        auto start = addButton(mainPanel, 230, u8"Начать");
         click(start, [this] {
             elapsed = 0;
             playing = true;
             gui.setScreen(game);
             setPaused(false);
         });
-        auto options = addButton(mainPanel, 260, u8"Настройки");
+        auto options = addButton(mainPanel, 230, u8"Настройки");
         click(options, [this] { openSettings(); });
-        auto exit = addButton(mainPanel, 260, u8"Выход");
+        auto exit = addButton(mainPanel, 230, u8"Выход");
         click(exit, [this] { requestExit(); });
 
         auto settingsPanel = panel(settings, Size2{360, 560});
@@ -164,9 +164,9 @@ private:
             draft.bitmapText = event.checked;
             applyStyle();
         }));
-        auto apply = addButton(settingsPanel, 280, u8"Применить");
+        auto apply = addButton(settingsPanel, 250, u8"Применить");
         click(apply, [this] { applySettings(); });
-        auto cancel = addButton(settingsPanel, 280, u8"Отмена");
+        auto cancel = addButton(settingsPanel, 250, u8"Отмена");
         click(cancel, [this] { closeSettings(); });
         auto hint = add<UI::Label>(settingsPanel, Size2{320, 56}, u8"Настройки сохраняются\nрядом с демо");
         hint->style().debugPixel = 1;
@@ -198,11 +198,11 @@ private:
         add<UI::Label>(controls, Size2{100, 32}, u8"Орбита");
         auto pausePanel = panel(pause, Size2{340, 320});
         add<UI::Label>(pausePanel, Size2{310, 30}, u8"ПАУЗА");
-        auto resume = addButton(pausePanel, 260, u8"Продолжить");
+        auto resume = addButton(pausePanel, 230, u8"Продолжить");
         click(resume, [this] { gui.setModal({}); setPaused(false); });
-        auto pauseOptions = addButton(pausePanel, 260, u8"Настройки");
+        auto pauseOptions = addButton(pausePanel, 230, u8"Настройки");
         click(pauseOptions, [this] { openSettings(); });
-        auto home = addButton(pausePanel, 260, u8"Главное меню");
+        auto home = addButton(pausePanel, 230, u8"Главное меню");
         click(home, [this] {
             playing = false;
             gui.setScreen(mainMenu);
@@ -287,6 +287,7 @@ private:
             const std::array<std::string, 3> states{"normal", "hover", "pressed"};
             for (std::size_t index = 0; index < states.size(); ++index) {
                 atlas.createSprite(prefix + states[index], style.images[index]);
+                if (button) { style.images[index].filter = TextureFilter::Nearest; }
                 if (check) { atlas.createSprite("check_box_on_" + states[index], style.checkedImages[index]); }
             }
             if (button) { style.foreground = Color{0.07F, 0.12F, 0.2F, 1}; }
