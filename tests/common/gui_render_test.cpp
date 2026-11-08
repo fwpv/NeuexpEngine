@@ -159,17 +159,22 @@ void run()
     draw(context, renderer);
     require(pixel(2, 0) == uppercase, "Cyrillic case folding failed");
 
-    // Каждый символ русского алфавита должен дать видимые примитивы.
-    for (std::uint32_t code = 0x410; code <= 0x42f; ++code) {
+    // Все буквы и цифры используют полную высоту 5x7 и дают видимые примитивы.
+    const std::string alphabet = u8"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        u8"АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ";
+    for (std::size_t offset = 0; offset < alphabet.size();) {
+        std::uint32_t code;
+        Detail::nextUtf8(alphabet, offset, code);
         std::string letter;
         Detail::appendUtf8(letter, code);
+        require(Renderer2D::measureDebugText(letter, 1) == Size2{5, 7}, "Inconsistent debug glyph cell");
         label->setText(letter);
         draw(context, renderer);
         bool visible = false;
         for (int y = 0; y < 14; ++y) {
             for (int x = 0; x < 22; ++x) { visible = visible || pixel(x, y)[0] > 0; }
         }
-        require(visible, "Missing Russian glyph");
+        require(visible, "Missing debug glyph");
     }
     // Растровый шрифт используется тем же компонентом, включая масштаб и выравнивание.
     BitmapFont font;

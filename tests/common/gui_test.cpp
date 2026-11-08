@@ -243,7 +243,9 @@ void scrolling()
 }
 void textMetrics()
 {
-    require(Renderer2D::measureDebugText("A", 1) == Size2{3, 5}, "ASCII metrics changed");
+    require(Renderer2D::measureDebugText("A", 1) == Size2{5, 7}, "Latin glyph metrics incorrect");
+    require(Renderer2D::measureDebugText("A0", 1) == Size2{11, 7}, "Latin/digit metrics differ from Cyrillic");
+    require(Renderer2D::measureDebugText("a0", 1) == Renderer2D::measureDebugText("A0", 1), "Latin case metrics differ");
     require(Renderer2D::measureDebugText(u8"Яё", 1) == Size2{11, 7}, "UTF-8 counted as bytes");
     require(Renderer2D::measureDebugText(u8"Я\nё", 2) == Size2{10, 30}, "Multiline metrics incorrect");
     require(Renderer2D::measureDebugText("") == Size2{}, "Empty text has size");

@@ -35,6 +35,15 @@ private:
         return element;
     }
 
+    std::shared_ptr<UI::Button> addButton(const std::shared_ptr<UI::Container>& parent,
+        float width, const std::string& text = {})
+    {
+        // Размер элемента и его области ввода сохраняет пропорции выбранного скина.
+        const auto region = atlas.find(width < 100 ? "btn2_normal" : "btn1_normal");
+        const Size2 imageSize = region ? region->size : Size2{width < 100 ? 96.0F : 150.0F, 41};
+        return add<UI::Button>(parent, Size2{width, width * imageSize.height / imageSize.width}, text);
+    }
+
     std::shared_ptr<UI::Container> panel(const std::shared_ptr<UI::Screen>& page, Size2 size)
     {
         auto result = add<UI::Container>(page, size);
@@ -115,27 +124,27 @@ private:
         settings = std::make_shared<UI::Screen>();
         game = std::make_shared<UI::Screen>();
         pause = std::make_shared<UI::Screen>();
-        auto mainPanel = panel(mainMenu, Size2{340, 286});
+        auto mainPanel = panel(mainMenu, Size2{340, 340});
         add<UI::Label>(mainPanel, Size2{310, 34}, u8"ОРБИТА / МЕНЮ");
-        auto start = add<UI::Button>(mainPanel, Size2{260, 41}, u8"Начать");
+        auto start = addButton(mainPanel, 260, u8"Начать");
         click(start, [this] {
             elapsed = 0;
             playing = true;
             gui.setScreen(game);
             setPaused(false);
         });
-        auto options = add<UI::Button>(mainPanel, Size2{260, 41}, u8"Настройки");
+        auto options = addButton(mainPanel, 260, u8"Настройки");
         click(options, [this] { openSettings(); });
-        auto exit = add<UI::Button>(mainPanel, Size2{260, 41}, u8"Выход");
+        auto exit = addButton(mainPanel, 260, u8"Выход");
         click(exit, [this] { requestExit(); });
 
-        auto settingsPanel = panel(settings, Size2{360, 450});
+        auto settingsPanel = panel(settings, Size2{360, 560});
         add<UI::Label>(settingsPanel, Size2{320, 32}, u8"НАСТРОЙКИ");
-        auto scaleRow = add<UI::Container>(settingsPanel, Size2{320, 36});
+        auto scaleRow = add<UI::Container>(settingsPanel, Size2{320, 41});
         scaleRow->layout() = UI::Layout{UI::Flow::Row, 0, 8, UI::Align::Center};
-        auto less = add<UI::Button>(scaleRow, Size2{40, 36}, "-");
-        scaleValue = add<UI::NumericIndicator>(scaleRow, Size2{200, 36});
-        auto more = add<UI::Button>(scaleRow, Size2{40, 36}, "+");
+        auto less = addButton(scaleRow, 96, "-");
+        scaleValue = add<UI::NumericIndicator>(scaleRow, Size2{96, 41});
+        auto more = addButton(scaleRow, 96, "+");
         click(less, [this] { changeScale(-0.25F); });
         click(more, [this] { changeScale(0.25F); });
         add<UI::Label>(settingsPanel, Size2{320, 24}, u8"Масштаб интерфейса");
@@ -155,11 +164,11 @@ private:
             draft.bitmapText = event.checked;
             applyStyle();
         }));
-        auto apply = add<UI::Button>(settingsPanel, Size2{280, 41}, u8"Применить");
+        auto apply = addButton(settingsPanel, 280, u8"Применить");
         click(apply, [this] { applySettings(); });
-        auto cancel = add<UI::Button>(settingsPanel, Size2{280, 41}, u8"Отмена");
+        auto cancel = addButton(settingsPanel, 280, u8"Отмена");
         click(cancel, [this] { closeSettings(); });
-        auto hint = add<UI::Label>(settingsPanel, Size2{320, 26}, u8"Настройки сохраняются рядом с демо");
+        auto hint = add<UI::Label>(settingsPanel, Size2{320, 56}, u8"Настройки сохраняются\nрядом с демо");
         hint->style().debugPixel = 1;
 
         auto hud = add<UI::Container>(game, Size2{320, 170});
@@ -169,15 +178,15 @@ private:
         add<UI::Label>(hud, Size2{280, 24}, u8"ВРЕМЯ ПОЛЁТА");
         counter = add<UI::NumericIndicator>(hud, Size2{280, 26});
         progress = add<UI::ProgressBar>(hud, Size2{280, 18});
-        auto pauseButton = add<UI::Button>(hud, Size2{180, 36}, u8"Пауза");
+        auto pauseButton = addButton(hud, 180, u8"Пауза");
         click(pauseButton, [this] { pauseGame(); });
-        auto controls = add<UI::Container>(game, Size2{320, 60});
+        auto controls = add<UI::Container>(game, Size2{352, 60});
         auto controlsPlacement = controls->placement();
         controlsPlacement.vertical = UI::Align::End;
         controlsPlacement.offset.y = -46;
         controls->setPlacement(controlsPlacement);
         controls->layout() = UI::Layout{UI::Flow::Row, 8, 8, UI::Align::Center};
-        auto restart = add<UI::Button>(controls, Size2{32, 32});
+        auto restart = addButton(controls, 64);
         restart->style().background = Color{0.2F, 0.65F, 0.4F, 1};
         click(restart, [this] { elapsed = 0; });
         add<UI::Label>(controls, Size2{110, 32}, u8"Сброс");
@@ -187,13 +196,13 @@ private:
             showOrbit = event.checked;
         }));
         add<UI::Label>(controls, Size2{100, 32}, u8"Орбита");
-        auto pausePanel = panel(pause, Size2{340, 260});
+        auto pausePanel = panel(pause, Size2{340, 320});
         add<UI::Label>(pausePanel, Size2{310, 30}, u8"ПАУЗА");
-        auto resume = add<UI::Button>(pausePanel, Size2{260, 41}, u8"Продолжить");
+        auto resume = addButton(pausePanel, 260, u8"Продолжить");
         click(resume, [this] { gui.setModal({}); setPaused(false); });
-        auto pauseOptions = add<UI::Button>(pausePanel, Size2{260, 41}, u8"Настройки");
+        auto pauseOptions = addButton(pausePanel, 260, u8"Настройки");
         click(pauseOptions, [this] { openSettings(); });
-        auto home = add<UI::Button>(pausePanel, Size2{260, 41}, u8"Главное меню");
+        auto home = addButton(pausePanel, 260, u8"Главное меню");
         click(home, [this] {
             playing = false;
             gui.setScreen(mainMenu);
