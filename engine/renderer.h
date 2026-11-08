@@ -148,8 +148,10 @@ public:
     // Невидимый спрайт пропускается. Преобразование options применяется после transform
     // спрайта; цвета перемножаются. Слой, порядок и отсечение работают как у остальных команд.
     void drawSprite(const Sprite& sprite, const DrawOptions& options = {});
-    // Встроенный шрифт 3x5: ASCII A-Z, 0-9 и знаки - + /. Остальные байты дают пробел.
+    // Встроенный UTF-8 шрифт: латиница 3x5, русский алфавит 5x7, цифры и - + / . : %.
+    // Строчные буквы рисуются прописными, неизвестные символы дают пробел; поддержан LF.
     // pixel — размер пикселя глифа в локальных координатах, конечный и положительный.
+    static Size2 measureDebugText(std::string_view message, float pixel = 2);
     void drawDebugText(std::string_view message, Vector2 position, const DrawOptions& options = {}, float pixel = 2);
     void drawDebugText(std::string_view message, Vector2 position, Color color, float pixel = 2);
 

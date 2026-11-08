@@ -1,3 +1,5 @@
+#include <algorithm>
+#include "detail/unicode.h"
 #include "renderer.h"
 #include "detail/debug_font.h"
 #include "camera.h"
@@ -143,12 +145,20 @@ void Renderer2D::drawDebugText(std::string_view message, Vector2 position, const
     if (!prepareDraw(options)) {
         return;
     }
-    for (char character : message) {
-        const unsigned int glyph = Detail::debugGlyph(character);
-        for (int row = 0; row < 5; ++row) {
-            for (int column = 0; column < 3; ++column) {
-                const unsigned int bit = static_cast<unsigned int>((4 - row) * 3 + (2 - column));
-                if ((glyph & (1u << bit)) != 0) {
+    const float start = position.x;
+    for (std::size_t offset = 0; offset < message.size();) {
+        std::uint32_t code;
+        Detail::nextUtf8(message, offset, code);
+        if (code == '\n') {
+            position.x = start;
+            position.y += 8 * pixel;
+            continue;
+        }
+        const auto glyph = Detail::unicodeDebugGlyph(code);
+        for (int row = 0; row < glyph.height; ++row) {
+            for (int column = 0; column < glyph.width; ++column) {
+                const auto bit = static_cast<unsigned int>((glyph.height - 1 - row) * glyph.width + glyph.width - 1 - column);
+                if ((glyph.bits & (std::uint64_t{1} << bit)) != 0) {
                     drawRectangle(Rect{position.x + static_cast<float>(column) * pixel,
                         position.y + static_cast<float>(row) * pixel, pixel, pixel}, options);
                     if (firstError != RenderError::None) {
@@ -157,12 +167,37 @@ void Renderer2D::drawDebugText(std::string_view message, Vector2 position, const
                 }
             }
         }
-        position.x += 4 * pixel;
+        position.x += static_cast<float>(glyph.width + 1) * pixel;
     }
 }
 
 void Renderer2D::drawDebugText(std::string_view message, Vector2 position, Color color, float pixel)
 {
     drawDebugText(message, position, colored(color), pixel);
+}
+}
+
+namespace Engine
+{
+Size2 Renderer2D::measureDebugText(std::string_view message, float pixel)
+{
+    Size2 result;
+    float x = 0;
+    float y = 0;
+    for (std::size_t offset = 0; offset < message.size();) {
+        std::uint32_t code;
+        Detail::nextUtf8(message, offset, code);
+        if (code == '\n') {
+            x = 0;
+            y += 8 * pixel;
+            result.height = std::max(result.height, y);
+            continue;
+        }
+        const auto glyph = Detail::unicodeDebugGlyph(code);
+        result.width = std::max(result.width, x + static_cast<float>(glyph.width) * pixel);
+        result.height = std::max(result.height, y + static_cast<float>(glyph.height) * pixel);
+        x += static_cast<float>(glyph.width + 1) * pixel;
+    }
+    return result;
 }
 }

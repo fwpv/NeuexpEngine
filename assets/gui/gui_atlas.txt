@@ -1,0 +1,12 @@
+btn1_normal 0 0 150 41
+btn1_hover 0 41 150 41
+btn1_pressed 0 82 150 41
+btn2_normal 150 0 96 41
+btn2_hover 150 41 96 41
+btn2_pressed 150 82 96 41
+check_box_off_normal 246 0 24 24
+check_box_off_hover 246 24 24 24
+check_box_off_pressed 246 48 24 24
+check_box_on_normal 246 72 24 24
+check_box_on_hover 246 96 24 24
+check_box_on_pressed 246 120 24 24
