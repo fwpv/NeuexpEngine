@@ -284,10 +284,10 @@ private:
         renderer.setUiView(ui);
         renderer.drawRectangle(Rect{0, 0, width, HudHeaderHeight}, paint(Ink));
         renderer.drawDebugText("RENDERER TOWN", Vector2{22, 16}, Mint, 2);
-        renderer.drawDebugText("WASD WALK / CLICK DESTINATION / WHEEL ZOOM", Vector2{22, 45}, White, 4.0F / 3);
-        renderer.drawDebugText("TAB NEXT STOP / R RESET / ESC EXIT", Vector2{22, 66}, Gold, 4.0F / 3);
-        renderer.drawDebugText("YOU ARE THE COURIER", Vector2{width - 264, 20}, Gold, 4.0F / 3);
-        renderer.drawDebugText(isPaused() ? "PAUSED / P RESUME" : "P PAUSE / RESUME", Vector2{width - 264, 45}, White, 4.0F / 3);
+        renderer.drawDebugText("WASD WALK / CLICK DESTINATION / WHEEL ZOOM", Vector2{22, 45}, White, 1);
+        renderer.drawDebugText("TAB NEXT STOP / R RESET / ESC EXIT", Vector2{22, 66}, Gold, 1);
+        renderer.drawDebugText("YOU ARE THE COURIER", Vector2{width - 264, 20}, Gold, 1);
+        renderer.drawDebugText(isPaused() ? "PAUSED / P RESUME" : "P PAUSE / RESUME", Vector2{width - 264, 45}, White, 1);
         renderer.drawRectangle(Rect{0, bottom, width, HudFooterHeight}, paint(Ink));
         constexpr std::array<std::string_view, 5> TourTitles = {"1 / WALK BEHIND AND IN FRONT OF TREES",
             "2 / WALK UNDER THE GLASS CANOPY", "3 / WATCH THE WINDMILL BLADES",
@@ -300,7 +300,7 @@ private:
         constexpr std::array<std::string_view, 5> TourHints = {"Y TOGGLE SORTING / O REVERSE COMMANDS",
             "G TOGGLE GLASS / MOVE THROUGH THE BLUE AREA", "P PAUSE ROTATION / BLADES SHARE ONE PIVOT",
             "F FOLLOW CAMERA / WHEEL ZOOM / CLICK TO WALK", "C TOGGLE CLIPPING / L RESTART RENDERER"};
-        renderer.drawDebugText(TourTitles[static_cast<std::size_t>(tour)], Vector2{22, bottom + 16}, Mint, 4.0F / 3);
+        renderer.drawDebugText(TourTitles[static_cast<std::size_t>(tour)], Vector2{22, bottom + 16}, Mint, 1);
         renderer.drawDebugText(TourExplanations[static_cast<std::size_t>(tour)], Vector2{22, bottom + 40}, White, 1);
         renderer.drawDebugText(TourHints[static_cast<std::size_t>(tour)], Vector2{22, bottom + 62}, Gold, 1);
         renderer.drawDebugText(std::string("SORT ") + (sorting ? "ON" : "OFF") + " / GLASS " + (glass ? "ON" : "OFF")
@@ -310,7 +310,7 @@ private:
         renderer.drawDebugText("LIVE MAP", Vector2{width - 224, 116}, White, 1);
         // Лента остаётся в экранном пространстве при движении и масштабировании мира.
         const Rect slot = {width - 270, bottom + 38, 242, 62};
-        renderer.drawDebugText("PARCEL WINDOW", Vector2{width - 270, bottom + 14}, Mint, 4.0F / 3);
+        renderer.drawDebugText("PARCEL WINDOW", Vector2{width - 270, bottom + 14}, Mint, 1);
         renderer.drawRectangle(slot, paint(Color{0.13F, 0.21F, 0.26F}));
         const Vector2 topLeft = ui.uiToScreen(slot.position);
         const Vector2 bottomRight = ui.uiToScreen(slot.position + Vector2{slot.size.width, slot.size.height});
