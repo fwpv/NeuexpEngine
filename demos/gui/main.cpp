@@ -388,8 +388,8 @@ int Engine::applicationMain()
     MenuDemo app;
     ApplicationOptions options;
     options.window.title = "GUI / Orbital menu";
-    options.window.width = 1100;
-    options.window.height = 900;
+    options.window.width = 900;
+    options.window.height = 700;
     options.window.minimumWidth = 480;
     options.window.minimumHeight = 360;
     Platform::Error error;
