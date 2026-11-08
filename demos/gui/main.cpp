@@ -41,7 +41,8 @@ private:
         // Размер элемента и его области ввода сохраняет пропорции выбранного скина.
         const auto region = atlas.find(width < 100 ? "btn2_normal" : "btn1_normal");
         const Size2 imageSize = region ? region->size : Size2{width < 100 ? 96.0F : 150.0F, 41};
-        return add<UI::Button>(parent, Size2{width, width * imageSize.height / imageSize.width}, text);
+        const float buttonWidth = width * 0.89F;
+        return add<UI::Button>(parent, Size2{buttonWidth, buttonWidth * imageSize.height / imageSize.width}, text);
     }
 
     std::shared_ptr<UI::Container> panel(const std::shared_ptr<UI::Screen>& page, Size2 size)
@@ -169,7 +170,7 @@ private:
         auto cancel = addButton(settingsPanel, 250, u8"Отмена");
         click(cancel, [this] { closeSettings(); });
         auto hint = add<UI::Label>(settingsPanel, Size2{320, 56}, u8"Настройки сохраняются\nрядом с демо");
-        hint->style().debugPixel = 1;
+        hint->style().debugPixel = 2;
 
         auto hud = add<UI::Container>(game, Size2{320, 170});
         hud->layout() = UI::Layout{UI::Flow::Column, 12, 8, UI::Align::Start};

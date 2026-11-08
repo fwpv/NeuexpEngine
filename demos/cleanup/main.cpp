@@ -324,27 +324,28 @@ private:
         const Vector2 homeMarker = mapView.worldToScreen(state.world.homeBounds.center());
         drawing.drawDebugText("HOME", homeMarker + Vector2{-12, 8}, state.washed >= state.rules.homeGoal ? GoalColor : WhiteColor, 1);
         const Color moodColor = state.motivation <= 20 ? WarningColor : GoalColor;
-        drawing.drawRectangle(Rect{16, 16, 235, 78}, PanelColor);
+        drawing.drawRectangle(Rect{16, 16, 200, 68}, PanelColor);
         drawing.drawDebugText("MOTIVATION", Vector2{28, 25}, WhiteColor, 1);
-        drawing.drawDebugText("-1/" + std::to_string(static_cast<int>(state.rules.motivationDecayInterval)) + "S TO " + std::to_string(state.rules.passiveMotivationFloor), Vector2{28, 45}, BorderColor, 1);
-        drawing.drawDebugText(std::to_string(state.motivation), Vector2{170, 44}, moodColor, 4);
-        drawing.drawRectangle(Rect{28, 65, 130, 9}, GridColor);
-        drawing.drawRectangle(Rect{28, 65, 130 * static_cast<float>(state.motivation) / static_cast<float>(state.rules.maximumMotivation), 9}, moodColor);
+        drawing.drawDebugText("-1/" + std::to_string(static_cast<int>(state.rules.motivationDecayInterval)) + "S TO " + std::to_string(state.rules.passiveMotivationFloor), Vector2{28, 48}, BorderColor, 1);
+        drawing.drawDebugText(std::to_string(state.motivation), Vector2{166, 44}, moodColor, 2);
+        drawing.drawRectangle(Rect{28, 65, 176, 9}, GridColor);
+        drawing.drawRectangle(Rect{28, 65, 176 * static_cast<float>(state.motivation) / static_cast<float>(state.rules.maximumMotivation), 9}, moodColor);
 
-        drawing.drawRectangle(Rect{260, 16, 116, 78}, PanelColor);
-        drawing.drawDebugText("CARGO", Vector2{272, 25}, WhiteColor, 1);
-        drawing.drawDebugText(std::to_string(state.carried), Vector2{272, 44}, StickyPlayerColor, 4);
-        drawing.drawCircle(Circle{Vector2{349, 61}, 13}, state.outcome == Outcome::Lost ? ExhaustedColor : playerColor(state.coat), Engine::ShapeFill::Filled, 32);
+        drawing.drawRectangle(Rect{224, 16, 88, 68}, PanelColor);
+        drawing.drawDebugText("CARGO", Vector2{236, 25}, WhiteColor, 1);
+        drawing.drawDebugText(std::to_string(state.carried), Vector2{236, 44}, StickyPlayerColor, 2);
+        drawing.drawCircle(Circle{Vector2{291, 51}, 9}, state.outcome == Outcome::Lost ? ExhaustedColor : playerColor(state.coat), Engine::ShapeFill::Filled, 32);
 
         const bool homeReady = state.washed >= state.rules.homeGoal;
         const float homeProgress = std::min(1.0F, static_cast<float>(state.washed) / static_cast<float>(state.rules.homeGoal));
-        drawing.drawRectangle(Rect{385, 16, 235, 78}, PanelColor);
-        drawing.drawDebugText(homeReady ? "HOME OPEN" : "HOME MATERIAL", Vector2{397, 25}, homeReady ? GoalColor : WhiteColor, 1);
-        drawing.drawDebugText(std::to_string(state.washed), Vector2{397, 44}, CleanPlayerColor, 4);
-        drawing.drawDebugText("/", Vector2{451, 49}, WhiteColor, 3);
-        drawing.drawDebugText(std::to_string(state.rules.homeGoal), Vector2{475, 44}, WhiteColor, 4);
-        drawing.drawRectangle(Rect{397, 82, 211, 6}, GridColor);
-        drawing.drawRectangle(Rect{397, 82, 211 * homeProgress, 6}, GoalColor);
+        drawing.drawRectangle(Rect{320, 16, 160, 68}, PanelColor);
+        drawing.drawDebugText(homeReady ? "HOME OPEN" : "HOME MATERIAL", Vector2{332, 25}, homeReady ? GoalColor : WhiteColor, 1);
+        const std::string delivered = std::to_string(state.washed);
+        drawing.drawDebugText(delivered, Vector2{332, 44}, CleanPlayerColor, 2);
+        const float goalX = 332 + Engine::Renderer2D::measureDebugText(delivered, 2).width + 8;
+        drawing.drawDebugText("/ " + std::to_string(state.rules.homeGoal), Vector2{goalX, 44}, WhiteColor, 2);
+        drawing.drawRectangle(Rect{332, 65, 136, 6}, GridColor);
+        drawing.drawRectangle(Rect{332, 65, 136 * homeProgress, 6}, GoalColor);
 
         const float bottom = static_cast<float>(frame.window.height);
         drawing.drawRectangle(Rect{16, bottom - 118, 360, 102}, PanelColor);
@@ -362,13 +363,13 @@ private:
         drawing.drawDebugText("ORANGE - TRASH - BLUE - HOME", Vector2{28, bottom - 42}, WhiteColor, 1);
 
         if (state.feedbackTime > 0) {
-            drawing.drawRectangle(Rect{16, 104, 360, 28}, PanelColor);
+            drawing.drawRectangle(Rect{16, 94, 360, 28}, PanelColor);
             const std::string message = state.motivationChange < 0 ? "LOST CARGO " + std::to_string(state.motivationChange)
                 : "DELIVERED " + std::to_string(state.lastDelivery) + "  +" + std::to_string(state.motivationChange);
-            drawing.drawDebugText(message, Vector2{28, 113}, state.motivationChange < 0 ? WarningColor : GoalColor, 1);
+            drawing.drawDebugText(message, Vector2{28, 103}, state.motivationChange < 0 ? WarningColor : GoalColor, 1);
         } else if (homeReady) {
-            drawing.drawRectangle(Rect{16, 104, 360, 28}, PanelColor);
-            drawing.drawDebugText("HOME IS OPEN - GO TO GREEN DOOR", Vector2{28, 113}, GoalColor, 1);
+            drawing.drawRectangle(Rect{16, 94, 360, 28}, PanelColor);
+            drawing.drawDebugText("HOME IS OPEN - GO TO GREEN DOOR", Vector2{28, 103}, GoalColor, 1);
         }
 
         if (state.outcome != Outcome::Playing || isPaused()) {
