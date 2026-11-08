@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdlib>
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -31,6 +32,53 @@ void draw(UI::Context& context, Renderer2D& renderer)
     require(drawn, failure.message.c_str());
     RenderError error;
     require(renderer.endFrame(error), "GUI render failed");
+}
+void borders(Renderer2D& renderer)
+{
+    UI::Context context;
+    auto page = std::make_shared<UI::Screen>();
+    auto button = std::make_shared<UI::Button>();
+    button->style().background = Color{0, 0, 1, 1};
+    button->style().border = Color{1, 0, 0, 0.5F};
+    page->add(button);
+    context.setScreen(page);
+    // Проверяется весь периметр, в том числе углы, при дробной компоновке.
+    for (float scale : {0.75F, 1.0F, 1.25F, 1.5F, 2.0F}) {
+        for (int viewportSize : {240, 241}) {
+            context.setViewport(Viewport{3, 5, viewportSize, viewportSize}, scale);
+            for (float offset : {0.0F, 0.25F, 0.5F, 0.75F}) {
+                UI::Placement placement;
+                placement.size = Size2{31, 17};
+                placement.horizontal = UI::Align::Center;
+                placement.vertical = UI::Align::Center;
+                placement.offset = Vector2{offset, offset};
+                button->setPlacement(placement);
+                draw(context, renderer);
+                const auto bounds = *context.bounds(*button);
+                const int left = 3 + static_cast<int>(std::ceil(bounds.position.x));
+                const int top = 5 + static_cast<int>(std::ceil(bounds.position.y));
+                const int right = 3 + static_cast<int>(std::ceil(bounds.position.x + bounds.size.width));
+                const int bottom = 5 + static_cast<int>(std::ceil(bounds.position.y + bounds.size.height));
+                for (int y = top - 1; y <= bottom; ++y) {
+                    for (int x = left - 1; x <= right; ++x) {
+                        const auto actual = pixel(x, y);
+                        const bool outside = x < left || x >= right || y < top || y >= bottom;
+                        const bool border = !outside && (x == left || x == right - 1 || y == top || y == bottom - 1);
+                        if (border) {
+                            // Полупрозрачные углы не должны рисоваться дважды.
+                            require(actual[0] >= 126 && actual[0] <= 129,
+                                "GUI border missing, thicker than one pixel, or blended twice");
+                        } else {
+                            require(actual[0] == 0, "GUI border escaped its one-pixel perimeter");
+                            if (!outside) {
+                                require(actual[2] == 255, "GUI border covered the interior");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 void run()
 {
@@ -136,6 +184,7 @@ void run()
     label->setText("A");
     draw(context, renderer);
     require(pixel(10, 6)[0] > 200, "Bitmap label missing");
+    borders(renderer);
     renderer.shutdown();
 }
 }

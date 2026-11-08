@@ -1,6 +1,7 @@
 #include "element.h"
 
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <locale>
 #include <sstream>
@@ -136,8 +137,29 @@ void Element::drawSurface(Renderer2D& renderer, const Rect& bounds, State state,
     if (state == State::Disabled) {
         color.alpha *= 0.45F;
     }
-    renderer.drawRectangle(bounds, color);
-    renderer.drawRectangle(bounds, appearance.border, ShapeFill::Outline);
+    // GUI рисуется в экранных пикселях. Округление совпадает с отсечением Context:
+    // линия по границе могла попасть за scissor и потерять одну из сторон.
+    const float left = std::ceil(bounds.position.x);
+    const float top = std::ceil(bounds.position.y);
+    const float right = std::ceil(bounds.position.x + bounds.size.width);
+    const float bottom = std::ceil(bounds.position.y + bounds.size.height);
+    const float width = right - left;
+    const float height = bottom - top;
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    renderer.drawRectangle(Rect{left, top, width, height}, color);
+    // Полосы не перекрываются: прозрачная рамка смешивается один раз и в углах.
+    renderer.drawRectangle(Rect{left, top, width, 1}, appearance.border);
+    if (height > 1) {
+        renderer.drawRectangle(Rect{left, bottom - 1, width, 1}, appearance.border);
+    }
+    if (height > 2) {
+        renderer.drawRectangle(Rect{left, top + 1, 1, height - 2}, appearance.border);
+        if (width > 1) {
+            renderer.drawRectangle(Rect{right - 1, top + 1, 1, height - 2}, appearance.border);
+        }
+    }
 }
 
 Container::~Container()
