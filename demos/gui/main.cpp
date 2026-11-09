@@ -152,6 +152,7 @@ private:
         vsync = add<UI::Checkbox>(settingsPanel, Size2{310, 30}, "VSync");
         images = add<UI::Checkbox>(settingsPanel, Size2{310, 30}, u8"Изображения кнопок");
         font = add<UI::Checkbox>(settingsPanel, Size2{310, 30}, u8"Растровый шрифт");
+        textFiltering = add<UI::Checkbox>(settingsPanel, Size2{310, 30}, u8"Фильтрация текста");
         images->setEnabled(imagesAvailable);
         font->setEnabled(bitmap.isValid());
         subscriptions.push_back(vsync->subscribe(UI::EventType::Change, [this](const UI::Event& event) {
@@ -163,6 +164,10 @@ private:
         }));
         subscriptions.push_back(font->subscribe(UI::EventType::Change, [this](const UI::Event& event) {
             draft.bitmapText = event.checked;
+            applyStyle();
+        }));
+        subscriptions.push_back(textFiltering->subscribe(UI::EventType::Change, [this](const UI::Event& event) {
+            draft.textFiltering = event.checked;
             applyStyle();
         }));
         auto apply = addButton(settingsPanel, 250, u8"Применить");
@@ -237,6 +242,7 @@ private:
         vsync->setChecked(draft.vsync);
         images->setChecked(draft.images);
         font->setChecked(draft.bitmapText);
+        textFiltering->setChecked(draft.textFiltering);
         scaleValue->setValue(draft.scale, 2);
         applyStyle();
         gui.setScreen(settings);
@@ -273,9 +279,11 @@ private:
     }
     void applyStyle()
     {
+        textFiltering->setEnabled(draft.bitmapText && bitmap.isValid());
         for (const auto& element : styled) {
             auto& style = element->style();
             style.font = draft.bitmapText ? bitmap : BitmapFont{};
+            style.textFilter = draft.textFiltering ? TextureFilter::Linear : TextureFilter::Nearest;
             style.images = {};
             style.checkedImages = {};
             style.foreground = Color{0.93F, 0.96F, 1, 1};
@@ -368,6 +376,7 @@ private:
     std::shared_ptr<UI::Checkbox> vsync;
     std::shared_ptr<UI::Checkbox> images;
     std::shared_ptr<UI::Checkbox> font;
+    std::shared_ptr<UI::Checkbox> textFiltering;
     std::vector<std::shared_ptr<UI::Element>> styled;
     std::vector<std::shared_ptr<UI::Container>> panels;
     std::vector<Size2> panelSizes;

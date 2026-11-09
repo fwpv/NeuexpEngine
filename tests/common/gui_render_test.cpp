@@ -189,6 +189,18 @@ void run()
     label->setText("A");
     draw(context, renderer);
     require(pixel(10, 6)[0] > 200, "Bitmap label missing");
+    require(renderer.createTexture(Image{2, 1, std::vector<std::uint8_t>{
+        255, 255, 255, 255, 255, 255, 255, 0}}, mask, failure), "Filter mask creation failed");
+    require(font.load(mask, "bitmap_font 1\ntexture unused.png\nlineHeight 1\nfallback 65\n"
+        "glyph 32 0 0 0 0 0 0 1\nglyph 65 0 0 2 1 0 0 2\n", failure), "Filter font creation failed");
+    label->style().font = font;
+    label->style().textFilter = TextureFilter::Nearest;
+    draw(context, renderer);
+    require(pixel(10, 6)[0] == 255 && pixel(11, 6)[0] == 0, "Nearest text filter ignored");
+    label->style().textFilter = TextureFilter::Linear;
+    draw(context, renderer);
+    require(pixel(10, 6)[0] > 100 && pixel(10, 6)[0] < 180
+        && pixel(11, 6)[0] > 80 && pixel(11, 6)[0] < 150, "Linear text filter ignored");
     borders(renderer);
     renderer.shutdown();
 }

@@ -44,6 +44,7 @@ struct Style
     Color foreground = {0.93F, 0.96F, 1, 1};
     Color accent = {0.2F, 0.75F, 0.55F, 1};
     BitmapFont font;
+    TextureFilter textFilter = TextureFilter::Linear;
     float textScale = 1;
     float debugPixel = 2;
     float padding = 8;

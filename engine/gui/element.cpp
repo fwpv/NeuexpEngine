@@ -97,7 +97,7 @@ bool Element::drawText(Renderer2D& renderer, const std::string& text, const Rect
             return false;
         }
         renderer.drawText(textLayout, Vector2{bounds.position.x + padding,
-            bounds.position.y + (bounds.size.height - textLayout.size().height) / 2}, options);
+            bounds.position.y + (bounds.size.height - textLayout.size().height) / 2}, options, appearance.textFilter);
     } else {
         const float pixel = scale * appearance.textScale * appearance.debugPixel;
         const auto size = Renderer2D::measureDebugText(text, pixel);

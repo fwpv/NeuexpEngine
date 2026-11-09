@@ -11,6 +11,7 @@ struct Settings
     bool vsync = false;
     bool images = false;
     bool bitmapText = false;
+    bool textFiltering = true;
 };
 
 // Отсутствующий файл оставляет начальные настройки; повреждённый не меняет результат.
