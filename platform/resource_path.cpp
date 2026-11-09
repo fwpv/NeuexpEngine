@@ -1,4 +1,3 @@
-#include "detail/executable_path.h"
 #include "resources.h"
 
 #ifdef _WIN32
@@ -12,7 +11,7 @@
 #include <cstddef>
 #include <filesystem>
 
-namespace Engine::Detail
+namespace Engine
 {
 bool executableDirectory(std::filesystem::path& result, ResourceError& error)
 {
@@ -26,6 +25,7 @@ bool executableDirectory(std::filesystem::path& result, ResourceError& error)
         }
         if (length < buffer.size()) {
             result = std::filesystem::path(std::wstring(buffer.data(), length)).parent_path();
+            error = {};
             return true;
         }
         buffer.resize(buffer.size() * 2);
@@ -40,6 +40,7 @@ bool executableDirectory(std::filesystem::path& result, ResourceError& error)
         }
         if (static_cast<std::size_t>(length) < buffer.size()) {
             result = std::filesystem::path(std::string(buffer.data(), static_cast<std::size_t>(length))).parent_path();
+            error = {};
             return true;
         }
         buffer.resize(buffer.size() * 2);

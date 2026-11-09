@@ -136,7 +136,7 @@ private:
             "SPACE: GLOBAL PAUSE / P: PAUSE / ENTER: PLAY / S: STOP / R: RESTART\n"
             "HOVER: GREEN = ALPHA HIT, RED = TRANSPARENT / ESC: EXIT\n"
             "FINISHED: " + std::to_string(completed) + " / FPS: " + std::to_string(static_cast<int>(frame.framesPerSecond));
-        getRenderer().drawDebugText(label, Vector2{20, 20}, Color{1, 1, 1});
+        getRenderer().drawDebugText(label, Vector2{20, 20}, Color{1, 1, 1}, 1);
         return endFrame(error);
     }
 

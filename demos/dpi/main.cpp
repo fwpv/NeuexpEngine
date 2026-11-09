@@ -189,7 +189,7 @@ private:
     {
         const bool hover = contains(bounds, mouse);
         drawing.drawRectangle(bounds, hover ? Blue : Grid);
-        drawing.drawDebugText(label, bounds.position + Vector2{7, 7}, hover ? Panel : White);
+        drawing.drawDebugText(label, bounds.position + Vector2{7, 7}, hover ? Panel : White, 1);
     }
 
     bool onRender(const FrameInfo& frame, Platform::Error& error) override
@@ -218,9 +218,9 @@ private:
 
         drawing.setUiView(uiView);
         drawing.drawRectangle(UiPanel, Panel);
-        drawing.drawDebugText("UI " + std::to_string(percent(canvas.scale)) + " / DPI " + std::to_string(percent(frame.window.systemScale)), Vector2{20, 22}, White);
-        drawing.drawDebugText("UI", Vector2{20, 51}, Orange);
-        drawing.drawDebugText("WORLD " + std::to_string(percent(camera.zoom)), Vector2{20, 83}, Blue, 1.5F);
+        drawing.drawDebugText("UI " + std::to_string(percent(canvas.scale)) + " / DPI " + std::to_string(percent(frame.window.systemScale)), Vector2{20, 22}, White, 1);
+        drawing.drawDebugText("UI", Vector2{20, 51}, Orange, 1);
+        drawing.drawDebugText("WORLD " + std::to_string(percent(camera.zoom)), Vector2{20, 83}, Blue, 1);
         const auto& mouse = Platform::getInput().mouse();
         Vector2 pointer = {-1, -1};
         if (mouse.inside) {
@@ -233,7 +233,7 @@ private:
         button(ZoomPlus, "+", pointer);
         button(ZoomReset, "RESET", pointer);
         button(ClickButton, "UI CLICKS " + std::to_string(uiClicks), pointer);
-        drawing.drawDebugText("WASD / WHEEL / CLICK WORLD", Vector2{20, 146}, White, 1.5F);
+        drawing.drawDebugText("WASD / WHEEL / CLICK WORLD", Vector2{20, 146}, White, 1);
         return endFrame(error);
     }
 

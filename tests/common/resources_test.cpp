@@ -34,9 +34,19 @@ void run()
         "Uninitialized file system accepted a read.");
     require(!files.initialize(error, "relative"), "Relative resource root accepted.");
     check(files.initialize(error), error);
+    std::filesystem::path executable;
+    check(executableDirectory(executable, error), error);
+    require(executable.is_absolute(), "Executable directory is not absolute.");
     const auto original = std::filesystem::current_path();
     std::filesystem::current_path(std::filesystem::temp_directory_path());
     try {
+        std::filesystem::path afterDirectoryChange;
+        check(executableDirectory(afterDirectoryChange, error), error);
+        require(afterDirectoryChange == executable, "Executable directory depends on cwd.");
+        ResourceFiles alternate;
+        check(alternate.initialize(error, std::filesystem::temp_directory_path()), error);
+        check(executableDirectory(afterDirectoryChange, error), error);
+        require(afterDirectoryChange == executable, "Executable directory depends on asset root.");
         check(files.readBinary("raw_3x2.rgba", bytes, error), error);
         require(bytes.size() == 24 && bytes.front() == 255 && bytes.back() == 128, "Raw RGBA changed.");
         std::string text;

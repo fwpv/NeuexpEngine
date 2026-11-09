@@ -1,5 +1,4 @@
 #include "resources.h"
-#include "detail/executable_path.h"
 
 #include <fstream>
 #include <limits>
@@ -18,7 +17,7 @@ bool ResourceFiles::initialize(ResourceError& error, const std::filesystem::path
 {
     std::filesystem::path candidate = root;
     if (candidate.empty()) {
-        if (!Detail::executableDirectory(candidate, error)) {
+        if (!executableDirectory(candidate, error)) {
             return false;
         }
         candidate /= "assets";

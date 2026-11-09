@@ -582,10 +582,13 @@ void debugText()
     pixel(122, 20, White);
     pixel(120, 20, Black);
     pixel(130, 20, Black);
-    pixel(136, 20, White);
-    pixel(146, 24, White);
-    pixel(154, 24, White);
-    pixel(160, 26, White);
+    pixel(134, 20, Black); // Неизвестный ? занимает одну ячейку.
+    pixel(146, 20, White); // Верх цифры 9 после двух ячеек 5x7.
+    pixel(160, 22, White); // Вертикальная часть +.
+    pixel(170, 26, White); // Горизонтальная черта -.
+    pixel(188, 20, White); // Верх диагонали /.
+    pixel(124, 32, Black); // Просвет у основания A.
+    pixel(128, 32, White);
     pixel(160, 90, Blue);
     pixel(190, 170, Red);
     renderer.shutdown();
