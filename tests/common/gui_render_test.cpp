@@ -42,6 +42,7 @@ void borders(Renderer2D& renderer)
     button->style().border = Color{1, 0, 0, 0.5F};
     page->add(button);
     context.setScreen(page);
+    std::vector<unsigned char> pixels(Size * Size * 3);
     // Проверяется весь периметр, в том числе углы, при дробной компоновке.
     for (float scale : {0.75F, 1.0F, 1.25F, 1.5F, 2.0F}) {
         for (int viewportSize : {240, 241}) {
@@ -54,6 +55,10 @@ void borders(Renderer2D& renderer)
                 placement.offset = Vector2{offset, offset};
                 button->setPlacement(placement);
                 draw(context, renderer);
+                // Читаем кадр целиком, чтобы не синхронизироваться с GPU на каждом пикселе.
+                glPixelStorei(GL_PACK_ALIGNMENT, 1);
+                glReadPixels(0, 0, Size, Size, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+                require(glGetError() == GL_NO_ERROR, "Read border pixels failed");
                 const auto bounds = *context.bounds(*button);
                 const int left = 3 + static_cast<int>(std::ceil(bounds.position.x));
                 const int top = 5 + static_cast<int>(std::ceil(bounds.position.y));
@@ -61,7 +66,7 @@ void borders(Renderer2D& renderer)
                 const int bottom = 5 + static_cast<int>(std::ceil(bounds.position.y + bounds.size.height));
                 for (int y = top - 1; y <= bottom; ++y) {
                     for (int x = left - 1; x <= right; ++x) {
-                        const auto actual = pixel(x, y);
+                        const auto actual = pixels.data() + ((Size - 1 - y) * Size + x) * 3;
                         const bool outside = x < left || x >= right || y < top || y >= bottom;
                         const bool border = !outside && (x == left || x == right - 1 || y == top || y == bottom - 1);
                         if (border) {
