@@ -74,25 +74,34 @@ Wayland не поддерживается.
 Дальше по `road map.md` — сцены и жизненный цикл объектов, столкновения, физика,
 сценарии поведения, настройки с локализацией, звук и сквозная приёмка движка.
 
-## Слои
+## Сборка и структура движка
 
-Движок собран из небольших статических библиотек, имя цели — `neuexpengine_<слой>`:
+Движок собирается в **одну статическую библиотеку `neuexpengine`**: ядро, подсистемы
+и платформенные реализации из каталога `platform`. Отдельно остаётся только точка
+входа — объектная библиотека `neuexpengine_entry_point`, потому что `WinMain` должен
+попасть в исполняемый файл напрямую, а не тянуться из архива.
 
-| Слой | Что внутри |
+Движок не знает о демо и тестах и собирается независимо: флаги `BUILD_DEMOS`
+и `BUILD_TESTING` управляют только каталогами `demos/` и `tests/`.
+
+Исходники разложены по подсистемам:
+
+| Подсистема | Файлы |
 | --- | --- |
-| `neuexpengine_math` | векторы, геометрия, преобразования |
-| `neuexpengine_camera` | камера и виды |
-| `neuexpengine_ui` | канвас и экранный вид |
-| `neuexpengine_events` | события и подписки |
-| `neuexpengine_time` | часы кадра |
-| `neuexpengine_resources` | файлы ресурсов и PNG |
-| `neuexpengine_renderer` | рендер 2D, текстуры, спрайты, атласы, анимации, текст |
-| `neuexpengine_gui` | элементы GUI и контекст |
-| `neuexpengine_application` | цикл приложения |
-| `neuexpengine_entry_point` | точка входа |
+| математика | `math2d.cpp`, `geometry.cpp`, `transform.cpp` |
+| камера | `camera.cpp` |
+| интерфейс | `ui.cpp`, `gui/*` |
+| события | `events.cpp` |
+| время | `frame_clock.cpp` |
+| ресурсы | `resources.cpp`, `image.cpp` |
+| ввод | `input.cpp`, `detail/platform_input.cpp` |
+| рендер | `renderer*.cpp`, `font.cpp`, `texture.cpp`, `sprite.cpp`, `animation.cpp`, `atlas.cpp`, `detail/polygon.cpp` |
+| приложение | `application.cpp`, `entry_point.cpp` |
+| платформа | `platform/*.cpp`: окна, ввод и время для Windows и Linux |
 
 Заголовки подключаются по имени файла (`renderer.h`, `atlas.h`), весь API живёт
-в пространстве имён `NeuexpEngine`.
+в пространстве имён `NeuexpEngine`. Любая новая игра или демо линкуется одинаково:
+`neuexpengine` плюс `neuexpengine_entry_point`.
 
 ## Сборка
 
