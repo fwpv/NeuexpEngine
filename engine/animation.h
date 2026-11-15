@@ -1,9 +1,13 @@
 #pragma once
 
+#include "atlas.h"
 #include "sprite.h"
 #include "resources.h"
 
 #include <cstddef>
+#include <initializer_list>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace Engine
@@ -37,6 +41,10 @@ public:
     // скорость 1, сброс finished и начальный размер кадра; оформление, режим и направление сохраняются.
     bool load(const Texture& source, const std::vector<AnimationFrame>& frames, ResourceError& error);
     bool load(const Texture& source, const std::vector<Rect>& frames, double duration, ResourceError& error);
+    // Кадры берутся из атласа по именам в указанном порядке, длительность кадра общая.
+    // Пустой список или отсутствующее имя отклоняются с ошибкой, объект сохраняется.
+    bool load(const TextureAtlas& atlas, std::initializer_list<std::string_view> names, double frameDuration,
+        ResourceError& error);
 
     // play продолжает паузу; после завершения требуется restart или stop + play.
     void play();
@@ -84,5 +92,50 @@ private:
     AnimationDirection playbackDirection = AnimationDirection::Forward;
     bool playing = false;
     bool finished = false;
+};
+
+// Набор именованных анимаций одного объекта, загруженных из одного атласа.
+// Играет только выбранный клип; клип из одного участка остаётся неподвижным.
+// После успешной загрузки выбран первый клип.
+class AnimationSet
+{
+public:
+    // Клип: имя, участки атласа в порядке кадров и длительность одного кадра.
+    struct Clip
+    {
+        std::string name;
+        std::vector<std::string> frames;
+        double frameDuration = 0.1;
+    };
+
+    AnimationSet() = default;
+
+    // При отказе прежнее содержимое сохраняется. Оформление клипов — по умолчанию.
+    bool load(const TextureAtlas& atlas, const std::vector<Clip>& clips, ResourceError& error);
+    // Смена имени начинает клип заново; повторный выбор того же клипа состояние не меняет.
+    // false — клипа с таким именем нет, текущий клип не меняется.
+    bool select(std::string_view name);
+    // Перезапускает текущий клип.
+    void restart();
+    // Обновляет текущий клип; менять размер и положение нужно получателю current().
+    void update(double deltaTime);
+    // Текущий клип; набор должен быть непустым, что гарантирует успешная загрузка.
+    // Неизменяемая версия — для отрисовки, изменяемая — для положения и оформления.
+    const Animation& current() const { return entries[selected].animation; }
+    Animation& current() { return entries[selected].animation; }
+    // Оформление применяется ко всем клипам набора.
+    void setFilter(TextureFilter filter);
+
+private:
+    struct Entry
+    {
+        std::string name;
+        Animation animation;
+    };
+
+    std::size_t find(std::string_view name) const;
+
+    std::vector<Entry> entries;
+    std::size_t selected = 0;
 };
 }

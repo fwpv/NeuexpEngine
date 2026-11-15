@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 
 namespace Engine
 {
@@ -175,5 +176,111 @@ void Animation::selectFrame()
         end += frames[frameIndex].duration;
     }
     textureRect = frames[frameIndex].textureRect;
+}
+
+bool Animation::load(const TextureAtlas& atlas, std::initializer_list<std::string_view> names, double frameDuration,
+    ResourceError& error)
+{
+    if (names.size() == 0) {
+        error = {ResourceErrorCode::InvalidState, "Animation requires at least one atlas region."};
+        return false;
+    }
+    std::vector<Rect> areas;
+    areas.reserve(names.size());
+    for (const std::string_view name : names) {
+        const Rect* area = atlas.find(name);
+        if (!area) {
+            error = {ResourceErrorCode::InvalidImage, "Atlas region not found: " + std::string(name)};
+            return false;
+        }
+        areas.push_back(*area);
+    }
+    return load(atlas.texture(), areas, frameDuration, error);
+}
+
+bool AnimationSet::load(const TextureAtlas& atlas, const std::vector<Clip>& clips, ResourceError& error)
+{
+    if (clips.empty()) {
+        error = {ResourceErrorCode::InvalidState, "Animation set requires at least one clip."};
+        return false;
+    }
+    std::vector<Entry> loaded;
+    loaded.reserve(clips.size());
+    for (const Clip& clip : clips) {
+        if (clip.name.empty()) {
+            error = {ResourceErrorCode::InvalidState, "Animation clip requires a name."};
+            return false;
+        }
+        if (clip.frames.empty()) {
+            error = {ResourceErrorCode::InvalidState, "Animation clip " + clip.name + " requires at least one frame."};
+            return false;
+        }
+        std::vector<Rect> areas;
+        areas.reserve(clip.frames.size());
+        for (const std::string& frame : clip.frames) {
+            const Rect* area = atlas.find(frame);
+            if (!area) {
+                error = {ResourceErrorCode::InvalidImage, "Atlas region not found: " + frame};
+                return false;
+            }
+            areas.push_back(*area);
+        }
+        Entry entry;
+        entry.name = clip.name;
+        if (!entry.animation.load(atlas.texture(), areas, clip.frameDuration, error)) {
+            return false;
+        }
+        loaded.push_back(std::move(entry));
+    }
+    entries = std::move(loaded);
+    selected = 0;
+    entries.front().animation.restart();
+    error = {};
+    return true;
+}
+
+std::size_t AnimationSet::find(std::string_view name) const
+{
+    for (std::size_t index = 0; index < entries.size(); ++index) {
+        if (entries[index].name == name) {
+            return index;
+        }
+    }
+    return entries.size();
+}
+
+bool AnimationSet::select(std::string_view name)
+{
+    const std::size_t index = find(name);
+    if (index >= entries.size()) {
+        return false;
+    }
+    if (index == selected) {
+        return true;
+    }
+    selected = index;
+    entries[selected].animation.restart();
+    return true;
+}
+
+void AnimationSet::restart()
+{
+    if (!entries.empty()) {
+        entries[selected].animation.restart();
+    }
+}
+
+void AnimationSet::update(double deltaTime)
+{
+    if (!entries.empty()) {
+        entries[selected].animation.update(deltaTime);
+    }
+}
+
+void AnimationSet::setFilter(TextureFilter filter)
+{
+    for (Entry& entry : entries) {
+        entry.animation.filter = filter;
+    }
 }
 }

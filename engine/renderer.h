@@ -91,6 +91,10 @@ public:
         ResourceError& error, bool keepPixels = false);
     // PNG используется как альфа-маска: RGB нормализуется в белый в памяти.
     bool loadFont(const ResourceFiles& files, const std::string& name, BitmapFont& result, ResourceError& error);
+    // Готовит изображение шрифта и описание его раскладки отдельно: шрифт собирается
+    // через BitmapFont::load. Картинка нормализуется в белую альфа-маску так же, как в loadFont.
+    bool loadFontImage(const ResourceFiles& files, const std::string& name, Texture& result,
+        std::string& description, ResourceError& error);
     // Позиция задаёт начало логической области; options.transform применяется после переноса.
     // Раскладка рисуется одной командой с подготовленным массивом геометрии.
     void drawText(const TextLayout& text, Vector2 position, const DrawOptions& options = {},
