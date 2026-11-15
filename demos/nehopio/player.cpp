@@ -146,6 +146,17 @@ bool Player::grow()
     return true;
 }
 
+void Player::shrink()
+{
+    if (!bigFlag) {
+        return;
+    }
+    bigFlag = false;
+    // Тело уменьшается вниз, ноги остаются на месте.
+    positionValue.y += BigHeight - Height;
+    updatePresentation(0);
+}
+
 NeuexpEngine::Vector2 Player::position() const
 {
     return positionValue;

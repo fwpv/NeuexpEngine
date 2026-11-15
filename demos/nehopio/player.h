@@ -49,6 +49,8 @@ public:
     void bounce();
     // Гриб: увеличивает тело и сохраняет положение ноги.
     bool grow();
+    // Урон: тело возвращается к обычному размеру, ноги остаются на месте.
+    void shrink();
     NeuexpEngine::Size2 size() const;
     // Удар головой о плитку: координаты клетки, в которую упёрлись.
     bool takeCeilingHit(int& column, int& row);

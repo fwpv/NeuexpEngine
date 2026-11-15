@@ -107,12 +107,18 @@ void Run::loseLife()
 {
     lifeCount = std::max(0, lifeCount - 1);
     soundList.push_back(Sound::Death);
+    // Потеря жизни возвращает персонажа к обычной форме.
+    playerValue.shrink();
     deathBlink = lifeCount == 0;
 }
 
 // Удар врагом: персонаж теряет жизнь и мигает на месте, игра продолжается.
+// Пока идёт мигание после последней жизни, персонаж неуязвим: ни урона, ни звука удара.
 void Run::damage()
 {
+    if (deathBlink) {
+        return;
+    }
     loseLife();
     playerValue.hurt();
 }
