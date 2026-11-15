@@ -1,0 +1,6 @@
+ground 0 0 32 32
+soil 32 0 32 32
+brick 64 0 32 32
+question 96 0 32 32
+stone 128 0 32 32
+used 160 0 32 32

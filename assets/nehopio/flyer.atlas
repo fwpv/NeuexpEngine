@@ -1,0 +1,6 @@
+walk.0 0 0 32 32
+walk.1 32 0 32 32
+squash 64 0 32 32
+walk.0.left 96 0 32 32
+walk.1.left 128 0 32 32
+squash.left 160 0 32 32

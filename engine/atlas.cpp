@@ -5,6 +5,7 @@
 #include "texture.h"
 
 #include <cstddef>
+#include <functional>
 #include <locale>
 #include <map>
 #include <sstream>
@@ -15,7 +16,7 @@ namespace Engine
 {
 bool TextureAtlas::load(const Texture& source, const std::string& description, ResourceError& error)
 {
-    std::map<std::string, Rect> parsed;
+    std::map<std::string, Rect, std::less<>> parsed;
     std::istringstream lines(description);
     std::string line;
     std::size_t number = 0;
@@ -51,7 +52,7 @@ bool TextureAtlas::load(const Texture& source, const std::string& description, R
         error = {ResourceErrorCode::InvalidImage, "Atlas contains no regions."};
         return false;
     }
-    texture = source;
+    storedTexture = source;
     regions = std::move(parsed);
     error = {};
     return true;
@@ -63,19 +64,19 @@ bool TextureAtlas::load(const Texture& source, const ResourceFiles& files, const
     return files.readText(name, description, error) && load(source, description, error);
 }
 
-const Rect* TextureAtlas::find(const std::string& name) const
+const Rect* TextureAtlas::find(std::string_view name) const
 {
     const auto found = regions.find(name);
     return found == regions.end() ? nullptr : &found->second;
 }
 
-bool TextureAtlas::createSprite(const std::string& name, Sprite& result) const
+bool TextureAtlas::createSprite(std::string_view name, Sprite& result) const
 {
     const Rect* area = find(name);
-    if (!area || !texture.isValid()) {
+    if (!area || !storedTexture.isValid()) {
         return false;
     }
-    result = Sprite(texture, *area);
+    result = Sprite(storedTexture, *area);
     return true;
 }
 }

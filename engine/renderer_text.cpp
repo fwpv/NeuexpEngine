@@ -14,13 +14,24 @@ namespace Engine
 bool Renderer2D::loadFont(const ResourceFiles& files, const std::string& name,
     BitmapFont& result, ResourceError& error)
 {
+    std::string description;
+    Texture texture;
+    if (!loadFontImage(files, name, texture, description, error)) {
+        return false;
+    }
+    return result.load(texture, description, error);
+}
+
+bool Renderer2D::loadFontImage(const ResourceFiles& files, const std::string& name, Texture& result,
+    std::string& description, ResourceError& error)
+{
     if (!initialized) {
         error = {ResourceErrorCode::InvalidState, "Initialize the renderer before loading fonts."};
         return false;
     }
-    std::string description;
+    std::string text;
     Detail::FontData parsed;
-    if (!files.readText(name, description, error) || !Detail::parseFont(description, parsed, error)) {
+    if (!files.readText(name, text, error) || !Detail::parseFont(text, parsed, error)) {
         return false;
     }
     const auto imageName = (std::filesystem::u8path(name).parent_path()
@@ -35,8 +46,11 @@ bool Renderer2D::loadFont(const ResourceFiles& files, const std::string& name,
         image.pixels[pixel + 1] = 255;
         image.pixels[pixel + 2] = 255;
     }
-    Texture texture;
-    return createTexture(image, texture, error) && result.load(texture, description, error);
+    if (!createTexture(image, result, error)) {
+        return false;
+    }
+    description = std::move(text);
+    return true;
 }
 
 void Renderer2D::drawText(const TextLayout& text, Vector2 position, const DrawOptions& options,

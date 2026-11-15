@@ -739,6 +739,9 @@ void atlasChecks(Renderer2D& renderer)
     check(renderer.createTexture(Image{2, 1, {255,255,255,0, 255,255,255,255}}, texture, error, true), error);
     TextureAtlas atlas;
     check(atlas.load(texture, "# regions\r\nclear 0 0 1 1\nsolid 1 0 1 1\n", error), error);
+    require(atlas.texture() == texture, "Atlas did not expose its texture.");
+    require(atlas.find(std::string_view("clear")) != nullptr && atlas.find(std::string_view("missing")) == nullptr,
+        "Region lookup by string view failed.");
     Sprite sprite;
     require(atlas.createSprite("solid", sprite), "Missing region.");
     require(sprite.texture == texture && sprite.size == Size2{1, 1}, "Atlas did not share texture or set size.");
@@ -763,6 +766,68 @@ void atlasChecks(Renderer2D& renderer)
     Sprite noPixels(discarded);
     require(noPixels.hitTest(Vector2{0.5F, 0.5F}) && !noPixels.hitTest(Vector2{0.5F, 0.5F}, true), "Missing pixel contract failed.");
 }
+void atlasAnimationChecks(Renderer2D& renderer)
+{
+    ResourceError failure;
+    const auto texture = create(renderer, Image{3, 1, std::vector<std::uint8_t>{
+        255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255}});
+    TextureAtlas atlas;
+    check(atlas.load(texture, "first 0 0 1 1\nsecond 1 0 1 1\nthird 2 0 1 1\n", failure), failure);
+
+    Animation animation;
+    check(animation.load(atlas, {"first", "second", "third"}, 0.1, failure), failure);
+    require(animation.frameCount() == 3 && animation.texture == texture
+        && animation.textureRect == Rect{0, 0, 1, 1}, "Atlas animation ignored regions.");
+    animation.restart();
+    animation.update(0.1);
+    require(animation.currentFrame() == 1 && animation.textureRect == Rect{1, 0, 1, 1},
+        "Atlas animation did not advance.");
+    Animation unchanged;
+    check(unchanged.load(atlas, {"third"}, 0.2, failure), failure);
+    require(!animation.load(atlas, {"first", "missing"}, 0.1, failure)
+        && failure.code == ResourceErrorCode::InvalidImage && animation.frameCount() == 3,
+        "Missing region accepted or animation changed.");
+    require(!animation.load(atlas, {}, 0.1, failure) && animation.frameCount() == 3, "Empty region list accepted.");
+
+    const std::vector<AnimationSet::Clip> clips{
+        {"walk", {"first", "second"}, 0.1},
+        {"still", {"third"}, 0.5}};
+    AnimationSet set;
+    require(!set.select("walk"), "Empty set accepted a clip.");
+    check(set.load(atlas, clips, failure), failure);
+    require(set.current().textureRect == Rect{0, 0, 1, 1} && set.current().isPlaying()
+        && set.current().frameCount() == 2, "Set must select and start the first clip.");
+    set.update(0.1);
+    require(set.current().currentFrame() == 1, "Set did not advance the current clip.");
+    set.update(0.1);
+    require(set.current().currentFrame() == 0, "Set clip did not loop.");
+    require(!set.select("missing"), "Unknown clip accepted.");
+    require(set.current().currentFrame() == 0, "Failed selection changed the clip.");
+    // Повторный выбор текущего клипа не перезапускает его.
+    set.update(0.1);
+    require(set.select("walk") && set.current().currentFrame() == 1, "Repeated selection restarted the clip.");
+    // Смена клипа начинает его с первого кадра.
+    require(set.select("still") && set.current().currentFrame() == 0
+        && set.current().textureRect == Rect{2, 0, 1, 1}, "Clip change did not restart playback.");
+    set.update(50);
+    require(set.current().currentFrame() == 0, "Single frame clip advanced.");
+    set.restart();
+    require(set.current().currentFrame() == 0 && set.current().isPlaying(), "Set restart failed.");
+    set.setFilter(TextureFilter::Nearest);
+    require(set.current().filter == TextureFilter::Nearest, "Filter was not applied to clips.");
+    AnimationSet unchangedSet;
+    require(!unchangedSet.select("walk"), "Selection worked on an empty set.");
+    const std::vector<AnimationSet::Clip> broken{{"walk", {"first", "missing"}, 0.1}};
+    require(!unchangedSet.load(atlas, broken, failure) && !unchangedSet.select("walk"),
+        "Broken clip list accepted.");
+    const std::vector<AnimationSet::Clip> duplicate{{"walk", {"first"}, 0.1}, {"walk", {"second"}, 0.1}};
+    require(unchangedSet.load(atlas, duplicate, failure) && unchangedSet.select("walk")
+        && unchangedSet.current().frameCount() == 1, "Duplicate clip names rejected.");
+    // Отказ загрузки сохраняет прежние клипы набора.
+    require(!set.load(atlas, broken, failure) && set.select("still") && set.current().frameCount() == 1,
+        "Failed set load changed existing clips.");
+}
+
 void spriteErrors(Renderer2D& renderer)
 {
     RenderError error;
@@ -992,6 +1057,22 @@ void textRendering(Renderer2D& renderer, const ResourceFiles& files)
     check(renderer.endFrame(renderError), renderError);
     // В PNG этот тексель зелёный с альфой 128; загрузчик шрифта оставляет только маску.
     pixel(25, 25, Color{128.0F / 255, 128.0F / 255, 128.0F / 255});
+    // Изображение шрифта готовится отдельно и собирается в шрифт через BitmapFont::load.
+    Texture fontImage;
+    std::string fontDescription;
+    check(renderer.loadFontImage(files, "fonts/test.fnt", fontImage, fontDescription, error), error);
+    BitmapFont fromImage;
+    check(fromImage.load(fontImage, fontDescription, error), error);
+    require(fromImage.lineHeight() == 3 && fromImage.find(65), "Prepared font image did not load the font.");
+    check(fromImage.layout("A", single, error, TextLayoutOptions{0, 20, 0, TextAlignment::Left}), error);
+    frame(renderer);
+    renderer.drawText(single, Vector2{20, 20});
+    check(renderer.endFrame(renderError), renderError);
+    // Подготовленная отдельно картинка тоже хранит только белую альфа-маску.
+    pixel(25, 25, Color{128.0F / 255, 128.0F / 255, 128.0F / 255});
+    Texture missingImage;
+    require(!renderer.loadFontImage(files, "fonts/missing_image.fnt", missingImage, fontDescription, error),
+        "Missing font image accepted.");
 
 }
 
@@ -1021,9 +1102,11 @@ int main(int argc, char** argv)
         ResourceError error;
         check(files.initialize(error), error);
         const std::string mode = argv[1];
-        if (mode == "resources" || mode == "sprite_errors" || mode == "atlas" || mode == "font") {
+        if (mode == "resources" || mode == "sprite_errors" || mode == "atlas" || mode == "atlas_animation"
+            || mode == "font") {
             if (mode == "resources") { resources(renderer, files); }
             else if (mode == "atlas") { atlasChecks(renderer); }
+            else if (mode == "atlas_animation") { atlasAnimationChecks(renderer); }
             else if (mode == "font") { fontChecks(renderer, files); }
             else { spriteErrors(renderer); }
             result = 0;
