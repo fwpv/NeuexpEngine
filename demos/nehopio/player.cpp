@@ -140,6 +140,9 @@ bool Player::grow()
     }
     bigFlag = true;
     positionValue.y -= BigHeight - Height;
+    // Кадр новой формы ставится сразу: иначе до следующего обновления
+    // он рисуется со старым положением, и персонаж мигает в стороне.
+    updatePresentation(0);
     return true;
 }
 
