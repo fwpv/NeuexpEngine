@@ -140,7 +140,21 @@ bool Player::grow()
     }
     bigFlag = true;
     positionValue.y -= BigHeight - Height;
+    // Кадр новой формы ставится сразу: иначе до следующего обновления
+    // он рисуется со старым положением, и персонаж мигает в стороне.
+    updatePresentation(0);
     return true;
+}
+
+void Player::shrink()
+{
+    if (!bigFlag) {
+        return;
+    }
+    bigFlag = false;
+    // Тело уменьшается вниз, ноги остаются на месте.
+    positionValue.y += BigHeight - Height;
+    updatePresentation(0);
 }
 
 NeuexpEngine::Vector2 Player::position() const

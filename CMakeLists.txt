@@ -31,11 +31,9 @@ else()
         -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion)
 endif()
 
+# Движок собирается всегда и не зависит от демо и тестов.
 add_subdirectory(engine)
-
-if(BUILD_DEMOS OR BUILD_TESTING)
-    add_subdirectory(platform)
-endif()
+add_subdirectory(platform)
 
 if(BUILD_DEMOS)
     add_subdirectory(demos)

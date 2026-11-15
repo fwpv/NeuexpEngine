@@ -82,7 +82,7 @@ void Run::restart()
     scoreValue = 0;
     accumulator = 0;
     jumpQueued = false;
-    restartsAfterBlink = false;
+    deathBlink = false;
     state = Phase::Playing;
 }
 
@@ -101,25 +101,36 @@ void Run::respawn()
     state = Phase::Playing;
 }
 
-bool Run::loseLife()
+// Смерть: потеря жизни списывает её и звучит гибелью, а игрок получает мигание
+// и неуязвимость. На последней жизни мигание длится до перезапуска уровня.
+void Run::loseLife()
 {
     lifeCount = std::max(0, lifeCount - 1);
     soundList.push_back(Sound::Death);
-    // Последняя жизнь: уровень перезапустится, когда персонаж отмигает.
-    restartsAfterBlink = lifeCount <= 0;
-    return lifeCount > 0;
+    // Потеря жизни возвращает персонажа к обычной форме.
+    playerValue.shrink();
+    deathBlink = lifeCount == 0;
 }
 
+// Удар врагом: персонаж теряет жизнь и мигает на месте, игра продолжается.
+// Пока идёт мигание после последней жизни, персонаж неуязвим: ни урона, ни звука удара.
 void Run::damage()
 {
+    if (deathBlink) {
+        return;
+    }
     loseLife();
     playerValue.hurt();
 }
 
+// Падение в яму: жизни остались — персонаж снова на точке спавна; на последней жизни
+// он мигает там, где упал, и уровень перезапустится после мигания.
 void Run::fallIntoPit()
 {
     loseLife();
-    respawn();
+    if (lifeCount > 0) {
+        respawn();
+    }
     playerValue.hurt();
 }
 
@@ -148,8 +159,8 @@ void Run::update(float deltaTime, const Controls& controls)
             break;
         }
     }
-    // Жизни кончились: уровень начинается заново, как только мигание закончилось.
-    if (restartsAfterBlink && !playerValue.invulnerable()) {
+    // Мигание после последней жизни закончилось: уровень начинается заново.
+    if (deathBlink && !playerValue.invulnerable()) {
         reset();
     }
 }
@@ -158,7 +169,9 @@ void Run::step(float deltaTime, const Controls& controls)
 {
     // Порядок важен: сначала игрок и плитки, затем объекты мира, и только после сбора
     // наград проверяются контакты с врагами — собранная монета не должна спасать от смерти.
-    playerValue.update(deltaTime, controls, levelValue);
+    // Пока персонаж мигает после последней жизни, управление не принимается.
+    const Controls applied = deathBlink ? Controls{} : controls;
+    playerValue.update(deltaTime, applied, levelValue);
     if (playerValue.takeJumpStarted()) {
         soundList.push_back(Sound::Jump);
     }
@@ -176,7 +189,8 @@ void Run::step(float deltaTime, const Controls& controls)
     collectItems();
     updateCoins(deltaTime);
     resolveEnemyContacts();
-    if (playerValue.position().y > levelValue.pixelHeight() + 48) {
+    // Во время мигания после последней жизни персонаж ниже уровня не считается упавшим.
+    if (!deathBlink && playerValue.position().y > levelValue.pixelHeight() + 48) {
         fallIntoPit();
         return;
     }
