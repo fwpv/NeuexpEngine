@@ -83,6 +83,7 @@ void Run::restart()
     accumulator = 0;
     jumpQueued = false;
     restartsAfterBlink = false;
+    finalBlink = false;
     state = Phase::Playing;
 }
 
@@ -105,8 +106,10 @@ bool Run::loseLife()
 {
     lifeCount = std::max(0, lifeCount - 1);
     soundList.push_back(Sound::Death);
-    // Последняя жизнь: уровень перезапустится, когда персонаж отмигает.
+    // Последняя жизнь: уровень перезапустится, когда персонаж отмигает,
+    // а пока он мигает, управление не принимается.
     restartsAfterBlink = lifeCount <= 0;
+    finalBlink = lifeCount <= 0;
     return lifeCount > 0;
 }
 
@@ -119,7 +122,11 @@ void Run::damage()
 void Run::fallIntoPit()
 {
     loseLife();
-    respawn();
+    // Жизни кончились: персонаж мигает там, где упал (уже за картой, его не видно),
+    // а уровень перезапустится после мигания — как и при ударе врагом.
+    if (lifeCount > 0) {
+        respawn();
+    }
     playerValue.hurt();
 }
 
@@ -150,7 +157,12 @@ void Run::update(float deltaTime, const Controls& controls)
     }
     // Жизни кончились: уровень начинается заново, как только мигание закончилось.
     if (restartsAfterBlink && !playerValue.invulnerable()) {
+        restartsAfterBlink = false;
         reset();
+    }
+    // Мигание после последней смерти прошло: управление возвращается.
+    if (finalBlink && !playerValue.invulnerable()) {
+        finalBlink = false;
     }
 }
 
@@ -158,7 +170,9 @@ void Run::step(float deltaTime, const Controls& controls)
 {
     // Порядок важен: сначала игрок и плитки, затем объекты мира, и только после сбора
     // наград проверяются контакты с врагами — собранная монета не должна спасать от смерти.
-    playerValue.update(deltaTime, controls, levelValue);
+    // Последняя жизнь потеряна: пока персонаж мигает, он не управляется.
+    const Controls applied = finalBlink ? Controls{} : controls;
+    playerValue.update(deltaTime, applied, levelValue);
     if (playerValue.takeJumpStarted()) {
         soundList.push_back(Sound::Jump);
     }
@@ -176,7 +190,8 @@ void Run::step(float deltaTime, const Controls& controls)
     collectItems();
     updateCoins(deltaTime);
     resolveEnemyContacts();
-    if (playerValue.position().y > levelValue.pixelHeight() + 48) {
+    // Во время мигания после последней смерти персонаж ниже уровня не считается упавшим.
+    if (!finalBlink && playerValue.position().y > levelValue.pixelHeight() + 48) {
         fallIntoPit();
         return;
     }

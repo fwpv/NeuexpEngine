@@ -139,6 +139,8 @@ private:
     float accumulator = 0;
     // Жизни кончились: уровень перезапускается, когда мигание персонажа закончится.
     bool restartsAfterBlink = false;
+    // Последняя смерть: пока персонаж мигает, он не управляется, мир уже перезагружен.
+    bool finalBlink = false;
     int collected = 0;
     int coinTotal = 0;
     int scoreValue = 0;
