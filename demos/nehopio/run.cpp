@@ -96,6 +96,11 @@ void Run::respawn()
 {
     // Уровень и прогресс остаются прежними: сбрасывается только игрок.
     playerValue.reset(levelValue.playerSpawn());
+    // Маленьким персонаж бывает только на последней жизни: с запасом жизней
+    // после гибели он снова в большой форме.
+    if (lifeCount > 1) {
+        playerValue.grow();
+    }
     accumulator = 0;
     jumpQueued = false;
     state = Phase::Playing;
@@ -107,8 +112,10 @@ void Run::loseLife()
 {
     lifeCount = std::max(0, lifeCount - 1);
     soundList.push_back(Sound::Death);
-    // Потеря жизни возвращает персонажа к обычной форме.
-    playerValue.shrink();
+    // На последней жизни персонаж возвращается к обычной форме.
+    if (lifeCount == 1) {
+        playerValue.shrink();
+    }
     deathBlink = lifeCount == 0;
 }
 
