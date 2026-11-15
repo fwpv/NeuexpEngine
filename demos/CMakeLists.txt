@@ -84,3 +84,24 @@ add_dependencies(gui_demo demo_assets)
 if(MSVC)
     target_compile_options(gui_demo PRIVATE /utf-8)
 endif()
+
+add_executable(nehopio
+    nehopio/main.cpp
+    nehopio/game.cpp
+    nehopio/level.cpp
+    nehopio/tiles.cpp
+    nehopio/player.cpp
+    nehopio/assets.cpp
+    nehopio/run.cpp
+    nehopio/audio.cpp
+)
+if(WIN32)
+    set_target_properties(nehopio PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+target_include_directories(nehopio SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/third_party/miniaudio")
+target_link_libraries(nehopio PRIVATE engine_entry_point engine_application miniaudio project_warnings)
+set_target_properties(nehopio PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
+add_dependencies(nehopio demo_assets)
+if(MSVC)
+    target_compile_options(nehopio PRIVATE /utf-8)
+endif()
