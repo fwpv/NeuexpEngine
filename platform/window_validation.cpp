@@ -21,7 +21,7 @@ bool validateWindowTitle(const std::string& title, const char* operation, Error&
     bool valid = title.size() <= static_cast<std::size_t>(std::numeric_limits<int>::max());
     for (std::size_t index = 0; valid && index < title.size();) {
         std::uint32_t code = 0;
-        valid = Engine::Detail::nextUtf8(title, index, code) && code != 0;
+        valid = NeuexpEngine::Detail::nextUtf8(title, index, code) && code != 0;
     }
 
     if (!valid) {

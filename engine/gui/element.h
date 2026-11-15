@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace Engine::Gui
+namespace NeuexpEngine::Gui
 {
 enum class Align { Start, Center, End, Stretch };
 enum class ScaleMode { Inherit, Pixels };

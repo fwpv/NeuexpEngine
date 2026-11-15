@@ -63,7 +63,7 @@ void Scene::updateBolts(float time, float deltaTime)
     }
 }
 
-void Scene::drawWorld(Engine::Renderer2D& renderer, float time) const
+void Scene::drawWorld(NeuexpEngine::Renderer2D& renderer, float time) const
 {
     renderer.drawGradientRectangle(Rect{Vector2{}, WorldSize}, Color{0.025f, 0.04f, 0.12f, 1.0f}, Color{0.005f, 0.009f, 0.028f, 1.0f});
     // Дальние объекты рисуются раньше ближайших.
@@ -79,14 +79,14 @@ void Scene::drawWorld(Engine::Renderer2D& renderer, float time) const
     shuttle.draw(renderer, time);
 }
 
-void Scene::drawHud(Engine::Renderer2D& renderer, float time) const
+void Scene::drawHud(NeuexpEngine::Renderer2D& renderer, float time) const
 {
     const HudState state = {shuttle.position(), station.position(), station.beaconPosition(time),
         score, station.locksTarget(shuttle.position())};
     hud.draw(renderer, state, time);
 }
 
-void Hud::drawFrame(Engine::Renderer2D& renderer) const
+void Hud::drawFrame(NeuexpEngine::Renderer2D& renderer) const
 {
     constexpr Color HudFrameColor = {0.15f, 0.72f, 0.92f, 0.55f};
     constexpr Rect Frame = {22, 22, 756, 500};
@@ -100,7 +100,7 @@ void Hud::drawFrame(Engine::Renderer2D& renderer) const
     renderer.drawLine(Vector2{end.x, start.y}, Vector2{end.x, start.y + FrameCornerLength}, HudFrameColor);
 }
 
-void Hud::drawRadar(Engine::Renderer2D& renderer, const HudState& state, float time) const
+void Hud::drawRadar(NeuexpEngine::Renderer2D& renderer, const HudState& state, float time) const
 {
     constexpr Color RadarColor = {0.2f, 0.65f, 0.82f, 0.7f};
     constexpr Vector2 RadarCenter = {720, 470};
@@ -108,7 +108,7 @@ void Hud::drawRadar(Engine::Renderer2D& renderer, const HudState& state, float t
     renderer.drawEllipse(RadarCenter, Vector2{44.0f, 22.0f}, RadarColor, ShapeFill::Outline);
     renderer.drawEllipse(RadarCenter, Vector2{28.0f, 14.0f}, RadarColor, ShapeFill::Outline);
     const Transform2 sweep = {RadarCenter, 0, Vector2{42.0f, 21.0f}, Vector2{}};
-    renderer.drawLine(RadarCenter, sweep.toAffine().transformPoint(Engine::rotated(Vector2{1, 0}, time)), Color{0.2f, 0.8f, 0.95f, 0.4f});
+    renderer.drawLine(RadarCenter, sweep.toAffine().transformPoint(NeuexpEngine::rotated(Vector2{1, 0}, time)), Color{0.2f, 0.8f, 0.95f, 0.4f});
 
     // Положение шаттла показывается относительно станции, а не края всего уровня.
     const Affine2 radar = Transform2{RadarCenter, 0,
@@ -120,7 +120,7 @@ void Hud::drawRadar(Engine::Renderer2D& renderer, const HudState& state, float t
     renderer.drawCircle(Circle{beaconBlip, BlipRadius}, Color{1.0f, 0.6f, 0.22f, 1.0f}, ShapeFill::Filled, 8);
 }
 
-void Hud::drawStatusBars(Engine::Renderer2D& renderer) const
+void Hud::drawStatusBars(NeuexpEngine::Renderer2D& renderer) const
 {
     constexpr int BarCellCount = 12;
 
@@ -137,7 +137,7 @@ void Hud::drawStatusBars(Engine::Renderer2D& renderer) const
     }
 }
 
-void Hud::drawScore(Engine::Renderer2D& renderer, int score) const
+void Hud::drawScore(NeuexpEngine::Renderer2D& renderer, int score) const
 {
     constexpr int ScoreLightCount = 8;
 
@@ -150,7 +150,7 @@ void Hud::drawScore(Engine::Renderer2D& renderer, int score) const
     }
 }
 
-void Hud::drawTarget(Engine::Renderer2D& renderer, Vector2 position, bool locked) const
+void Hud::drawTarget(NeuexpEngine::Renderer2D& renderer, Vector2 position, bool locked) const
 {
     Color color{1.0f, 0.55f, 0.2f, 1.0f};
     color.alpha = locked ? color.alpha : 0.45f;
@@ -167,7 +167,7 @@ void Hud::drawTarget(Engine::Renderer2D& renderer, Vector2 position, bool locked
     }
 }
 
-void Hud::draw(Engine::Renderer2D& renderer, const HudState& state, float time) const
+void Hud::draw(NeuexpEngine::Renderer2D& renderer, const HudState& state, float time) const
 {
     drawFrame(renderer);
     drawRadar(renderer, state, time);

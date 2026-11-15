@@ -43,7 +43,7 @@ Audio::~Audio()
     shutdown();
 }
 
-bool Audio::load(const Engine::ResourceFiles& files, Engine::ResourceError& error)
+bool Audio::load(const NeuexpEngine::ResourceFiles& files, NeuexpEngine::ResourceError& error)
 {
     shutdown();
     if (ma_engine_init(nullptr, &impl->engine) != MA_SUCCESS) {
@@ -61,7 +61,7 @@ bool Audio::load(const Engine::ResourceFiles& files, Engine::ResourceError& erro
         const std::string name = path.u8string();
         if (ma_sound_init_from_file(&impl->engine, name.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr,
                 &impl->sounds[index]) != MA_SUCCESS) {
-            error = {Engine::ResourceErrorCode::Io, std::string("Cannot load sound: ") + SoundFiles[index]};
+            error = {NeuexpEngine::ResourceErrorCode::Io, std::string("Cannot load sound: ") + SoundFiles[index]};
             shutdown();
             return false;
         }

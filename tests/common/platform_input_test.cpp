@@ -143,9 +143,9 @@ extern "C" int __wrap_Xutf8LookupString(XIC context, XKeyPressedEvent* event, ch
 
 namespace
 {
-using Engine::EventType;
-using Engine::Key;
-using Engine::MouseButton;
+using NeuexpEngine::EventType;
+using NeuexpEngine::Key;
+using NeuexpEngine::MouseButton;
 
 void require(bool condition, const char* message)
 {
@@ -160,7 +160,7 @@ void pump()
     require(PlatformTest::checkOperation(Platform::processEvents(error), error), "Event processing failed.");
 }
 
-const Engine::Event* findEvent(EventType type, Key key = Key::Unknown)
+const NeuexpEngine::Event* findEvent(EventType type, Key key = Key::Unknown)
 {
     for (const auto& event : Platform::getEvents()) {
         if (event.type == type && (key == Key::Unknown || event.key == key)) {

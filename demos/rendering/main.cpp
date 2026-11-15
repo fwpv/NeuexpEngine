@@ -19,7 +19,7 @@
 
 namespace
 {
-using namespace Engine;
+using namespace NeuexpEngine;
 
 constexpr Color Ink = {0.06F, 0.10F, 0.14F};
 constexpr Color White = {0.92F, 0.97F, 1};
@@ -360,7 +360,7 @@ private:
 };
 }
 
-int Engine::applicationMain()
+int NeuexpEngine::applicationMain()
 {
     RenderingApplication application;
     ApplicationOptions options;

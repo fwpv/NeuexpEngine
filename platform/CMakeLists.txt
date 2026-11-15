@@ -12,9 +12,9 @@ endif()
 
 target_sources(platform PRIVATE window_validation.cpp)
 
-add_library(engine_input STATIC ../engine/input.cpp ../engine/detail/platform_input.cpp)
-target_include_directories(engine_input PUBLIC "${PROJECT_SOURCE_DIR}/engine")
-target_link_libraries(engine_input PRIVATE project_warnings)
-target_link_libraries(platform PUBLIC engine_input)
+add_library(neuexpengine_input STATIC ../engine/input.cpp ../engine/detail/platform_input.cpp)
+target_include_directories(neuexpengine_input PUBLIC "${PROJECT_SOURCE_DIR}/engine")
+target_link_libraries(neuexpengine_input PRIVATE project_warnings)
+target_link_libraries(platform PUBLIC neuexpengine_input)
 target_include_directories(platform PUBLIC "${PROJECT_SOURCE_DIR}/engine")
 target_link_libraries(platform PRIVATE project_warnings)

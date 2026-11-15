@@ -26,17 +26,17 @@ bool isKnownChar(char symbol)
 }
 
 // 'F' задаёт основание флага; сама зона финиша поднята над землёй на высоту древка.
-Engine::Rect flagBounds(int column, int row)
+NeuexpEngine::Rect flagBounds(int column, int row)
 {
     constexpr float PoleWidth = 20;
     constexpr float PoleHeight = 116;
     const float left = static_cast<float>(column) * Level::TileSize + (Level::TileSize - PoleWidth) / 2;
     const float bottom = static_cast<float>(row + 1) * Level::TileSize;
-    return Engine::Rect{left, bottom - PoleHeight, PoleWidth, PoleHeight};
+    return NeuexpEngine::Rect{left, bottom - PoleHeight, PoleWidth, PoleHeight};
 }
 }
 
-bool Level::load(const Engine::ResourceFiles& files, const std::string& name, Engine::ResourceError& error)
+bool Level::load(const NeuexpEngine::ResourceFiles& files, const std::string& name, NeuexpEngine::ResourceError& error)
 {
     std::string text;
     if (!files.readText(name, text, error)) {
@@ -50,11 +50,11 @@ bool Level::load(const Engine::ResourceFiles& files, const std::string& name, En
     // Разбор объектов: точки появления, монеты, враги и финиш. Результат применяется
     // к уровню только после проверки, что спавн и флаг найдены.
     const std::size_t width = loaded.front().size();
-    Engine::Vector2 loadedSpawn;
-    std::vector<Engine::Vector2> loadedCoins;
-    std::vector<Engine::Vector2> loadedEnemies;
-    std::vector<Engine::Vector2> loadedFlyers;
-    Engine::Rect loadedGoal;
+    NeuexpEngine::Vector2 loadedSpawn;
+    std::vector<NeuexpEngine::Vector2> loadedCoins;
+    std::vector<NeuexpEngine::Vector2> loadedEnemies;
+    std::vector<NeuexpEngine::Vector2> loadedFlyers;
+    NeuexpEngine::Rect loadedGoal;
     bool spawnFound = false;
     bool goalFound = false;
     for (std::size_t row = 0; row < loaded.size(); ++row) {
@@ -65,19 +65,19 @@ bool Level::load(const Engine::ResourceFiles& files, const std::string& name, En
             case 'P':
                 if (!spawnFound) {
                     // Ноги игрока ставим на нижнюю границу клетки спавна.
-                    loadedSpawn = Engine::Vector2{x + TileSize / 2, y + TileSize};
+                    loadedSpawn = NeuexpEngine::Vector2{x + TileSize / 2, y + TileSize};
                     spawnFound = true;
                 }
                 break;
             case 'o':
-                loadedCoins.push_back(Engine::Vector2{x + TileSize / 2, y + TileSize / 2});
+                loadedCoins.push_back(NeuexpEngine::Vector2{x + TileSize / 2, y + TileSize / 2});
                 break;
             case 'E':
-                loadedEnemies.push_back(Engine::Vector2{x + TileSize / 2, y + TileSize});
+                loadedEnemies.push_back(NeuexpEngine::Vector2{x + TileSize / 2, y + TileSize});
                 break;
             case 'V':
                 // Летающий враг висит по центру клетки.
-                loadedFlyers.push_back(Engine::Vector2{x + TileSize / 2, y + TileSize / 2});
+                loadedFlyers.push_back(NeuexpEngine::Vector2{x + TileSize / 2, y + TileSize / 2});
                 break;
             case 'F':
                 if (!goalFound) {
@@ -91,7 +91,7 @@ bool Level::load(const Engine::ResourceFiles& files, const std::string& name, En
         }
     }
     if (!spawnFound || !goalFound) {
-        error = {Engine::ResourceErrorCode::InvalidImage,
+        error = {NeuexpEngine::ResourceErrorCode::InvalidImage,
             std::string("Level requires 'P' and 'F': ") + name};
         return false;
     }
@@ -107,7 +107,7 @@ bool Level::load(const Engine::ResourceFiles& files, const std::string& name, En
 }
 
 bool Level::readRows(const std::string& name, const std::string& text, std::vector<std::string>& rows,
-    Engine::ResourceError& error) const
+    NeuexpEngine::ResourceError& error) const
 {
     std::istringstream stream(text);
     std::string line;
@@ -121,23 +121,23 @@ bool Level::readRows(const std::string& name, const std::string& text, std::vect
         rows.pop_back();
     }
     if (rows.empty()) {
-        error = {Engine::ResourceErrorCode::InvalidImage, "Level is empty: " + name};
+        error = {NeuexpEngine::ResourceErrorCode::InvalidImage, "Level is empty: " + name};
         return false;
     }
     const std::size_t width = rows.front().size();
     if (width == 0) {
-        error = {Engine::ResourceErrorCode::InvalidImage, "Level has empty rows: " + name};
+        error = {NeuexpEngine::ResourceErrorCode::InvalidImage, "Level has empty rows: " + name};
         return false;
     }
     for (std::size_t row = 0; row < rows.size(); ++row) {
         if (rows[row].size() != width) {
-            error = {Engine::ResourceErrorCode::InvalidImage,
+            error = {NeuexpEngine::ResourceErrorCode::InvalidImage,
                 "Level rows have different width at row " + std::to_string(row)};
             return false;
         }
         for (std::size_t column = 0; column < width; ++column) {
             if (!isKnownChar(rows[row][column])) {
-                error = {Engine::ResourceErrorCode::InvalidImage,
+                error = {NeuexpEngine::ResourceErrorCode::InvalidImage,
                     "Unknown level symbol at " + std::to_string(column) + "," + std::to_string(row)};
                 return false;
             }
@@ -171,7 +171,7 @@ float Level::pixelHeight() const
     return static_cast<float>(height()) * TileSize;
 }
 
-TileRange Level::tileRange(const Engine::Rect& area) const
+TileRange Level::tileRange(const NeuexpEngine::Rect& area) const
 {
     // Правая и нижняя границы области исключены, как и у самих прямоугольников.
     const int firstColumn = static_cast<int>(std::floor(area.position.x / TileSize));
@@ -204,7 +204,7 @@ bool Level::solid(int column, int row) const
     return Nehopio::isSolid(tile(column, row));
 }
 
-bool Level::solidAt(Engine::Vector2 point) const
+bool Level::solidAt(NeuexpEngine::Vector2 point) const
 {
     if (point.x < 0) {
         return false;
@@ -214,7 +214,7 @@ bool Level::solidAt(Engine::Vector2 point) const
     return solid(column, row);
 }
 
-bool Level::overlapsSolid(const Engine::Rect& box) const
+bool Level::overlapsSolid(const NeuexpEngine::Rect& box) const
 {
     constexpr float EdgeInset = 0.001F;
     const int firstColumn = static_cast<int>(std::floor(box.position.x / TileSize));
@@ -231,27 +231,27 @@ bool Level::overlapsSolid(const Engine::Rect& box) const
     return false;
 }
 
-Engine::Vector2 Level::playerSpawn() const
+NeuexpEngine::Vector2 Level::playerSpawn() const
 {
     return spawn;
 }
 
-const std::vector<Engine::Vector2>& Level::coinSpawns() const
+const std::vector<NeuexpEngine::Vector2>& Level::coinSpawns() const
 {
     return coins;
 }
 
-const std::vector<Engine::Vector2>& Level::enemySpawns() const
+const std::vector<NeuexpEngine::Vector2>& Level::enemySpawns() const
 {
     return enemies;
 }
 
-const std::vector<Engine::Vector2>& Level::flyerSpawns() const
+const std::vector<NeuexpEngine::Vector2>& Level::flyerSpawns() const
 {
     return flyers;
 }
 
-Engine::Rect Level::goal() const
+NeuexpEngine::Rect Level::goal() const
 {
     return goalBounds;
 }

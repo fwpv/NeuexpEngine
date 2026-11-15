@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace Engine::Detail
+namespace NeuexpEngine::Detail
 {
 struct DebugGlyph
 {

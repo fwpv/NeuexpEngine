@@ -3,7 +3,7 @@
 #include <array>
 #include <map>
 
-namespace Engine::Detail
+namespace NeuexpEngine::Detail
 {
 struct FontData
 {

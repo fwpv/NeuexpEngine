@@ -26,7 +26,7 @@
 #include <system_error>
 #include <vector>
 
-namespace Engine
+namespace NeuexpEngine
 {
 namespace
 {

@@ -7,7 +7,7 @@
 #include <cmath>
 #include <limits>
 
-namespace Engine
+namespace NeuexpEngine
 {
 Rect Viewport::bounds() const
 {

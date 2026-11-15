@@ -11,7 +11,7 @@
 #include <cmath>
 #include <string_view>
 
-namespace Engine
+namespace NeuexpEngine
 {
 namespace
 {
@@ -177,7 +177,7 @@ void Renderer2D::drawDebugText(std::string_view message, Vector2 position, Color
 }
 }
 
-namespace Engine
+namespace NeuexpEngine
 {
 Size2 Renderer2D::measureDebugText(std::string_view message, float pixel)
 {

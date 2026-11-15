@@ -9,7 +9,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace Engine::Detail
+namespace NeuexpEngine::Detail
 {
 namespace
 {

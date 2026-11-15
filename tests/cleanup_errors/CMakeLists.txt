@@ -4,7 +4,7 @@ if(WIN32)
         "${PROJECT_SOURCE_DIR}/platform/window_validation.cpp")
     target_include_directories(platform_cleanup_errors_test PRIVATE "${PROJECT_SOURCE_DIR}/engine")
     target_compile_definitions(platform_cleanup_errors_test PRIVATE NOMINMAX)
-    target_link_libraries(platform_cleanup_errors_test PRIVATE engine_input project_warnings opengl32 gdi32 user32 winmm)
+    target_link_libraries(platform_cleanup_errors_test PRIVATE neuexpengine_input project_warnings opengl32 gdi32 user32 winmm)
 
     set(CLEANUP_OVERRIDE "${CMAKE_CURRENT_SOURCE_DIR}/windows_cleanup_override.h")
     if(MSVC)

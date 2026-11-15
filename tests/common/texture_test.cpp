@@ -22,7 +22,7 @@
 
 namespace
 {
-using namespace Engine;
+using namespace NeuexpEngine;
 constexpr int WindowSize = 256;
 constexpr Color Black = { 0, 0, 0 };
 constexpr Color Red = { 1, 0, 0 };

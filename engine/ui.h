@@ -4,7 +4,7 @@
 #include "math2d.h"
 #include "transform.h"
 
-namespace Engine
+namespace NeuexpEngine
 {
 enum class UiError
 {

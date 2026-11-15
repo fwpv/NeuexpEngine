@@ -7,7 +7,7 @@
 
 #include <cstddef>
 
-namespace Engine
+namespace NeuexpEngine
 {
 Sprite::Sprite(const Texture& texture)
     : texture(texture)

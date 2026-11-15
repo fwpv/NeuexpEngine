@@ -21,13 +21,13 @@
 
 namespace Cleanup
 {
-using Engine::Affine2;
-using Engine::Camera2;
-using Engine::CameraView;
-using Engine::Circle;
-using Engine::Color;
-using Engine::Rect;
-using Engine::Vector2;
+using NeuexpEngine::Affine2;
+using NeuexpEngine::Camera2;
+using NeuexpEngine::CameraView;
+using NeuexpEngine::Circle;
+using NeuexpEngine::Color;
+using NeuexpEngine::Rect;
+using NeuexpEngine::Vector2;
 
 constexpr Color OutsideColor = {0.025F, 0.035F, 0.055F};
 constexpr Color GridColor = {0.16F, 0.22F, 0.23F};
@@ -56,7 +56,7 @@ Color playerColor(Coat coat)
     }
 }
 
-class CleanupApplication final : public Engine::Application
+class CleanupApplication final : public NeuexpEngine::Application
 {
 private:
     void drawHome(const GameState& game)
@@ -64,8 +64,8 @@ private:
         const bool ready = game.washed >= game.rules.homeGoal;
         const float progress = std::min(1.0F, static_cast<float>(game.washed) / static_cast<float>(game.rules.homeGoal));
         drawing.drawRectangle(game.world.homeLotBounds, Color{0.14F + 0.03F * progress, 0.16F + 0.16F * progress, 0.14F});
-        drawing.drawRectangle(game.world.homeLotBounds, ready ? GoalColor : BorderColor, Engine::ShapeFill::Outline);
-        drawing.drawRectangle(game.world.homeBounds, BorderColor, Engine::ShapeFill::Outline);
+        drawing.drawRectangle(game.world.homeLotBounds, ready ? GoalColor : BorderColor, NeuexpEngine::ShapeFill::Outline);
+        drawing.drawRectangle(game.world.homeBounds, BorderColor, NeuexpEngine::ShapeFill::Outline);
         constexpr Color HouseColor = {0.58F, 0.44F, 0.28F};
         if (game.washed >= game.rules.homeGoal / 4) {
             drawing.drawRectangle(Rect{2570, 1810, 260, 24}, HouseColor);
@@ -88,7 +88,7 @@ private:
     void drawWorld(const GameState& game, float time)
     {
         drawing.drawRectangle(game.world.bounds, Color{0.10F, 0.15F, 0.16F});
-        Engine::DrawOptions gridOptions;
+        NeuexpEngine::DrawOptions gridOptions;
         gridOptions.color = GridColor;
         constexpr float GridStep = 100;
         for (float x = GridStep; x < game.world.bounds.size.width; x += GridStep) {
@@ -97,29 +97,29 @@ private:
         for (float y = GridStep; y < game.world.bounds.size.height; y += GridStep) {
             drawing.drawLine(Vector2{0, y}, Vector2{game.world.bounds.size.width, y}, gridOptions);
         }
-        drawing.drawRectangle(game.world.bounds, BorderColor, Engine::ShapeFill::Outline);
+        drawing.drawRectangle(game.world.bounds, BorderColor, NeuexpEngine::ShapeFill::Outline);
         drawHome(game);
         for (const Rect& obstacle : game.world.obstacles) {
             drawing.drawRectangle(obstacle, Color{0.26F, 0.31F, 0.34F});
-            drawing.drawRectangle(obstacle, Color{0.49F, 0.54F, 0.56F}, Engine::ShapeFill::Outline);
+            drawing.drawRectangle(obstacle, Color{0.49F, 0.54F, 0.56F}, NeuexpEngine::ShapeFill::Outline);
         }
         for (const Puddle& puddle : game.world.puddles) {
-            drawing.drawCircle(puddle.shape, puddle.sticky ? OrangePoolColor : Color{0.035F, 0.28F, 0.68F}, Engine::ShapeFill::Filled, 32);
-            drawing.drawCircle(Circle{puddle.shape.center, puddle.shape.radius - 12}, puddle.sticky ? StickyPlayerColor : CleanPlayerColor, Engine::ShapeFill::Outline, 32);
+            drawing.drawCircle(puddle.shape, puddle.sticky ? OrangePoolColor : Color{0.035F, 0.28F, 0.68F}, NeuexpEngine::ShapeFill::Filled, 32);
+            drawing.drawCircle(Circle{puddle.shape.center, puddle.shape.radius - 12}, puddle.sticky ? StickyPlayerColor : CleanPlayerColor, NeuexpEngine::ShapeFill::Outline, 32);
         }
         if (game.target) {
-            drawing.drawCircle(Circle{*game.target, 14}, WhiteColor, Engine::ShapeFill::Outline, 32);
-            drawing.drawCircle(Circle{*game.target, 4}, WhiteColor, Engine::ShapeFill::Filled, 32);
+            drawing.drawCircle(Circle{*game.target, 14}, WhiteColor, NeuexpEngine::ShapeFill::Outline, 32);
+            drawing.drawCircle(Circle{*game.target, 4}, WhiteColor, NeuexpEngine::ShapeFill::Filled, 32);
         }
 
         const bool warning = game.carried > 0 && game.cargoAge >= game.rules.glueWarningTime && game.outcome == Outcome::Playing;
         const bool blink = warning && std::sin(time * 12.0f) > 0;
         const Color bodyColor = game.outcome == Outcome::Lost ? ExhaustedColor : playerColor(game.coat);
-        drawing.drawCircle(Circle{game.player, game.rules.playerRadius + 3}, blink ? WarningColor : WhiteColor, Engine::ShapeFill::Filled, 32);
-        drawing.drawCircle(Circle{game.player, game.rules.playerRadius}, bodyColor, Engine::ShapeFill::Filled, 32);
-        const Affine2 playerTransform = Engine::Transform2{game.player, game.heading, Vector2{1, 1}, Vector2{}}.toAffine();
-        drawing.drawCircle(Circle{playerTransform.transformPoint(Vector2{8, -6}), 3}, PanelColor, Engine::ShapeFill::Filled, 32);
-        drawing.drawCircle(Circle{playerTransform.transformPoint(Vector2{8, 6}), 3}, PanelColor, Engine::ShapeFill::Filled, 32);
+        drawing.drawCircle(Circle{game.player, game.rules.playerRadius + 3}, blink ? WarningColor : WhiteColor, NeuexpEngine::ShapeFill::Filled, 32);
+        drawing.drawCircle(Circle{game.player, game.rules.playerRadius}, bodyColor, NeuexpEngine::ShapeFill::Filled, 32);
+        const Affine2 playerTransform = NeuexpEngine::Transform2{game.player, game.heading, Vector2{1, 1}, Vector2{}}.toAffine();
+        drawing.drawCircle(Circle{playerTransform.transformPoint(Vector2{8, -6}), 3}, PanelColor, NeuexpEngine::ShapeFill::Filled, 32);
+        drawing.drawCircle(Circle{playerTransform.transformPoint(Vector2{8, 6}), 3}, PanelColor, NeuexpEngine::ShapeFill::Filled, 32);
         for (std::size_t index = 0; index < game.trash.size(); ++index) {
             const Trash& item = game.trash[index];
             if (item.state == TrashState::Washed) {
@@ -132,7 +132,7 @@ private:
             }
             const Color color = TrashColors[index % TrashColors.size()];
             if (index % 3 == 0) {
-                drawing.drawCircle(Circle{position, game.rules.trashRadius}, color, Engine::ShapeFill::Filled, 32);
+                drawing.drawCircle(Circle{position, game.rules.trashRadius}, color, NeuexpEngine::ShapeFill::Filled, 32);
             } else {
                 const float width = index % 3 == 1 ? game.rules.trashRadius * 2 : game.rules.trashRadius;
                 drawing.drawRectangle(Rect{position.x - width / 2, position.y - game.rules.trashRadius, width, game.rules.trashRadius * 2}, color);
@@ -145,7 +145,7 @@ private:
         return initializeRenderer(error);
     }
 
-    bool updateViews(const Engine::FrameInfo& frame, Platform::Error& error)
+    bool updateViews(const NeuexpEngine::FrameInfo& frame, Platform::Error& error)
     {
         const GameState& state = game.state();
         viewsReady = false;
@@ -160,26 +160,26 @@ private:
         mapPanel = Rect{static_cast<float>(mapX - 7), static_cast<float>(mapY - 7),
             static_cast<float>(mapWidth + 2 * 7), static_cast<float>(mapHeight + 2 * 7)};
         camera.position = state.player;
-        Engine::CameraError cameraError;
-        const Engine::Size2 screenSize = {static_cast<float>(frame.window.width), static_cast<float>(frame.window.height)};
-        const Camera2 panelCamera = {Vector2{screenSize.width / 2, screenSize.height / 2}, 1, screenSize, Engine::ViewportMode::Expand};
-        if (!camera.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, mainView, cameraError)) {
+        NeuexpEngine::CameraError cameraError;
+        const NeuexpEngine::Size2 screenSize = {static_cast<float>(frame.window.width), static_cast<float>(frame.window.height)};
+        const Camera2 panelCamera = {Vector2{screenSize.width / 2, screenSize.height / 2}, 1, screenSize, NeuexpEngine::ViewportMode::Expand};
+        if (!camera.createView(NeuexpEngine::Viewport{0, 0, frame.window.width, frame.window.height}, mainView, cameraError)) {
             error = Platform::Error{"Camera2::createView",
                 "Could not calculate the main view. CameraError: " + std::to_string(static_cast<int>(cameraError)), std::nullopt};
             return false;
         }
-        if (!minimap.createView(Engine::Viewport{mapX, mapY, mapWidth, mapHeight}, mapView, cameraError)) {
+        if (!minimap.createView(NeuexpEngine::Viewport{mapX, mapY, mapWidth, mapHeight}, mapView, cameraError)) {
             error = Platform::Error{"Camera2::createView",
                 "Could not calculate the minimap view. CameraError: " + std::to_string(static_cast<int>(cameraError)), std::nullopt};
             return false;
         }
-        if (!panelCamera.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, panelView, cameraError)) {
+        if (!panelCamera.createView(NeuexpEngine::Viewport{0, 0, frame.window.width, frame.window.height}, panelView, cameraError)) {
             error = Platform::Error{"Camera2::createView",
                 "Could not calculate the panel view. CameraError: " + std::to_string(static_cast<int>(cameraError)), std::nullopt};
             return false;
         }
-        Engine::UiError uiError;
-        if (!Engine::UiCanvas{}.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, hudView, uiError)) {
+        NeuexpEngine::UiError uiError;
+        if (!NeuexpEngine::UiCanvas{}.createView(NeuexpEngine::Viewport{0, 0, frame.window.width, frame.window.height}, hudView, uiError)) {
             error = Platform::Error{"UiCanvas::createView",
                 "Could not calculate the interface view. UiError: " + std::to_string(static_cast<int>(uiError)), std::nullopt};
             return false;
@@ -188,25 +188,25 @@ private:
         return true;
     }
 
-    bool onInput(const Engine::FrameInfo& frame, Platform::Error& error) override
+    bool onInput(const NeuexpEngine::FrameInfo& frame, Platform::Error& error) override
     {
         const GameState& state = game.state();
         const auto& input = Platform::getInput();
-        if (input.key(Engine::Key::Escape).pressed) {
+        if (input.key(NeuexpEngine::Key::Escape).pressed) {
             requestExit();
         }
-        if (input.key(Engine::Key::R).pressed) {
+        if (input.key(NeuexpEngine::Key::R).pressed) {
             game = Game{};
             setPaused(false);
             camera.zoom = 1;
             titleDirty = true;
         }
-        if (input.key(Engine::Key::P).pressed && state.outcome == Outcome::Playing) {
+        if (input.key(NeuexpEngine::Key::P).pressed && state.outcome == Outcome::Playing) {
             setPaused(!isPaused());
             titleDirty = true;
         }
-        if (input.key(Engine::Key::F).pressed) {
-            camera.mode = camera.mode == Engine::ViewportMode::Expand ? Engine::ViewportMode::Fit : Engine::ViewportMode::Expand;
+        if (input.key(NeuexpEngine::Key::F).pressed) {
+            camera.mode = camera.mode == NeuexpEngine::ViewportMode::Expand ? NeuexpEngine::ViewportMode::Fit : NeuexpEngine::ViewportMode::Expand;
             titleDirty = true;
         }
         const auto& mouse = input.mouse();
@@ -217,11 +217,11 @@ private:
             return false;
         }
         if (viewsReady && state.outcome == Outcome::Playing) {
-            for (const Engine::Event& event : Platform::getEvents()) {
-                if (event.type == Engine::EventType::MousePressed && event.button == Engine::MouseButton::Left) {
+            for (const NeuexpEngine::Event& event : Platform::getEvents()) {
+                if (event.type == NeuexpEngine::EventType::MousePressed && event.button == NeuexpEngine::MouseButton::Left) {
                     const Vector2 screen = {static_cast<float>(event.x), static_cast<float>(event.y)};
                     Vector2 world;
-                    const bool onMap = Engine::contains(mapPanel, screen);
+                    const bool onMap = NeuexpEngine::contains(mapPanel, screen);
                     if ((onMap ? mapView : mainView).screenToWorld(screen, world)) {
                         game.setTarget(world);
                     }
@@ -231,20 +231,20 @@ private:
         return true;
     }
 
-    bool onUpdate(const Engine::FrameInfo& frame, Platform::Error&) override
+    bool onUpdate(const NeuexpEngine::FrameInfo& frame, Platform::Error&) override
     {
         const GameState& state = game.state();
         Vector2 direction;
-        if (Platform::isKeyDown(Engine::Key::A) || Platform::isKeyDown(Engine::Key::ArrowLeft)) {
+        if (Platform::isKeyDown(NeuexpEngine::Key::A) || Platform::isKeyDown(NeuexpEngine::Key::ArrowLeft)) {
             direction.x -= 1;
         }
-        if (Platform::isKeyDown(Engine::Key::D) || Platform::isKeyDown(Engine::Key::ArrowRight)) {
+        if (Platform::isKeyDown(NeuexpEngine::Key::D) || Platform::isKeyDown(NeuexpEngine::Key::ArrowRight)) {
             direction.x += 1;
         }
-        if (Platform::isKeyDown(Engine::Key::W) || Platform::isKeyDown(Engine::Key::ArrowUp)) {
+        if (Platform::isKeyDown(NeuexpEngine::Key::W) || Platform::isKeyDown(NeuexpEngine::Key::ArrowUp)) {
             direction.y -= 1;
         }
-        if (Platform::isKeyDown(Engine::Key::S) || Platform::isKeyDown(Engine::Key::ArrowDown)) {
+        if (Platform::isKeyDown(NeuexpEngine::Key::S) || Platform::isKeyDown(NeuexpEngine::Key::ArrowDown)) {
             direction.y += 1;
         }
         const Coat previousCoat = state.coat;
@@ -258,7 +258,7 @@ private:
         return true;
     }
 
-    bool onPrepareFrame(const Engine::FrameInfo& frame, Platform::Error& error) override
+    bool onPrepareFrame(const NeuexpEngine::FrameInfo& frame, Platform::Error& error) override
     {
         const GameState& state = game.state();
         if (!updateViews(frame, error)) {
@@ -274,7 +274,7 @@ private:
                 << (state.washed >= state.rules.homeGoal ? " | HOME OPEN" : " | HOME LOCKED") << " goal=" << state.rules.homeGoal
                 << (isPaused() ? " | PAUSED" : "")
                 << " | WASD/click, wheel: zoom, P: pause, F: "
-                << (camera.mode == Engine::ViewportMode::Fit ? "fit" : "expand") << ", R: restart";
+                << (camera.mode == NeuexpEngine::ViewportMode::Fit ? "fit" : "expand") << ", R: restart";
             if (!Platform::setWindowTitle(title.str(), error)) {
                 return false;
             }
@@ -292,22 +292,22 @@ private:
         drawWorld(state, time);
         if (map) {
             Rect visible;
-            if (Engine::intersection(mainView.worldBounds, state.world.bounds, visible)) {
-                drawing.drawRectangle(visible, WhiteColor, Engine::ShapeFill::Outline);
+            if (NeuexpEngine::intersection(mainView.worldBounds, state.world.bounds, visible)) {
+                drawing.drawRectangle(visible, WhiteColor, NeuexpEngine::ShapeFill::Outline);
             }
             // Метки остаются различимыми и на маленькой миникарте.
             const float unitsPerPixel = bounds.size.width / static_cast<float>(view.viewport.width);
             for (std::size_t index = 0; index < state.trash.size(); ++index) {
                 if (state.trash[index].state == TrashState::Ground) {
-                    drawing.drawCircle(Circle{state.trash[index].position, 2 * unitsPerPixel}, TrashColors[index % TrashColors.size()], Engine::ShapeFill::Filled, 32);
+                    drawing.drawCircle(Circle{state.trash[index].position, 2 * unitsPerPixel}, TrashColors[index % TrashColors.size()], NeuexpEngine::ShapeFill::Filled, 32);
                 }
             }
-            drawing.drawCircle(Circle{state.player, 4 * unitsPerPixel}, WhiteColor, Engine::ShapeFill::Filled, 32);
-            drawing.drawCircle(Circle{state.player, 3 * unitsPerPixel}, state.outcome == Outcome::Lost ? ExhaustedColor : playerColor(state.coat), Engine::ShapeFill::Filled, 32);
+            drawing.drawCircle(Circle{state.player, 4 * unitsPerPixel}, WhiteColor, NeuexpEngine::ShapeFill::Filled, 32);
+            drawing.drawCircle(Circle{state.player, 3 * unitsPerPixel}, state.outcome == Outcome::Lost ? ExhaustedColor : playerColor(state.coat), NeuexpEngine::ShapeFill::Filled, 32);
         }
     }
 
-    bool onRender(const Engine::FrameInfo& frame, Platform::Error& error) override
+    bool onRender(const NeuexpEngine::FrameInfo& frame, Platform::Error& error) override
     {
         const GameState& state = game.state();
         if (!viewsReady) {
@@ -318,7 +318,7 @@ private:
         renderView(mainView, false, time);
         drawing.setWorldView(panelView);
         drawing.drawRectangle(mapPanel, PanelColor);
-        drawing.drawRectangle(mapPanel, BorderColor, Engine::ShapeFill::Outline);
+        drawing.drawRectangle(mapPanel, BorderColor, NeuexpEngine::ShapeFill::Outline);
         renderView(mapView, true, time);
         drawing.setUiView(hudView);
         const Vector2 homeMarker = mapView.worldToScreen(state.world.homeBounds.center());
@@ -334,7 +334,7 @@ private:
         drawing.drawRectangle(Rect{224, 16, 88, 68}, PanelColor);
         drawing.drawDebugText("CARGO", Vector2{236, 25}, WhiteColor, 1);
         drawing.drawDebugText(std::to_string(state.carried), Vector2{236, 44}, StickyPlayerColor, 2);
-        drawing.drawCircle(Circle{Vector2{291, 51}, 9}, state.outcome == Outcome::Lost ? ExhaustedColor : playerColor(state.coat), Engine::ShapeFill::Filled, 32);
+        drawing.drawCircle(Circle{Vector2{291, 51}, 9}, state.outcome == Outcome::Lost ? ExhaustedColor : playerColor(state.coat), NeuexpEngine::ShapeFill::Filled, 32);
 
         const bool homeReady = state.washed >= state.rules.homeGoal;
         const float homeProgress = std::min(1.0F, static_cast<float>(state.washed) / static_cast<float>(state.rules.homeGoal));
@@ -342,7 +342,7 @@ private:
         drawing.drawDebugText(homeReady ? "HOME OPEN" : "HOME MATERIAL", Vector2{332, 25}, homeReady ? GoalColor : WhiteColor, 1);
         const std::string delivered = std::to_string(state.washed);
         drawing.drawDebugText(delivered, Vector2{332, 44}, CleanPlayerColor, 2);
-        const float goalX = 332 + Engine::Renderer2D::measureDebugText(delivered, 2).width + 8;
+        const float goalX = 332 + NeuexpEngine::Renderer2D::measureDebugText(delivered, 2).width + 8;
         drawing.drawDebugText("/ " + std::to_string(state.rules.homeGoal), Vector2{goalX, 44}, WhiteColor, 2);
         drawing.drawRectangle(Rect{332, 65, 136, 6}, GridColor);
         drawing.drawRectangle(Rect{332, 65, 136 * homeProgress, 6}, GoalColor);
@@ -378,29 +378,29 @@ private:
             const std::string_view heading = won ? "HOME AT LAST" : (state.outcome == Outcome::Lost ? "NO MOTIVATION" : "PAUSED");
             const Color color = won ? GoalColor : (state.outcome == Outcome::Lost ? WarningColor : WhiteColor);
             drawing.drawRectangle(Rect{center.x - 190, center.y - 65, 380, 130}, PanelColor);
-            drawing.drawRectangle(Rect{center.x - 190, center.y - 65, 380, 130}, color, Engine::ShapeFill::Outline);
-            const auto headingSize = Engine::Renderer2D::measureDebugText(heading, 2);
+            drawing.drawRectangle(Rect{center.x - 190, center.y - 65, 380, 130}, color, NeuexpEngine::ShapeFill::Outline);
+            const auto headingSize = NeuexpEngine::Renderer2D::measureDebugText(heading, 2);
             drawing.drawDebugText(heading, Vector2{std::round(center.x - headingSize.width / 2),
                 std::round(center.y - 38)}, color, 2);
             if (state.outcome == Outcome::Lost) {
-                const auto messageSize = Engine::Renderer2D::measureDebugText("REST AND TRY AGAIN", 1);
+                const auto messageSize = NeuexpEngine::Renderer2D::measureDebugText("REST AND TRY AGAIN", 1);
                 drawing.drawDebugText("REST AND TRY AGAIN", Vector2{std::round(center.x - messageSize.width / 2),
                     std::round(center.y - 4)}, WhiteColor, 1);
             }
             const std::string_view action = state.outcome == Outcome::Playing ? "P TO CONTINUE" : "R TO RESTART";
-            const auto actionSize = Engine::Renderer2D::measureDebugText(action, 1);
+            const auto actionSize = NeuexpEngine::Renderer2D::measureDebugText(action, 1);
             drawing.drawDebugText(action, Vector2{std::round(center.x - actionSize.width / 2),
                 std::round(center.y + 25)}, WhiteColor, 1);
         }
         return endFrame(error);
     }
 
-    Engine::Renderer2D& drawing = getRenderer();
+    NeuexpEngine::Renderer2D& drawing = getRenderer();
     CameraView panelView;
-    Engine::UiView hudView;
+    NeuexpEngine::UiView hudView;
     Game game;
-    Camera2 camera = {game.state().world.bounds.center(), 1, Engine::Size2{960, 600}, Engine::ViewportMode::Expand};
-    Camera2 minimap = {game.state().world.bounds.center(), 1, game.state().world.bounds.size, Engine::ViewportMode::Fit};
+    Camera2 camera = {game.state().world.bounds.center(), 1, NeuexpEngine::Size2{960, 600}, NeuexpEngine::ViewportMode::Expand};
+    Camera2 minimap = {game.state().world.bounds.center(), 1, game.state().world.bounds.size, NeuexpEngine::ViewportMode::Fit};
     CameraView mainView;
     CameraView mapView;
     Rect mapPanel;
@@ -409,9 +409,9 @@ private:
 };
 }
 
-int Engine::applicationMain()
+int NeuexpEngine::applicationMain()
 {
-    Engine::ApplicationOptions options;
+    NeuexpEngine::ApplicationOptions options;
     options.window.title = "Cleanup";
     options.window.width = 1100;
     options.window.height = 720;

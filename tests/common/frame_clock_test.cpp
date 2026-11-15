@@ -19,11 +19,11 @@ void requireNear(float actual, float expected)
 int main()
 {
     try {
-        using Clock = Engine::FrameClock::Clock;
+        using Clock = NeuexpEngine::FrameClock::Clock;
         using std::chrono::milliseconds;
         const Clock::time_point start{};
         constexpr float MaximumDeltaTime = 0.08F;
-        Engine::FrameClock clock(MaximumDeltaTime, start);
+        NeuexpEngine::FrameClock clock(MaximumDeltaTime, start);
         requireNear(clock.tick(start), 0);
         requireNear(clock.tick(start + milliseconds(20)), 0.02F);
         requireNear(clock.tick(start + milliseconds(100)), MaximumDeltaTime);

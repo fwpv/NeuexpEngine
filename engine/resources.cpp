@@ -11,7 +11,7 @@
 #include <system_error>
 #include <vector>
 
-namespace Engine
+namespace NeuexpEngine
 {
 bool ResourceFiles::initialize(ResourceError& error, const std::filesystem::path& root)
 {

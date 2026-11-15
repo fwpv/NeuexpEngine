@@ -30,7 +30,7 @@ void Bolt::update(float deltaTime)
 
 bool Bolt::isExpired(const Rect& bounds) const
 {
-    return secondsLeft <= 0 || !Engine::contains(bounds, location);
+    return secondsLeft <= 0 || !NeuexpEngine::contains(bounds, location);
 }
 
 Vector2 Bolt::position() const
@@ -38,7 +38,7 @@ Vector2 Bolt::position() const
     return location;
 }
 
-void Bolt::draw(Engine::Renderer2D& renderer) const
+void Bolt::draw(NeuexpEngine::Renderer2D& renderer) const
 {
     DrawOptions options;
     options.lineWidth = 3.0f;
@@ -67,12 +67,12 @@ void Shuttle::update(const InputState& input, float deltaTime)
     thrusting = movement.x != 0.0f || movement.y != 0.0f;
     if (thrusting) {
         constexpr float MovementSpeed = 205.0f; // Мировые единицы в секунду.
-        transform.position += Engine::normalized(movement) * MovementSpeed * deltaTime;
+        transform.position += NeuexpEngine::normalized(movement) * MovementSpeed * deltaTime;
         transform.rotation = std::atan2(movement.y, movement.x) + (Pi / 2);
     }
 
     constexpr Rect MovementBounds = {38, 76, 724, 429};
-    transform.position = Engine::closestPoint(MovementBounds, transform.position);
+    transform.position = NeuexpEngine::closestPoint(MovementBounds, transform.position);
 }
 
 std::optional<Bolt> Shuttle::fire(bool requested, float time)
@@ -81,7 +81,7 @@ std::optional<Bolt> Shuttle::fire(bool requested, float time)
         return std::nullopt;
     }
     const Affine2 shot = transform.toAffine();
-    const Vector2 direction = Engine::normalized(shot.transformVector(Vector2{0, -1}));
+    const Vector2 direction = NeuexpEngine::normalized(shot.transformVector(Vector2{0, -1}));
     constexpr float ShotIntervalSeconds = 0.24f;
     constexpr float BoltSpeed = 470.0f; // Мировые единицы в секунду.
     constexpr float BoltLifetimeSeconds = 2.0f;
@@ -99,7 +99,7 @@ void Shuttle::teleport(Vector2 destination)
     transform.position = destination;
 }
 
-void Shuttle::draw(Engine::Renderer2D& renderer, float time) const
+void Shuttle::draw(NeuexpEngine::Renderer2D& renderer, float time) const
 {
     DrawOptions options;
     options.transform = transform.toAffine();
@@ -107,17 +107,17 @@ void Shuttle::draw(Engine::Renderer2D& renderer, float time) const
     if (thrusting) {
         const float flame = 13.0f + 5.0f * std::sin(time * 25.0f);
         options.color = Color{1.0f, 0.3f, 0.05f, 1.0f};
-        renderer.drawPolygon(Engine::Polygon{Vector2{-7.0f, 13.0f}, Vector2{0, 13.0f + flame}, Vector2{7.0f, 13.0f}}, options);
+        renderer.drawPolygon(NeuexpEngine::Polygon{Vector2{-7.0f, 13.0f}, Vector2{0, 13.0f + flame}, Vector2{7.0f, 13.0f}}, options);
     }
 
     options.color = Color{0.14f, 0.56f, 0.78f, 1.0f};
-    renderer.drawPolygon(Engine::Polygon{
+    renderer.drawPolygon(NeuexpEngine::Polygon{
         Vector2{0.0f, -20.0f}, Vector2{7.0f, -5.0f}, Vector2{17.0f, 9.0f}, Vector2{8.0f, 7.0f},
         Vector2{0.0f, 13.0f}, Vector2{-8.0f, 7.0f}, Vector2{-17.0f, 9.0f}, Vector2{-7.0f, -5.0f}
     }, options);
 
     options.color = Color{0.05f, 0.15f, 0.26f, 1.0f};
-    renderer.drawPolygon(Engine::Quad{Vector2{-3.0f, 1.0f}, Vector2{3.0f, 1.0f},
+    renderer.drawPolygon(NeuexpEngine::Quad{Vector2{-3.0f, 1.0f}, Vector2{3.0f, 1.0f},
         Vector2{5.0f, 7.0f}, Vector2{-5.0f, 7.0f}}, options);
     options.color = Color{0.3f, 0.9f, 1.0f, 0.75f};
     renderer.drawCircle(Circle{Vector2{}, 22.0f}, options, ShapeFill::Outline);
@@ -132,7 +132,7 @@ Vector2 Drone::position(float time) const
 {
     const float angle = time * 0.42f + phase;
     const Transform2 orbit = {Vector2{655.0f, 340.0f}, 0, Vector2{150.0f, 47.0f}, Vector2{}};
-    return orbit.toAffine().transformPoint(Engine::rotated(Vector2{1, 0}, angle));
+    return orbit.toAffine().transformPoint(NeuexpEngine::rotated(Vector2{1, 0}, angle));
 }
 
 void Drone::update(float time)
@@ -144,7 +144,7 @@ void Drone::update(float time)
 
 bool Drone::tryHit(Vector2 point, float time)
 {
-    if (!active || !Engine::contains(Circle{position(time), 17.0f}, point)) {
+    if (!active || !NeuexpEngine::contains(Circle{position(time), 17.0f}, point)) {
         return false;
     }
     active = false;
@@ -153,7 +153,7 @@ bool Drone::tryHit(Vector2 point, float time)
     return true;
 }
 
-void Drone::draw(Engine::Renderer2D& renderer, float time) const
+void Drone::draw(NeuexpEngine::Renderer2D& renderer, float time) const
 {
     if (!active) {
         return;
@@ -174,14 +174,14 @@ Portal::Portal(Vector2 entrance, Vector2 exit)
 
 bool Portal::tryTeleport(Shuttle& shuttle) const
 {
-    if (!Engine::contains(Circle{position, 28.0f}, shuttle.position())) {
+    if (!NeuexpEngine::contains(Circle{position, 28.0f}, shuttle.position())) {
         return false;
     }
     shuttle.teleport(destination);
     return true;
 }
 
-void Portal::draw(Engine::Renderer2D& renderer, float time, bool open) const
+void Portal::draw(NeuexpEngine::Renderer2D& renderer, float time, bool open) const
 {
     const float brightness = open ? 1.0f : 0.3f;
     const float pulse = 1.0f + 0.12f * std::sin(time * 3.0f);
@@ -225,7 +225,7 @@ void PortalPair::update(Shuttle& shuttle, float time)
     }
 }
 
-void PortalPair::draw(Engine::Renderer2D& renderer, float time) const
+void PortalPair::draw(NeuexpEngine::Renderer2D& renderer, float time) const
 {
     float portalTime = time;
     for (const Portal& portal : portals) {
@@ -242,15 +242,15 @@ Vector2 Station::position() const
 Vector2 Station::beaconPosition(float time) const
 {
     const Transform2 orbit = {StationPosition, 0, Vector2{105.0f, 42.0f}, Vector2{}};
-    return orbit.toAffine().transformPoint(Engine::rotated(Vector2{1, 0}, time * 0.9f));
+    return orbit.toAffine().transformPoint(NeuexpEngine::rotated(Vector2{1, 0}, time * 0.9f));
 }
 
 bool Station::locksTarget(Vector2 point) const
 {
-    return Engine::contains(Circle{StationPosition, 72.0f}, point);
+    return NeuexpEngine::contains(Circle{StationPosition, 72.0f}, point);
 }
 
-void Station::draw(Engine::Renderer2D& renderer, float time) const
+void Station::draw(NeuexpEngine::Renderer2D& renderer, float time) const
 {
     renderer.drawEllipse(StationPosition, Vector2{102.0f, 42.0f}, Color{0.12f, 0.8f, 1.0f, 0.28f}, ShapeFill::Outline);
     renderer.drawCircle(Circle{StationPosition, 32.0f}, Color{0.06f, 0.15f, 0.28f, 1.0f}, ShapeFill::Filled, 32);
@@ -285,14 +285,14 @@ void Station::draw(Engine::Renderer2D& renderer, float time) const
     renderer.drawCircle(Circle{beacon, 6.0f}, Color{1.0f, 0.6f, 0.22f, 1.0f}, ShapeFill::Filled, 12);
 }
 
-void Background::draw(Engine::Renderer2D& renderer, Size2 worldSize, float time) const
+void Background::draw(NeuexpEngine::Renderer2D& renderer, Size2 worldSize, float time) const
 {
     drawNebula(renderer, time);
     drawStars(renderer, worldSize, time);
     drawPlanet(renderer, time);
 }
 
-void Background::drawNebula(Engine::Renderer2D& renderer, float time) const
+void Background::drawNebula(NeuexpEngine::Renderer2D& renderer, float time) const
 {
     constexpr int NebulaCloudCount = 6;
     constexpr Vector2 NebulaStart = {80.0f, 290.0f};
@@ -307,7 +307,7 @@ void Background::drawNebula(Engine::Renderer2D& renderer, float time) const
     }
 }
 
-void Background::drawStars(Engine::Renderer2D& renderer, Size2 worldSize, float time) const
+void Background::drawStars(NeuexpEngine::Renderer2D& renderer, Size2 worldSize, float time) const
 {
     constexpr unsigned int StarCount = 130u;
 
@@ -327,7 +327,7 @@ void Background::drawStars(Engine::Renderer2D& renderer, Size2 worldSize, float 
     }
 }
 
-void Background::drawPlanet(Engine::Renderer2D& renderer, float time) const
+void Background::drawPlanet(NeuexpEngine::Renderer2D& renderer, float time) const
 {
     constexpr Vector2 PlanetPosition = {655.0f, 340.0f};
     constexpr int PlanetBandCount = 7;

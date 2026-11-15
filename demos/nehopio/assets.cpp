@@ -22,12 +22,12 @@ constexpr double RunFrameTime = 0.09;
 // Неподвижный клип из одного кадра: длительность не влияет на показ.
 constexpr double StillFrameTime = 1.0;
 // Монета рисуется крупнее участка атласа; этот же размер задаёт её тело в правилах.
-constexpr Engine::Size2 CoinFrameSize{20, 20};
+constexpr NeuexpEngine::Size2 CoinFrameSize{20, 20};
 constexpr std::size_t OrdinarySheet = 0;
 constexpr std::size_t BigSheet = 1;
 
 // Клипы врага: походка и раздавленный кадр для обоих направлений взгляда.
-const std::vector<Engine::AnimationSet::Clip> EnemyClips{
+const std::vector<NeuexpEngine::AnimationSet::Clip> EnemyClips{
     {"walk", {"walk.0", "walk.1"}, EnemyWalkFrameTime},
     {"walk.left", {"walk.0.left", "walk.1.left"}, EnemyWalkFrameTime},
     {"squash", {"squash"}, StillFrameTime},
@@ -36,7 +36,7 @@ const std::vector<Engine::AnimationSet::Clip> EnemyClips{
 
 // Клипы листа игрока: имя, участки атласа в порядке кадров и длительность кадра.
 // Клипы взгляда влево берут кадры зеркальной половины листа.
-const std::vector<Engine::AnimationSet::Clip> PlayerClips{
+const std::vector<NeuexpEngine::AnimationSet::Clip> PlayerClips{
     {"idle", {"idle.0", "idle.1"}, IdleFrameTime},
     {"run", {"run.0", "run.1", "run.2", "run.3"}, RunFrameTime},
     {"jump", {"jump"}, StillFrameTime},
@@ -52,22 +52,22 @@ const std::vector<Engine::AnimationSet::Clip> PlayerClips{
 constexpr std::array<const char*, 2> CloudNames{"cloud.0", "cloud.1"};
 
 // Спрайт участка атласа; отсутствующее имя — ошибка описания атласа.
-bool atlasSprite(const Engine::TextureAtlas& atlas, std::string_view name, Engine::Sprite& result,
-    Engine::ResourceError& error)
+bool atlasSprite(const NeuexpEngine::TextureAtlas& atlas, std::string_view name, NeuexpEngine::Sprite& result,
+    NeuexpEngine::ResourceError& error)
 {
     if (!atlas.createSprite(name, result)) {
-        error = {Engine::ResourceErrorCode::InvalidImage, "Missing atlas region: " + std::string(name)};
+        error = {NeuexpEngine::ResourceErrorCode::InvalidImage, "Missing atlas region: " + std::string(name)};
         return false;
     }
-    result.filter = Engine::TextureFilter::Nearest;
+    result.filter = NeuexpEngine::TextureFilter::Nearest;
     return true;
 }
 }
 
-bool Assets::load(Engine::Renderer2D& renderer, const Engine::ResourceFiles& files, Engine::ResourceError& error)
+bool Assets::load(NeuexpEngine::Renderer2D& renderer, const NeuexpEngine::ResourceFiles& files, NeuexpEngine::ResourceError& error)
 {
     // Заливки фона и панелей рисуются текстурами с растяжением.
-    const std::array<std::pair<const char*, Engine::Texture*>, 3> fills{{
+    const std::array<std::pair<const char*, NeuexpEngine::Texture*>, 3> fills{{
         {"nehopio/sky.png", &sky},
         {"nehopio/abyss.png", &abyss},
         {"nehopio/panel.png", &panel},
@@ -79,7 +79,7 @@ bool Assets::load(Engine::Renderer2D& renderer, const Engine::ResourceFiles& fil
     }
     // Листу нужны три значения — картинка, описание атласа и приёмник.
     // Текстура остаётся живой за счёт ссылки внутри атласа.
-    using Sheet = std::tuple<const char*, const char*, Engine::TextureAtlas*>;
+    using Sheet = std::tuple<const char*, const char*, NeuexpEngine::TextureAtlas*>;
     const std::array<Sheet, 7> sheets{{
         {"nehopio/player.png", "nehopio/player.atlas", &playerAtlas},
         {"nehopio/player_big.png", "nehopio/player_big.atlas", &playerBigAtlas},
@@ -90,28 +90,28 @@ bool Assets::load(Engine::Renderer2D& renderer, const Engine::ResourceFiles& fil
         {"nehopio/clouds.png", "nehopio/clouds.atlas", &cloudAtlas},
     }};
     for (const auto& [image, atlas, target] : sheets) {
-        Engine::Texture texture;
+        NeuexpEngine::Texture texture;
         if (!renderer.loadTexture(files, image, texture, error) || !target->load(texture, files, atlas, error)) {
             return false;
         }
     }
     // Цельные картинки: спрайт берёт размер из картинки, положение задаёт отрисовка.
-    const std::array<std::pair<const char*, Engine::Sprite*>, 4> sprites{{
+    const std::array<std::pair<const char*, NeuexpEngine::Sprite*>, 4> sprites{{
         {"nehopio/flag.png", &flagSprite},
         {"nehopio/hill.png", &hillSprite},
         {"nehopio/bush.png", &bushSprite},
         {"nehopio/mushroom.png", &mushroomSprite},
     }};
     for (const auto& [path, target] : sprites) {
-        Engine::Texture texture;
+        NeuexpEngine::Texture texture;
         if (!renderer.loadTexture(files, path, texture, error)) {
             return false;
         }
-        *target = Engine::Sprite(texture);
-        target->filter = Engine::TextureFilter::Nearest;
+        *target = NeuexpEngine::Sprite(texture);
+        target->filter = NeuexpEngine::TextureFilter::Nearest;
     }
     // Шрифт: изображение готовится как белая альфа-маска глифов.
-    Engine::Texture fontImage;
+    NeuexpEngine::Texture fontImage;
     std::string fontDescription;
     if (!renderer.loadFontImage(files, "font/fnt20.fnt", fontImage, fontDescription, error)
         || !font.load(fontImage, fontDescription, error)) {
@@ -123,8 +123,8 @@ bool Assets::load(Engine::Renderer2D& renderer, const Engine::ResourceFiles& fil
         || !popup.load(coinAtlas, coinFrames, PopupFrameTime, error)) {
         return false;
     }
-    coin.filter = Engine::TextureFilter::Nearest;
-    popup.filter = Engine::TextureFilter::Nearest;
+    coin.filter = NeuexpEngine::TextureFilter::Nearest;
+    popup.filter = NeuexpEngine::TextureFilter::Nearest;
     coin.size = CoinFrameSize;
     popup.size = CoinFrameSize;
     coin.restart();
@@ -133,16 +133,16 @@ bool Assets::load(Engine::Renderer2D& renderer, const Engine::ResourceFiles& fil
     if (!walker.load(enemyAtlas, EnemyClips, error) || !flyer.load(flyerAtlas, EnemyClips, error)) {
         return false;
     }
-    walker.setFilter(Engine::TextureFilter::Nearest);
-    flyer.setFilter(Engine::TextureFilter::Nearest);
+    walker.setFilter(NeuexpEngine::TextureFilter::Nearest);
+    flyer.setFilter(NeuexpEngine::TextureFilter::Nearest);
     // Кадры персонажа: обычная и увеличенная форма, клипы у листов одинаковые.
-    const std::array<const Engine::TextureAtlas*, 2> playerSheets{&playerAtlas, &playerBigAtlas};
+    const std::array<const NeuexpEngine::TextureAtlas*, 2> playerSheets{&playerAtlas, &playerBigAtlas};
     for (std::size_t index = 0; index < playerSheets.size(); ++index) {
-        Engine::AnimationSet& shown = player[index];
+        NeuexpEngine::AnimationSet& shown = player[index];
         if (!shown.load(*playerSheets[index], PlayerClips, error)) {
             return false;
         }
-        shown.setFilter(Engine::TextureFilter::Nearest);
+        shown.setFilter(NeuexpEngine::TextureFilter::Nearest);
         shown.restart();
     }
     // Спрайты плиток по символу карты: набор задаёт tiles.h.
@@ -150,7 +150,7 @@ bool Assets::load(Engine::Renderer2D& renderer, const Engine::ResourceFiles& fil
         if (!tile.region) {
             continue;
         }
-        Engine::Sprite sprite;
+        NeuexpEngine::Sprite sprite;
         if (!atlasSprite(tileAtlas, tile.region, sprite, error)) {
             return false;
         }

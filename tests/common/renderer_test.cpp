@@ -33,7 +33,7 @@ using RenderTest::require;
 using RenderTest::FramebufferApi;
 using RenderTest::RenderTarget;
 
-using namespace Engine;
+using namespace NeuexpEngine;
 constexpr Color Black = { 0, 0, 0 };
 constexpr Color Red = { 1, 0, 0 };
 constexpr Color Green = { 0, 1, 0 };
@@ -333,7 +333,7 @@ void errors()
         }
     }
     reject([&] { renderer.drawPolygon(Quad{}, Red); }, RenderError::InvalidGeometry, "Degenerate quad accepted.");
-    reject([&] { renderer.drawPolygon(Engine::Polygon{}, style(Red)); }, RenderError::InvalidGeometry, "Empty polygon accepted.");
+    reject([&] { renderer.drawPolygon(NeuexpEngine::Polygon{}, style(Red)); }, RenderError::InvalidGeometry, "Empty polygon accepted.");
     reject([&] { renderer.drawCircle({ {}, -1 }, style(Red), ShapeFill::Filled); }, RenderError::InvalidGeometry, "Negative radius accepted.");
     reject([&] { renderer.drawCircle({ {}, 10 }, style(Red), ShapeFill::Filled, 2); }, RenderError::InvalidGeometry, "Invalid circle subdivision accepted.");
     reject([&] { renderer.drawRectangle({ 10, 10, -1, 20 }, style(Red), ShapeFill::Filled); }, RenderError::InvalidGeometry, "Negative rectangle accepted.");
@@ -476,7 +476,7 @@ void sorting()
     renderer.drawRectangle({ 0, 0, 100, 100 }, ordered(Blue, 1), ShapeFill::Filled);
     renderer.setClip(std::nullopt);
     // Отложенные команды владеют копией вершин и параметров.
-    Engine::Polygon polygon = {Vector2{10, 120}, Vector2{70, 120}, Vector2{10, 180}};
+    NeuexpEngine::Polygon polygon = {Vector2{10, 120}, Vector2{70, 120}, Vector2{10, 180}};
     DrawOptions options = style(Blue);
     renderer.drawPolygon(polygon, options, ShapeFill::Filled);
     polygon.clear();
@@ -530,7 +530,7 @@ void ellipses()
     renderer.drawEllipse({ 5, 0 }, { 12, 5 }, transformed, ShapeFill::Filled, 64);
     renderer.drawRectangle({ 150, 20, 20, 20 }, Blue);
     renderer.drawEllipse({ 65, 140 }, { 20, 10 }, White, ShapeFill::Outline, 4);
-    renderer.drawPolygon(Engine::Polygon{Vector2{5, 170}, Vector2{25, 170}, Vector2{5, 190}}, Green);
+    renderer.drawPolygon(NeuexpEngine::Polygon{Vector2{5, 170}, Vector2{25, 170}, Vector2{5, 190}}, Green);
     renderer.drawLine({ 150.5F, 60.5F }, { 190.5F, 60.5F });
     DrawOptions point = style(Red);
     point.pointSize = 5;

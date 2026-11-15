@@ -19,7 +19,7 @@
 
 namespace
 {
-using namespace Engine;
+using namespace NeuexpEngine;
 constexpr Color Black = { 0, 0, 0 };
 
 void require(bool success, const char* message)

@@ -42,7 +42,7 @@ float approach(float value, float target, float maximumDelta)
 
 Player::Player()
 {
-    reset(Engine::Vector2{});
+    reset(NeuexpEngine::Vector2{});
 }
 
 void Player::load(const Assets& assets)
@@ -54,15 +54,15 @@ void Player::load(const Assets& assets)
 
 void Player::restartAnimations()
 {
-    for (Engine::AnimationSet& shown : presentations) {
+    for (NeuexpEngine::AnimationSet& shown : presentations) {
         shown.restart();
     }
 }
 
-void Player::reset(Engine::Vector2 spawn)
+void Player::reset(NeuexpEngine::Vector2 spawn)
 {
-    positionValue = Engine::Vector2{spawn.x - Width / 2, spawn.y - Height};
-    velocity = Engine::Vector2{};
+    positionValue = NeuexpEngine::Vector2{spawn.x - Width / 2, spawn.y - Height};
+    velocity = NeuexpEngine::Vector2{};
     groundContact = 0;
     jumpBuffer = 0;
     onGround = false;
@@ -113,14 +113,14 @@ void Player::bounce()
     jumpCutAvailable = false;
 }
 
-Engine::Size2 Player::size() const
+NeuexpEngine::Size2 Player::size() const
 {
-    return Engine::Size2{bodyWidth(), bodyHeight()};
+    return NeuexpEngine::Size2{bodyWidth(), bodyHeight()};
 }
 
-Engine::Rect Player::bounds() const
+NeuexpEngine::Rect Player::bounds() const
 {
-    return Engine::Rect{positionValue, size()};
+    return NeuexpEngine::Rect{positionValue, size()};
 }
 
 float Player::bodyWidth() const
@@ -143,7 +143,7 @@ bool Player::grow()
     return true;
 }
 
-Engine::Vector2 Player::position() const
+NeuexpEngine::Vector2 Player::position() const
 {
     return positionValue;
 }
@@ -158,7 +158,7 @@ float Player::verticalVelocity() const
     return velocity.y;
 }
 
-const Engine::Sprite& Player::sprite() const
+const NeuexpEngine::Sprite& Player::sprite() const
 {
     return presentations[bigFlag ? BigSheet : OrdinarySheet].current();
 }
@@ -248,7 +248,7 @@ void Player::sweepHorizontal(float distance, const Level& level)
     const int steps = std::max(1, static_cast<int>(std::ceil(std::abs(distance))));
     const float step = distance / static_cast<float>(steps);
     for (int index = 0; index < steps; ++index) {
-        const Engine::Rect candidate{positionValue + Engine::Vector2{step, 0}, size()};
+        const NeuexpEngine::Rect candidate{positionValue + NeuexpEngine::Vector2{step, 0}, size()};
         if (level.overlapsSolid(candidate)) {
             // Останавливаемся в последней допустимой точке: шаг не больше пикселя.
             velocity.x = 0;
@@ -258,7 +258,7 @@ void Player::sweepHorizontal(float distance, const Level& level)
     }
 }
 
-bool Player::footSupport(Engine::Vector2 position, const Level& level, float& left, float& right) const
+bool Player::footSupport(NeuexpEngine::Vector2 position, const Level& level, float& left, float& right) const
 {
     const int row = static_cast<int>(std::floor((position.y + bodyHeight()) / Level::TileSize));
     const int firstColumn = static_cast<int>(std::floor(position.x / Level::TileSize));
@@ -289,7 +289,7 @@ void Player::sweepVertical(float distance, const Level& level)
     const int steps = std::max(1, static_cast<int>(std::ceil(std::abs(distance))));
     const float step = distance / static_cast<float>(steps);
     for (int index = 0; index < steps; ++index) {
-        const Engine::Rect candidate{positionValue + Engine::Vector2{0, step}, size()};
+        const NeuexpEngine::Rect candidate{positionValue + NeuexpEngine::Vector2{0, step}, size()};
         if (!level.overlapsSolid(candidate)) {
             positionValue.y += step;
             continue;
@@ -301,7 +301,7 @@ void Player::sweepVertical(float distance, const Level& level)
             const float tileEdge = static_cast<float>(row) * Level::TileSize;
             float supportLeft = 0;
             float supportRight = 0;
-            const bool support = footSupport(Engine::Vector2{positionValue.x, tileEdge - bodyHeight()}, level,
+            const bool support = footSupport(NeuexpEngine::Vector2{positionValue.x, tileEdge - bodyHeight()}, level,
                 supportLeft, supportRight);
             if (!support || supportRight - supportLeft < bodyWidth() / 3) {
                 // Под ногами меньше трети твёрдой земли: персонаж соскальзывает с края в яму.
@@ -357,15 +357,15 @@ void Player::updatePresentation(float deltaTime)
     } else {
         currentState = State::Idle;
     }
-    Engine::AnimationSet& shown = presentations[bigFlag ? BigSheet : OrdinarySheet];
+    NeuexpEngine::AnimationSet& shown = presentations[bigFlag ? BigSheet : OrdinarySheet];
     // Смена состояния или направления взгляда начинает нужный клип заново.
     const std::size_t index = static_cast<std::size_t>(currentState);
     shown.select(direction < 0 ? StateClipsLeft[index] : StateClips[index]);
     shown.update(deltaTime);
     // Положение хранит сам кадр: он ставится по ногам тела, по центру по горизонтали.
-    Engine::Animation& frame = shown.current();
-    const Engine::Rect box = bounds();
-    frame.transform.position = Engine::Vector2{box.position.x + box.size.width / 2 - frame.size.width / 2,
+    NeuexpEngine::Animation& frame = shown.current();
+    const NeuexpEngine::Rect box = bounds();
+    frame.transform.position = NeuexpEngine::Vector2{box.position.x + box.size.width / 2 - frame.size.width / 2,
         box.position.y + box.size.height - frame.size.height};
 }
 }

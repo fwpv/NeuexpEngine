@@ -9,7 +9,7 @@
 #include <filesystem>
 #include <utility>
 
-namespace Engine
+namespace NeuexpEngine
 {
 bool Renderer2D::loadFont(const ResourceFiles& files, const std::string& name,
     BitmapFont& result, ResourceError& error)

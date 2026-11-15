@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-namespace Engine::Gui
+namespace NeuexpEngine::Gui
 {
 enum class EventType { Enter, Leave, Press, Release, Click, Change, Cancel };
 

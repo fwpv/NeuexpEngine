@@ -63,7 +63,7 @@ Atom stateMessage = None;
 
 bool takeError(const char* operation, Error& error);
 
-Engine::Modifiers readModifiers(unsigned int state)
+NeuexpEngine::Modifiers readModifiers(unsigned int state)
 {
     return {(state & ShiftMask) != 0, (state & ControlMask) != 0,
         (state & altMask) != 0, (state & superMask) != 0,
@@ -101,8 +101,8 @@ bool changeFocus(bool focused, Error& error)
             }
         }
     }
-    Engine::Event event;
-    event.type = focused ? Engine::EventType::FocusGained : Engine::EventType::FocusLost;
+    NeuexpEngine::Event event;
+    event.type = focused ? NeuexpEngine::EventType::FocusGained : NeuexpEngine::EventType::FocusLost;
     if (focused) {
         event.modifiers = readModifiers(0);
     }
@@ -175,8 +175,8 @@ void readText(XKeyEvent& keyEvent)
         text.resize(static_cast<std::size_t>(length));
         // Управляющие ASCII приходят через события клавиш; UTF-8 байты сохраняются без изменений.
         if (static_cast<unsigned char>(text.front()) >= 0x20 && text.front() != '\x7f') {
-            Engine::Event event;
-            event.type = Engine::EventType::TextInput;
+            NeuexpEngine::Event event;
+            event.type = NeuexpEngine::EventType::TextInput;
             event.text = std::move(text);
             event.modifiers = readModifiers(keyEvent.state);
             Detail::queueEvent(event);
@@ -186,9 +186,9 @@ void readText(XKeyEvent& keyEvent)
 
 void handleInput(XEvent& native, bool filtered)
 {
-    using Engine::EventType;
-    using Engine::MouseButton;
-    Engine::Event event;
+    using NeuexpEngine::EventType;
+    using NeuexpEngine::MouseButton;
+    NeuexpEngine::Event event;
     if (native.type == KeyPress || native.type == KeyRelease) {
         if (!windowState.focused) {
             return;
@@ -367,8 +367,8 @@ bool updateSystemScale(Error& error)
     }
     if (windowState.systemScale != scale) {
         windowState.systemScale = scale;
-        Engine::Event event;
-        event.type = Engine::EventType::WindowDpiChanged;
+        NeuexpEngine::Event event;
+        event.type = NeuexpEngine::EventType::WindowDpiChanged;
         event.systemScale = scale;
         Detail::queueEvent(event);
     }
@@ -409,7 +409,7 @@ bool updateMinimizedState(Error& error)
         return false;
     }
     if (windowState.minimized != minimized) {
-        Detail::queueEvent(minimized ? Engine::EventType::WindowMinimized : Engine::EventType::WindowRestored);
+        Detail::queueEvent(minimized ? NeuexpEngine::EventType::WindowMinimized : NeuexpEngine::EventType::WindowRestored);
     }
     windowState.minimized = minimized;
     if (minimized && !changeFocus(false, error)) {
@@ -782,8 +782,8 @@ bool processX11Events(Error& error)
             if (keyboardEvent.any.xkb_type == XkbStateNotify) {
                 lockedModifiers = keyboardEvent.state.locked_mods;
                 if (windowState.focused) {
-                    Engine::Event changed;
-                    changed.type = Engine::EventType::LockStateChanged;
+                    NeuexpEngine::Event changed;
+                    changed.type = NeuexpEngine::EventType::LockStateChanged;
                     changed.modifiers = readModifiers(0);
                     Detail::queueEvent(changed);
                 }
@@ -822,8 +822,8 @@ bool processX11Events(Error& error)
             viewportNeedsUpdate = viewportNeedsUpdate || event.xconfigure.width != windowState.width
                 || event.xconfigure.height != windowState.height;
             if (windowState.width != event.xconfigure.width || windowState.height != event.xconfigure.height) {
-                Engine::Event resized;
-                resized.type = Engine::EventType::WindowResized;
+                NeuexpEngine::Event resized;
+                resized.type = NeuexpEngine::EventType::WindowResized;
                 resized.width = event.xconfigure.width;
                 resized.height = event.xconfigure.height;
                 Detail::queueEvent(resized);
@@ -845,7 +845,7 @@ bool processX11Events(Error& error)
         }
         if (event.type == MapNotify) {
             if (windowState.minimized) {
-                Detail::queueEvent(Engine::EventType::WindowRestored);
+                Detail::queueEvent(NeuexpEngine::EventType::WindowRestored);
             }
             windowState.minimized = false;
         }
@@ -856,11 +856,11 @@ bool processX11Events(Error& error)
             if (!changeFocus(false, error)) {
                 return false;
             }
-            Detail::queueEvent(Engine::EventType::WindowDestroyed);
+            Detail::queueEvent(NeuexpEngine::EventType::WindowDestroyed);
             windowState = {};
             window = 0; // Не уничтожаем уже удалённое сервером окно второй раз.
             if (!closeRequested) {
-                Detail::queueEvent(Engine::EventType::CloseRequested);
+                Detail::queueEvent(NeuexpEngine::EventType::CloseRequested);
             }
             closeRequested = true;
         }
@@ -868,7 +868,7 @@ bool processX11Events(Error& error)
             && event.xclient.message_type == protocolsMessage && event.xclient.format == 32
             && static_cast<Atom>(event.xclient.data.l[0]) == closeMessage) {
             closeRequested = true;
-            Detail::queueEvent(Engine::EventType::CloseRequested);
+            Detail::queueEvent(NeuexpEngine::EventType::CloseRequested);
         }
     }
     // Уведомления WM_STATE объединяются в одно чтение для существующего окна.

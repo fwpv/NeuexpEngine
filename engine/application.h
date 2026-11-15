@@ -6,7 +6,7 @@
 
 #include <optional>
 
-namespace Engine
+namespace NeuexpEngine
 {
 struct ApplicationOptions
 {

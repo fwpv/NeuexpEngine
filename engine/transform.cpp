@@ -6,7 +6,7 @@
 #include <cmath>
 #include <limits>
 
-namespace Engine
+namespace NeuexpEngine
 {
 Vector2 Affine2::transformPoint(Vector2 point) const
 {

@@ -17,9 +17,9 @@
 
 namespace
 {
-using Engine::Color;
+using NeuexpEngine::Color;
 
-class InputApplication final : public Engine::Application
+class InputApplication final : public NeuexpEngine::Application
 {
 private:
     bool onStart(Platform::Error& error) override
@@ -27,7 +27,7 @@ private:
         return initializeRenderer(error);
     }
 
-    bool onInput(const Engine::FrameInfo& frame, Platform::Error&) override
+    bool onInput(const NeuexpEngine::FrameInfo& frame, Platform::Error&) override
     {
         const auto& input = Platform::getInput();
         for (const auto& event : Platform::getEvents()) {
@@ -37,7 +37,7 @@ private:
         // даже в кадре без отрисовки.
         constexpr double FlashDurationSeconds = 0.2;
         for (std::size_t index = 1; index < pressedUntil.size(); ++index) {
-            const auto state = input.key(static_cast<Engine::Key>(index));
+            const auto state = input.key(static_cast<NeuexpEngine::Key>(index));
             if (state.pressed) {
                 pressedUntil[index] = frame.realTime + FlashDurationSeconds;
             }
@@ -49,7 +49,7 @@ private:
         return true;
     }
 
-    bool onPrepareFrame(const Engine::FrameInfo& frame, Platform::Error& error) override
+    bool onPrepareFrame(const NeuexpEngine::FrameInfo& frame, Platform::Error& error) override
     {
         const auto& input = Platform::getInput();
         const auto& mouse = input.mouse();
@@ -67,16 +67,16 @@ private:
         return true;
     }
 
-    bool onRender(const Engine::FrameInfo& frame, Platform::Error& error) override
+    bool onRender(const NeuexpEngine::FrameInfo& frame, Platform::Error& error) override
     {
         const auto& window = frame.window;
         const auto& input = Platform::getInput();
         const auto& mouse = input.mouse();
         const double now = frame.realTime;
         if (window.width > 0 && window.height > 0) {
-            Engine::UiView view;
-            Engine::UiError uiError;
-            if (!Engine::UiCanvas{}.createView(Engine::Viewport{0, 0, window.width, window.height}, view, uiError)) {
+            NeuexpEngine::UiView view;
+            NeuexpEngine::UiError uiError;
+            if (!NeuexpEngine::UiCanvas{}.createView(NeuexpEngine::Viewport{0, 0, window.width, window.height}, view, uiError)) {
                 error = Platform::Error{"UiCanvas::createView",
                     "Could not calculate the input view. UiError: " + std::to_string(static_cast<int>(uiError)), std::nullopt};
                 return false;
@@ -88,53 +88,53 @@ private:
             constexpr float CellStep = 48;
             constexpr float CellSize = 40;
             for (std::size_t index = 1; index < pressedUntil.size(); ++index) {
-                const auto state = input.key(static_cast<Engine::Key>(index));
+                const auto state = input.key(static_cast<NeuexpEngine::Key>(index));
                 const float x = GridLeft + static_cast<float>((index - 1) % Columns) * CellStep;
                 const float y = 20.0f + static_cast<float>((index - 1) / Columns) * CellStep;
                 if (releasedUntil[index] > now) {
-                    drawing.drawRectangle(Engine::Rect{x, y, CellSize, CellSize}, Color{1, 0.5F, 0.1F});
+                    drawing.drawRectangle(NeuexpEngine::Rect{x, y, CellSize, CellSize}, Color{1, 0.5F, 0.1F});
                 } else if (pressedUntil[index] > now) {
-                    drawing.drawRectangle(Engine::Rect{x, y, CellSize, CellSize}, Color{0.2F, 1, 0.3F});
+                    drawing.drawRectangle(NeuexpEngine::Rect{x, y, CellSize, CellSize}, Color{0.2F, 1, 0.3F});
                 } else {
-                    drawing.drawRectangle(Engine::Rect{x, y, CellSize, CellSize}, state.down ? Color{0.15F, 0.25F, 1} : Color{0.15F, 0.25F, 0.35F});
+                    drawing.drawRectangle(NeuexpEngine::Rect{x, y, CellSize, CellSize}, state.down ? Color{0.15F, 0.25F, 1} : Color{0.15F, 0.25F, 0.35F});
                 }
             }
-            for (int index = 1; index < static_cast<int>(Engine::MouseButton::Count); ++index) {
-                const auto state = input.button(static_cast<Engine::MouseButton>(index));
+            for (int index = 1; index < static_cast<int>(NeuexpEngine::MouseButton::Count); ++index) {
+                const auto state = input.button(static_cast<NeuexpEngine::MouseButton>(index));
                 const Color color = {state.released ? 1.0F : 0.1F,
                     state.pressed ? 1.0F : 0.3F, state.down ? 1.0F : 0.4F};
-                drawing.drawRectangle(Engine::Rect{GridLeft + static_cast<float>(index - 1) * CellStep, 420.0f, CellSize, CellSize}, color);
+                drawing.drawRectangle(NeuexpEngine::Rect{GridLeft + static_cast<float>(index - 1) * CellStep, 420.0f, CellSize, CellSize}, color);
             }
             constexpr float CursorSize = 8;
-            drawing.drawRectangle(Engine::Rect{static_cast<float>(mouse.x) - CursorSize / 2, static_cast<float>(mouse.y) - CursorSize / 2,
+            drawing.drawRectangle(NeuexpEngine::Rect{static_cast<float>(mouse.x) - CursorSize / 2, static_cast<float>(mouse.y) - CursorSize / 2,
                 CursorSize, CursorSize}, Color{1, 1, 1});
             return endFrame(error);
         }
         return true;
     }
 
-    Engine::Renderer2D& drawing = getRenderer();
-    std::array<double, static_cast<std::size_t>(Engine::Key::Count)> pressedUntil = {};
-    std::array<double, static_cast<std::size_t>(Engine::Key::Count)> releasedUntil = {};
+    NeuexpEngine::Renderer2D& drawing = getRenderer();
+    std::array<double, static_cast<std::size_t>(NeuexpEngine::Key::Count)> pressedUntil = {};
+    std::array<double, static_cast<std::size_t>(NeuexpEngine::Key::Count)> releasedUntil = {};
     std::string text;
     int lastKey = 0;
-    Engine::EventDispatcher events;
+    NeuexpEngine::EventDispatcher events;
     // Подписки уничтожаются до данных, используемых обработчиками.
-    Engine::EventSubscription keySubscription = events.subscribe([this](const Engine::Event& event) {
-        if (event.type == Engine::EventType::KeyPressed || event.type == Engine::EventType::KeyReleased) {
+    NeuexpEngine::EventSubscription keySubscription = events.subscribe([this](const NeuexpEngine::Event& event) {
+        if (event.type == NeuexpEngine::EventType::KeyPressed || event.type == NeuexpEngine::EventType::KeyReleased) {
             lastKey = static_cast<int>(event.key);
         }
     });
-    Engine::EventSubscription textSubscription = events.subscribe(Engine::EventType::TextInput, [this](const Engine::Event& event) {
+    NeuexpEngine::EventSubscription textSubscription = events.subscribe(NeuexpEngine::EventType::TextInput, [this](const NeuexpEngine::Event& event) {
         text = event.text;
     });
     bool titleDirty = true;
 };
 }
 
-int Engine::applicationMain()
+int NeuexpEngine::applicationMain()
 {
-    Engine::ApplicationOptions options;
+    NeuexpEngine::ApplicationOptions options;
     options.window.title = "Input demo";
     options.window.width = 900;
     options.window.height = 500;

@@ -9,8 +9,8 @@
 
 namespace
 {
-using namespace Engine;
-namespace UI = Engine::Gui;
+using namespace NeuexpEngine;
+namespace UI = NeuexpEngine::Gui;
 void require(bool condition, const char* message)
 {
     if (!condition) { throw std::runtime_error(message); }
@@ -19,9 +19,9 @@ bool near(float a, float b)
 {
     return std::abs(a - b) < 0.001F;
 }
-Engine::Event mouse(Engine::EventType type, int x, int y)
+NeuexpEngine::Event mouse(NeuexpEngine::EventType type, int x, int y)
 {
-    Engine::Event event;
+    NeuexpEngine::Event event;
     event.type = type;
     event.button = MouseButton::Left;
     event.x = x;
@@ -30,8 +30,8 @@ Engine::Event mouse(Engine::EventType type, int x, int y)
 }
 void click(UI::Context& context, int x, int y)
 {
-    context.handle(mouse(Engine::EventType::MousePressed, x, y));
-    context.handle(mouse(Engine::EventType::MouseReleased, x, y));
+    context.handle(mouse(NeuexpEngine::EventType::MousePressed, x, y));
+    context.handle(mouse(NeuexpEngine::EventType::MouseReleased, x, y));
 }
 void routing()
 {
@@ -66,26 +66,26 @@ void routing()
     click(context, 30, 40);
     require(lowerClicks == 2, "Blocking label passed input");
     decoration->setVisible(false);
-    context.handle(mouse(Engine::EventType::MousePressed, 30, 40));
+    context.handle(mouse(NeuexpEngine::EventType::MousePressed, 30, 40));
     require(lower->pressed(), "Button did not capture press");
-    context.handle(mouse(Engine::EventType::MouseReleased, 300, 200));
+    context.handle(mouse(NeuexpEngine::EventType::MouseReleased, 300, 200));
     require(!lower->pressed() && lowerClicks == 2, "Outside release clicked");
-    context.handle(mouse(Engine::EventType::MousePressed, 300, 200));
-    context.handle(mouse(Engine::EventType::MouseReleased, 30, 40));
+    context.handle(mouse(NeuexpEngine::EventType::MousePressed, 300, 200));
+    context.handle(mouse(NeuexpEngine::EventType::MouseReleased, 30, 40));
     require(lowerClicks == 2, "Outside press clicked");
-    context.handle(mouse(Engine::EventType::MousePressed, 30, 40));
-    auto event = mouse(Engine::EventType::MouseReleased, 30, 40);
+    context.handle(mouse(NeuexpEngine::EventType::MousePressed, 30, 40));
+    auto event = mouse(NeuexpEngine::EventType::MouseReleased, 30, 40);
     event.canceled = true;
     context.handle(event);
     require(!lower->pressed() && lowerClicks == 2, "Canceled release clicked");
-    context.handle(mouse(Engine::EventType::MousePressed, 30, 40));
-    event.type = Engine::EventType::FocusLost;
+    context.handle(mouse(NeuexpEngine::EventType::MousePressed, 30, 40));
+    event.type = NeuexpEngine::EventType::FocusLost;
     context.handle(event);
-    context.handle(mouse(Engine::EventType::MouseReleased, 30, 40));
+    context.handle(mouse(NeuexpEngine::EventType::MouseReleased, 30, 40));
     require(lowerClicks == 2 && !lower->pressed(), "Focus loss left capture");
     click(context, 200, 40);
     require(lowerClicks == 2, "Right boundary included");
-    require(!context.handle(mouse(Engine::EventType::MousePressed, 500, 500)), "Empty area consumed input");
+    require(!context.handle(mouse(NeuexpEngine::EventType::MousePressed, 500, 500)), "Empty area consumed input");
 }
 void mutation()
 {
@@ -111,7 +111,7 @@ void mutation()
     release.disconnect();
     screen->add(button);
     auto removeOnEnter = button->subscribe(UI::EventType::Enter, [&](const UI::Event&) { screen->remove(button); });
-    context.handle(mouse(Engine::EventType::MouseMoved, 10, 10));
+    context.handle(mouse(NeuexpEngine::EventType::MouseMoved, 10, 10));
     require(!button->hovered(), "Removed hover retained state");
     removeOnEnter.disconnect();
     screen->add(button);
@@ -128,16 +128,16 @@ void mutation()
     context.setScreen(screen);
     auto modal = std::make_shared<UI::Screen>();
     context.setModal(modal);
-    require(context.handle(mouse(Engine::EventType::MousePressed, 350, 250)), "Empty modal passed input to world");
+    require(context.handle(mouse(NeuexpEngine::EventType::MousePressed, 350, 250)), "Empty modal passed input to world");
     click(context, 10, 10);
     require(changed == 1 && clicks == 0, "Modal passed input to lower page");
     context.setModal({});
     check->setVisible(false);
     click(context, 10, 10);
     require(clicks == 1, "Modal close did not restore page");
-    context.handle(mouse(Engine::EventType::MousePressed, 10, 10));
+    context.handle(mouse(NeuexpEngine::EventType::MousePressed, 10, 10));
     screen->setEnabled(false);
-    context.handle(mouse(Engine::EventType::MouseReleased, 10, 10));
+    context.handle(mouse(NeuexpEngine::EventType::MouseReleased, 10, 10));
     require(clicks == 1 && !button->pressed(), "Disabled ancestor retained press");
 }
 void subscriptions()
@@ -212,7 +212,7 @@ void layout()
     click(context, static_cast<int>(outside.x), static_cast<int>(outside.y));
     require(clicks == 1, "Clipped element accepted input");
     require(!context.setViewport(Viewport{0, 0, 0, 0}), "Empty viewport accepted");
-    require(!context.handle(mouse(Engine::EventType::MousePressed, 10, 10)), "Invalid viewport accepted input");
+    require(!context.handle(mouse(NeuexpEngine::EventType::MousePressed, 10, 10)), "Invalid viewport accepted input");
 }
 void scrolling()
 {
@@ -234,7 +234,7 @@ void scrolling()
     context.setScreen(screen);
     int clicks = 0;
     auto subscription = buttons.back()->subscribe(UI::EventType::Click, [&](const UI::Event&) { ++clicks; });
-    auto event = mouse(Engine::EventType::MouseWheel, 20, 50);
+    auto event = mouse(NeuexpEngine::EventType::MouseWheel, 20, 50);
     event.wheelY = -10;
     require(context.handle(event), "Scroll not consumed");
     require(near(screen->scrollOffset(), 80), "Scroll not clamped to content");

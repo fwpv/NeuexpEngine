@@ -18,7 +18,7 @@
 #include <memory>
 #include <string>
 
-namespace Engine
+namespace NeuexpEngine
 {
 enum class RenderError
 {

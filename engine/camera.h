@@ -4,7 +4,7 @@
 #include "transform.h"
 #include "math2d.h"
 
-namespace Engine
+namespace NeuexpEngine
 {
 // Область клиентского окна в пикселях: начало сверху слева, +y вниз.
 struct Viewport

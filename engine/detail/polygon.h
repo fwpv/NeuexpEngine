@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace Engine::Detail
+namespace NeuexpEngine::Detail
 {
 // Удаляет соседние повторы и коллинеарные промежуточные точки, проверяет простой
 // контур и разбивает его на треугольники. На отказе выходные данные не используются.

@@ -6,7 +6,7 @@
 
 #include <cstddef>
 
-namespace Engine
+namespace NeuexpEngine
 {
 class Renderer2D;
 }
@@ -41,16 +41,16 @@ class Cat
 {
 public:
     explicit Cat(const Images& images);
-    Engine::Vector2 position() const;
+    NeuexpEngine::Vector2 position() const;
     Body& physicalBody();
     void updateAnimation(float duration, const Controls& controls, bool supported);
-    void draw(Engine::Renderer2D& renderer) const;
+    void draw(NeuexpEngine::Renderer2D& renderer) const;
 
 private:
     Body body;
     bool grounded = false;
-    Engine::Animation head;
-    Engine::Animation feet;
+    NeuexpEngine::Animation head;
+    NeuexpEngine::Animation feet;
 };
 
 class CatController

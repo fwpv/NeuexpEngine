@@ -16,17 +16,17 @@ namespace Cat
 class Images
 {
 public:
-    bool load(Engine::Renderer2D& renderer, Engine::ResourceError& error);
-    void draw(Engine::Renderer2D& renderer, std::size_t image, Engine::Vector2 position,
+    bool load(NeuexpEngine::Renderer2D& renderer, NeuexpEngine::ResourceError& error);
+    void draw(NeuexpEngine::Renderer2D& renderer, std::size_t image, NeuexpEngine::Vector2 position,
         float scale = 1, float angle = 0) const;
 
-    const Engine::Animation& headAnimation() const { return head; }
-    const Engine::Animation& feetAnimation() const { return feet; }
+    const NeuexpEngine::Animation& headAnimation() const { return head; }
+    const NeuexpEngine::Animation& feetAnimation() const { return feet; }
 
 private:
-    std::array<Engine::Sprite, ArtCount> sprites;
-    Engine::Animation head;
-    Engine::Animation feet;
+    std::array<NeuexpEngine::Sprite, ArtCount> sprites;
+    NeuexpEngine::Animation head;
+    NeuexpEngine::Animation feet;
 };
 
 class Game
@@ -34,16 +34,16 @@ class Game
 public:
     Game(std::uint32_t routeSeed, std::uint32_t leavesSeed, const Images& images);
     // После update(), до draw(): положительные размеры окна и камера, следующая за котом.
-    bool prepareView(int width, int height, Engine::CameraError& error);
+    bool prepareView(int width, int height, NeuexpEngine::CameraError& error);
     void update(float duration, const Controls& controls);
     bool isOver() const;
     double distanceTravelled() const { return distance; }
-    void draw(Engine::Renderer2D& renderer, const Images& images) const;
+    void draw(NeuexpEngine::Renderer2D& renderer, const Images& images) const;
 
 private:
     World world;
     Foliage foliage;
-    Engine::CameraView view;
+    NeuexpEngine::CameraView view;
     float visibleWidth = 935;
     double distance = 0;
 };

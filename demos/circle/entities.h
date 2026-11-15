@@ -10,17 +10,17 @@
 
 namespace Game
 {
-using Engine::Affine2;
-using Engine::Circle;
-using Engine::Color;
-using Engine::Pi;
-using Engine::Rect;
-using Engine::Size2;
-using Engine::Transform2;
-using Engine::Vector2;
+using NeuexpEngine::Affine2;
+using NeuexpEngine::Circle;
+using NeuexpEngine::Color;
+using NeuexpEngine::Pi;
+using NeuexpEngine::Rect;
+using NeuexpEngine::Size2;
+using NeuexpEngine::Transform2;
+using NeuexpEngine::Vector2;
 
-using Engine::DrawOptions;
-using Engine::ShapeFill;
+using NeuexpEngine::DrawOptions;
+using NeuexpEngine::ShapeFill;
 
 // Игровые действия текущего кадра без системных кодов клавиш.
 struct InputState
@@ -39,7 +39,7 @@ public:
     void update(float deltaTime);
     bool isExpired(const Rect& bounds) const;
     Vector2 position() const;
-    void draw(Engine::Renderer2D& renderer) const;
+    void draw(NeuexpEngine::Renderer2D& renderer) const;
 
 private:
     Vector2 location;
@@ -54,7 +54,7 @@ public:
     std::optional<Bolt> fire(bool requested, float time);
     Vector2 position() const;
     void teleport(Vector2 destination);
-    void draw(Engine::Renderer2D& renderer, float time) const;
+    void draw(NeuexpEngine::Renderer2D& renderer, float time) const;
 
 private:
     Transform2 transform = {Vector2{170, 390}, Pi / 2, Vector2{1, 1}, Vector2{}};
@@ -68,7 +68,7 @@ public:
     explicit Drone(float startPhase);
     void update(float time);
     bool tryHit(Vector2 point, float time);
-    void draw(Engine::Renderer2D& renderer, float time) const;
+    void draw(NeuexpEngine::Renderer2D& renderer, float time) const;
 
 private:
     Vector2 position(float time) const;
@@ -83,7 +83,7 @@ class Portal
 public:
     Portal(Vector2 entrance, Vector2 exit);
     bool tryTeleport(Shuttle& shuttle) const;
-    void draw(Engine::Renderer2D& renderer, float time, bool open) const;
+    void draw(NeuexpEngine::Renderer2D& renderer, float time, bool open) const;
 
 private:
     Vector2 position;
@@ -95,7 +95,7 @@ class PortalPair
 public:
     PortalPair();
     void update(Shuttle& shuttle, float time);
-    void draw(Engine::Renderer2D& renderer, float time) const;
+    void draw(NeuexpEngine::Renderer2D& renderer, float time) const;
 
 private:
     const std::array<Portal, 2> portals;
@@ -109,17 +109,17 @@ public:
     Vector2 position() const;
     Vector2 beaconPosition(float time) const;
     bool locksTarget(Vector2 point) const;
-    void draw(Engine::Renderer2D& renderer, float time) const;
+    void draw(NeuexpEngine::Renderer2D& renderer, float time) const;
 };
 
 class Background
 {
 public:
-    void draw(Engine::Renderer2D& renderer, Size2 worldSize, float time) const;
+    void draw(NeuexpEngine::Renderer2D& renderer, Size2 worldSize, float time) const;
 
 private:
-    void drawNebula(Engine::Renderer2D& renderer, float time) const;
-    void drawStars(Engine::Renderer2D& renderer, Size2 worldSize, float time) const;
-    void drawPlanet(Engine::Renderer2D& renderer, float time) const;
+    void drawNebula(NeuexpEngine::Renderer2D& renderer, float time) const;
+    void drawStars(NeuexpEngine::Renderer2D& renderer, Size2 worldSize, float time) const;
+    void drawPlanet(NeuexpEngine::Renderer2D& renderer, float time) const;
 };
 }

@@ -23,7 +23,7 @@ int random(std::uint32_t& state)
 }
 }
 
-Platform::Platform(int id, Engine::Vector2 position, Art art)
+Platform::Platform(int id, NeuexpEngine::Vector2 position, Art art)
     : surface{id, position, DefaultSize, 0, 0, 0}
     , art(art)
 {
@@ -40,7 +40,7 @@ World::World(std::uint32_t seed, const Images& images)
 
 void World::addPlatform(int x, int y, Art art, float top, float bottom)
 {
-    Platform platform{nextId++, Engine::Vector2{static_cast<float>(x), static_cast<float>(y)}, art};
+    Platform platform{nextId++, NeuexpEngine::Vector2{static_cast<float>(x), static_cast<float>(y)}, art};
     if (art == Lift) {
         const float catX = cat.position().x - 101.25F;
         platform.surface.speed = -std::min(400.0F,
@@ -56,7 +56,7 @@ void World::decorate(Platform& platform)
 {
     const auto add = [&](Art art, int x) {
         const int height = art == Mushroom ? 58 : (art == Flowers ? 80 : 35);
-        platform.decorations.push_back(Decoration{art, Engine::Vector2{static_cast<float>(x), static_cast<float>(2 - height)}});
+        platform.decorations.push_back(Decoration{art, NeuexpEngine::Vector2{static_cast<float>(x), static_cast<float>(2 - height)}});
     };
     constexpr int FlowersScatter = 16;
     constexpr int DecorationPairSpacing = 88;
@@ -118,13 +118,13 @@ void World::decorate(Platform& platform)
 
 bool World::overlaps(int x, int y) const
 {
-    const Engine::Rect candidate{Engine::Vector2{static_cast<float>(x), static_cast<float>(y)}, Platform::DefaultSize};
+    const NeuexpEngine::Rect candidate{NeuexpEngine::Vector2{static_cast<float>(x), static_cast<float>(y)}, Platform::DefaultSize};
     return std::any_of(platforms.begin(), platforms.end(), [&](const Platform& platform) {
-        const Engine::Rect bounds{Engine::Vector2{static_cast<float>(static_cast<int>(platform.surface.position.x)),
+        const NeuexpEngine::Rect bounds{NeuexpEngine::Vector2{static_cast<float>(static_cast<int>(platform.surface.position.x)),
             static_cast<float>(static_cast<int>(platform.surface.position.y))}, platform.surface.size};
-        Engine::Rect overlap;
+        NeuexpEngine::Rect overlap;
         // Касание краями допустимо при генерации площадок.
-        return Engine::intersection(candidate, bounds, overlap)
+        return NeuexpEngine::intersection(candidate, bounds, overlap)
             && overlap.size.width > 0 && overlap.size.height > 0;
     });
 }
@@ -225,7 +225,7 @@ void World::generate(float catX, float horizon)
     }
 }
 
-Engine::Vector2 World::catPosition() const
+NeuexpEngine::Vector2 World::catPosition() const
 {
     return cat.position();
 }
@@ -292,7 +292,7 @@ void Foliage::update(float duration, float catX)
     }
 }
 
-void Platform::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
+void Platform::draw(NeuexpEngine::Renderer2D& renderer, const Images& images, const NeuexpEngine::Rect& visible) const
 {
     constexpr float PlatformCullBehind = 250;
     constexpr float PlatformCullAhead = 5;
@@ -306,21 +306,21 @@ void Platform::draw(Engine::Renderer2D& renderer, const Images& images, const En
     }
 }
 
-void Leaf::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
+void Leaf::draw(NeuexpEngine::Renderer2D& renderer, const Images& images, const NeuexpEngine::Rect& visible) const
 {
-    if (active && Engine::intersects(visible, Engine::Rect{position - Engine::Vector2{25, 25}, Engine::Size2{50, 50}})) {
+    if (active && NeuexpEngine::intersects(visible, NeuexpEngine::Rect{position - NeuexpEngine::Vector2{25, 25}, NeuexpEngine::Size2{50, 50}})) {
         images.draw(renderer, art, position, 1, angle);
     }
 }
 
-void Foliage::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
+void Foliage::draw(NeuexpEngine::Renderer2D& renderer, const Images& images, const NeuexpEngine::Rect& visible) const
 {
     for (const auto& leaf : leaves) {
         leaf.draw(renderer, images, visible);
     }
 }
 
-void World::draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const
+void World::draw(NeuexpEngine::Renderer2D& renderer, const Images& images, const NeuexpEngine::Rect& visible) const
 {
     for (const auto& platform : platforms) {
         platform.draw(renderer, images, visible);

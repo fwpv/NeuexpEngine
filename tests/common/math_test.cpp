@@ -20,7 +20,7 @@ bool near(float actual, float expected)
     return std::isfinite(actual) && std::abs(actual - expected) <= 0.00001F;
 }
 
-bool near(Engine::Vector2 actual, Engine::Vector2 expected)
+bool near(NeuexpEngine::Vector2 actual, NeuexpEngine::Vector2 expected)
 {
     return near(actual.x, expected.x) && near(actual.y, expected.y);
 }
@@ -29,7 +29,7 @@ bool near(Engine::Vector2 actual, Engine::Vector2 expected)
 int main()
 {
     try {
-        using namespace Engine;
+        using namespace NeuexpEngine;
         constexpr Vector2 velocity = { 12, -8 };
         constexpr Vector2 nextPosition = Vector2{ 1, 2 } + velocity * 0.25F;
         static_assert(nextPosition == Vector2{ 4, 0 });

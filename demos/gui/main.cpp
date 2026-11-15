@@ -16,8 +16,8 @@
 
 namespace
 {
-using namespace Engine;
-namespace UI = Engine::Gui;
+using namespace NeuexpEngine;
+namespace UI = NeuexpEngine::Gui;
 
 class MenuDemo final : public Application
 {
@@ -321,7 +321,7 @@ private:
         configure(frame);
         for (const auto& event : Platform::getInput().events()) {
             if (gui.handle(event)) { configure(frame); continue; }
-            if (event.type == Engine::EventType::KeyPressed && event.key == Key::Escape && !event.repeat) {
+            if (event.type == NeuexpEngine::EventType::KeyPressed && event.key == Key::Escape && !event.repeat) {
                 if (gui.screen() == settings) { closeSettings(); }
                 else if (playing && gui.modal()) { gui.setModal({}); setPaused(false); }
                 else if (playing) { pauseGame(); }
@@ -393,7 +393,7 @@ private:
 };
 }
 
-int Engine::applicationMain()
+int NeuexpEngine::applicationMain()
 {
     MenuDemo app;
     ApplicationOptions options;

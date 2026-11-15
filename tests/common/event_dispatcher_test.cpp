@@ -20,57 +20,57 @@ void require(bool condition, const char* message)
 
 void testDelivery()
 {
-    Engine::EventDispatcher dispatcher;
-    Engine::Event event;
-    event.type = Engine::EventType::TextInput;
+    NeuexpEngine::EventDispatcher dispatcher;
+    NeuexpEngine::Event event;
+    event.type = NeuexpEngine::EventType::TextInput;
     event.text = u8"Текст";
     event.time = 12.5;
     dispatcher.dispatch(event);
     std::vector<int> calls;
-    auto first = dispatcher.subscribe([&](const Engine::Event& received) {
+    auto first = dispatcher.subscribe([&](const NeuexpEngine::Event& received) {
         require(&received == &event, "Event must be delivered without replacement");
         require(received.text == u8"Текст" && received.time == 12.5, "Payload changed");
         calls.push_back(1);
     });
-    auto filtered = dispatcher.subscribe(Engine::EventType::TextInput, [&](const Engine::Event&) {
+    auto filtered = dispatcher.subscribe(NeuexpEngine::EventType::TextInput, [&](const NeuexpEngine::Event&) {
         calls.push_back(2);
     });
-    auto other = dispatcher.subscribe(Engine::EventType::KeyPressed, [&](const Engine::Event&) {
+    auto other = dispatcher.subscribe(NeuexpEngine::EventType::KeyPressed, [&](const NeuexpEngine::Event&) {
         calls.push_back(3);
     });
-    auto last = dispatcher.subscribe([&](const Engine::Event&) { calls.push_back(4); });
+    auto last = dispatcher.subscribe([&](const NeuexpEngine::Event&) { calls.push_back(4); });
     dispatcher.dispatch(event);
     require(calls == std::vector<int>({1, 2, 4}), "Registration order or type filter");
     calls.clear();
-    event.type = Engine::EventType::KeyPressed;
+    event.type = NeuexpEngine::EventType::KeyPressed;
     dispatcher.dispatch(event);
     require(calls == std::vector<int>({1, 3, 4}), "All-events subscription");
     auto empty = dispatcher.subscribe({});
-    auto emptyFiltered = dispatcher.subscribe(Engine::EventType::TextInput, {});
+    auto emptyFiltered = dispatcher.subscribe(NeuexpEngine::EventType::TextInput, {});
     require(!empty.connected() && !emptyFiltered.connected(), "Empty handler");
-    Engine::EventDispatcher independent;
+    NeuexpEngine::EventDispatcher independent;
     independent.dispatch(event);
     require(calls.size() == 3, "Dispatchers must be independent");
 }
 
 void testOwnership()
 {
-    static_assert(!std::is_copy_constructible<Engine::EventSubscription>::value);
-    static_assert(std::is_nothrow_move_constructible<Engine::EventSubscription>::value);
-    static_assert(!std::is_move_constructible<Engine::EventDispatcher>::value);
-    Engine::EventSubscription survivor;
+    static_assert(!std::is_copy_constructible<NeuexpEngine::EventSubscription>::value);
+    static_assert(std::is_nothrow_move_constructible<NeuexpEngine::EventSubscription>::value);
+    static_assert(!std::is_move_constructible<NeuexpEngine::EventDispatcher>::value);
+    NeuexpEngine::EventSubscription survivor;
     survivor.disconnect();
     survivor.disconnect();
     require(!survivor.connected(), "Default subscription");
     int calls = 0;
     {
-        Engine::EventDispatcher dispatcher;
+        NeuexpEngine::EventDispatcher dispatcher;
         {
-            auto scoped = dispatcher.subscribe([&](const Engine::Event&) { ++calls; });
+            auto scoped = dispatcher.subscribe([&](const NeuexpEngine::Event&) { ++calls; });
             require(scoped.connected(), "Subscription must be connected");
             auto moved = std::move(scoped);
             require(!scoped.connected() && moved.connected(), "Move constructor");
-            survivor = dispatcher.subscribe([&](const Engine::Event&) { calls += 100; });
+            survivor = dispatcher.subscribe([&](const NeuexpEngine::Event&) { calls += 100; });
             survivor = std::move(moved);
             require(!moved.connected() && survivor.connected(), "Move assignment");
             auto& alias = survivor;
@@ -79,7 +79,7 @@ void testOwnership()
             require(calls == 1, "Move assignment must disconnect previous handler");
         }
         {
-            auto scoped = dispatcher.subscribe([&](const Engine::Event&) { calls += 100; });
+            auto scoped = dispatcher.subscribe([&](const NeuexpEngine::Event&) { calls += 100; });
         }
         dispatcher.dispatch({});
         require(calls == 2, "Scope exit must disconnect");
@@ -87,10 +87,10 @@ void testOwnership()
     require(!survivor.connected(), "Subscription outlives dispatcher");
     survivor.disconnect();
 
-    Engine::EventDispatcher dispatcher;
+    NeuexpEngine::EventDispatcher dispatcher;
     auto resource = std::make_shared<int>(1);
     std::weak_ptr<int> weakResource = resource;
-    auto subscription = dispatcher.subscribe([resource](const Engine::Event&) {});
+    auto subscription = dispatcher.subscribe([resource](const NeuexpEngine::Event&) {});
     resource.reset();
     require(!weakResource.expired(), "Handler capture lifetime");
     subscription.disconnect();
@@ -100,22 +100,22 @@ void testOwnership()
 
 void testMutation()
 {
-    Engine::EventDispatcher dispatcher;
+    NeuexpEngine::EventDispatcher dispatcher;
     std::vector<int> calls;
-    Engine::EventSubscription self;
-    Engine::EventSubscription next;
-    Engine::EventSubscription added;
-    self = dispatcher.subscribe([&, localCalls = 0](const Engine::Event&) mutable {
+    NeuexpEngine::EventSubscription self;
+    NeuexpEngine::EventSubscription next;
+    NeuexpEngine::EventSubscription added;
+    self = dispatcher.subscribe([&, localCalls = 0](const NeuexpEngine::Event&) mutable {
         ++localCalls;
         calls.push_back(localCalls);
         self.disconnect();
         next.disconnect();
-        added = dispatcher.subscribe([&](const Engine::Event&) { calls.push_back(4); });
+        added = dispatcher.subscribe([&](const NeuexpEngine::Event&) { calls.push_back(4); });
         // Захваты выполняемой функции живы после отключения самой функции.
         calls.push_back(localCalls + 1);
     });
-    next = dispatcher.subscribe([&](const Engine::Event&) { calls.push_back(99); });
-    auto last = dispatcher.subscribe([&](const Engine::Event&) { calls.push_back(3); });
+    next = dispatcher.subscribe([&](const NeuexpEngine::Event&) { calls.push_back(99); });
+    auto last = dispatcher.subscribe([&](const NeuexpEngine::Event&) { calls.push_back(3); });
     dispatcher.dispatch({});
     require(calls == std::vector<int>({1, 2, 3}), "Mutation during dispatch");
     calls.clear();
@@ -123,7 +123,7 @@ void testMutation()
     require(calls == std::vector<int>({3, 4}), "New subscription begins next dispatch");
 
     int state = 0;
-    auto mutableHandler = dispatcher.subscribe([count = 0, &state](const Engine::Event&) mutable {
+    auto mutableHandler = dispatcher.subscribe([count = 0, &state](const NeuexpEngine::Event&) mutable {
         state = ++count;
     });
     dispatcher.dispatch({});
@@ -131,13 +131,13 @@ void testMutation()
     require(state == 2, "Mutable callback state must persist");
 
     // Перераспределение хранилища при массовой регистрации не портит текущую рассылку.
-    std::vector<Engine::EventSubscription> many;
+    std::vector<NeuexpEngine::EventSubscription> many;
     constexpr int SubscriptionCount = 256;
     int addedCalls = 0;
-    auto grow = dispatcher.subscribe([&](const Engine::Event&) {
+    auto grow = dispatcher.subscribe([&](const NeuexpEngine::Event&) {
         if (many.empty()) {
             for (int index = 0; index < SubscriptionCount; ++index) {
-                many.push_back(dispatcher.subscribe([&](const Engine::Event&) { ++addedCalls; }));
+                many.push_back(dispatcher.subscribe([&](const NeuexpEngine::Event&) { ++addedCalls; }));
             }
         }
     });
@@ -152,28 +152,28 @@ void testMutation()
 
 void testNestedAndExceptions()
 {
-    Engine::EventDispatcher dispatcher;
+    NeuexpEngine::EventDispatcher dispatcher;
     std::vector<int> calls;
-    Engine::EventSubscription added;
-    auto first = dispatcher.subscribe([&](const Engine::Event& event) {
+    NeuexpEngine::EventSubscription added;
+    auto first = dispatcher.subscribe([&](const NeuexpEngine::Event& event) {
         calls.push_back(1);
-        if (event.type == Engine::EventType::KeyPressed) {
-            added = dispatcher.subscribe([&](const Engine::Event&) { calls.push_back(3); });
-            Engine::Event nested;
-            nested.type = Engine::EventType::KeyReleased;
+        if (event.type == NeuexpEngine::EventType::KeyPressed) {
+            added = dispatcher.subscribe([&](const NeuexpEngine::Event&) { calls.push_back(3); });
+            NeuexpEngine::Event nested;
+            nested.type = NeuexpEngine::EventType::KeyReleased;
             dispatcher.dispatch(nested);
         }
     });
-    auto second = dispatcher.subscribe([&](const Engine::Event&) { calls.push_back(2); });
-    Engine::Event event;
-    event.type = Engine::EventType::KeyPressed;
+    auto second = dispatcher.subscribe([&](const NeuexpEngine::Event&) { calls.push_back(2); });
+    NeuexpEngine::Event event;
+    event.type = NeuexpEngine::EventType::KeyPressed;
     dispatcher.dispatch(event);
     require(calls == std::vector<int>({1, 1, 2, 3, 2}), "Nested dispatch order");
 
-    Engine::EventDispatcher failing;
-    auto throwing = failing.subscribe([](const Engine::Event&) { throw std::runtime_error("handler"); });
+    NeuexpEngine::EventDispatcher failing;
+    auto throwing = failing.subscribe([](const NeuexpEngine::Event&) { throw std::runtime_error("handler"); });
     int delivered = 0;
-    auto following = failing.subscribe([&](const Engine::Event&) { ++delivered; });
+    auto following = failing.subscribe([&](const NeuexpEngine::Event&) { ++delivered; });
     bool caught = false;
     try {
         failing.dispatch(event);
@@ -185,9 +185,9 @@ void testNestedAndExceptions()
     failing.dispatch(event);
     require(delivered == 1, "Dispatcher must remain usable after exception");
 
-    auto destroyed = std::make_unique<Engine::EventDispatcher>();
-    auto destroyer = destroyed->subscribe([&](const Engine::Event&) { destroyed.reset(); });
-    auto skipped = destroyed->subscribe([&](const Engine::Event&) { ++delivered; });
+    auto destroyed = std::make_unique<NeuexpEngine::EventDispatcher>();
+    auto destroyer = destroyed->subscribe([&](const NeuexpEngine::Event&) { destroyed.reset(); });
+    auto skipped = destroyed->subscribe([&](const NeuexpEngine::Event&) { ++delivered; });
     destroyed->dispatch(event);
     require(delivered == 1 && !destroyer.connected() && !skipped.connected(),
         "Dispatcher destroyed during callback");
@@ -195,27 +195,27 @@ void testNestedAndExceptions()
 
 void testInputIntegration()
 {
-    Engine::InputState input;
-    Engine::Event event;
-    event.type = Engine::EventType::KeyPressed;
-    event.key = Engine::Key::A;
+    NeuexpEngine::InputState input;
+    NeuexpEngine::Event event;
+    event.type = NeuexpEngine::EventType::KeyPressed;
+    event.key = NeuexpEngine::Key::A;
     input.handleEvent(event);
-    event.type = Engine::EventType::FocusLost;
+    event.type = NeuexpEngine::EventType::FocusLost;
     input.handleEvent(event);
-    Engine::EventDispatcher dispatcher;
-    std::vector<Engine::EventType> types;
-    auto listener = dispatcher.subscribe([&](const Engine::Event& received) {
+    NeuexpEngine::EventDispatcher dispatcher;
+    std::vector<NeuexpEngine::EventType> types;
+    auto listener = dispatcher.subscribe([&](const NeuexpEngine::Event& received) {
         types.push_back(received.type);
-        if (received.type == Engine::EventType::KeyReleased) {
-            require(received.canceled && received.key == Engine::Key::A, "Canceled release payload");
+        if (received.type == NeuexpEngine::EventType::KeyReleased) {
+            require(received.canceled && received.key == NeuexpEngine::Key::A, "Canceled release payload");
         }
     });
     for (const auto& received : input.events()) {
         dispatcher.dispatch(received);
     }
-    require(types == std::vector<Engine::EventType>({Engine::EventType::KeyPressed,
-        Engine::EventType::FocusLost, Engine::EventType::KeyReleased}), "Input event order");
-    require(input.events().size() == 3 && !input.key(Engine::Key::A).down,
+    require(types == std::vector<NeuexpEngine::EventType>({NeuexpEngine::EventType::KeyPressed,
+        NeuexpEngine::EventType::FocusLost, NeuexpEngine::EventType::KeyReleased}), "Input event order");
+    require(input.events().size() == 3 && !input.key(NeuexpEngine::Key::A).down,
         "Dispatch must not consume events or modify input");
 }
 }

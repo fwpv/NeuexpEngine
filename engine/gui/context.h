@@ -5,7 +5,7 @@
 
 #include <optional>
 
-namespace Engine::Gui
+namespace NeuexpEngine::Gui
 {
 // Порядок детей определяет рисование; ввод обходит тот же список с конца.
 // Контекст владеет активными страницами. Обработчики могут менять дерево и страницы:
@@ -21,7 +21,7 @@ public:
     std::shared_ptr<Screen> screen() const;
     std::shared_ptr<Screen> modal() const;
     // true: ввод поглощён GUI, передавать его игровому миру не следует.
-    bool handle(const Engine::Event& event);
+    bool handle(const NeuexpEngine::Event& event);
     // Вызывать после setWorldView; устанавливает собственный пиксельный UiView.
     bool draw(Renderer2D& renderer, ResourceError& error);
     std::optional<Rect> bounds(const Element& element);

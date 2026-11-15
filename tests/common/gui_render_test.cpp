@@ -12,9 +12,9 @@
 
 namespace
 {
-using namespace Engine;
+using namespace NeuexpEngine;
 using RenderTest::require;
-namespace UI = Engine::Gui;
+namespace UI = NeuexpEngine::Gui;
 constexpr int Size = 256;
 std::array<unsigned char, 3> pixel(int x, int y)
 {
@@ -113,13 +113,13 @@ void run()
     require(pixel(10, 10)[0] == 255 && pixel(50, 30)[2] == 255, "GUI paint order wrong");
     int clicks = 0;
     auto subscription = second->subscribe(UI::EventType::Click, [&](const UI::Event&) { ++clicks; });
-    Engine::Event event;
+    NeuexpEngine::Event event;
     event.button = MouseButton::Left;
     event.x = 50;
     event.y = 30;
-    event.type = Engine::EventType::MousePressed;
+    event.type = NeuexpEngine::EventType::MousePressed;
     context.handle(event);
-    event.type = Engine::EventType::MouseReleased;
+    event.type = NeuexpEngine::EventType::MouseReleased;
     context.handle(event);
     require(clicks == 1, "Visual top did not receive click");
 

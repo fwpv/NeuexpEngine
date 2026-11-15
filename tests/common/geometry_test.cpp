@@ -16,7 +16,7 @@ void require(bool condition, const char* message)
 int main()
 {
     try {
-        using namespace Engine;
+        using namespace NeuexpEngine;
         const Rect rectangle = { -2, -3, 8, 6 };
         require(rectangle == Rect{ { -2, -3 }, { 8, 6 } } && rectangle != Rect{ -2, -3, 8, 7 },
             "Rectangle value comparison failed.");

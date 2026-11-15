@@ -4,7 +4,7 @@
 #include <cmath>
 #include <utility>
 
-namespace Engine::Gui
+namespace NeuexpEngine::Gui
 {
 namespace
 {
@@ -178,25 +178,25 @@ void Context::updateHover()
     rebuild();
     reconcile();
 }
-bool Context::handle(const Engine::Event& event)
+bool Context::handle(const NeuexpEngine::Event& event)
 {
     rebuild();
     reconcile();
-    if (event.type == Engine::EventType::FocusLost || event.type == Engine::EventType::MouseCaptureLost
-        || event.type == Engine::EventType::WindowMinimized || event.type == Engine::EventType::WindowDestroyed) {
+    if (event.type == NeuexpEngine::EventType::FocusLost || event.type == NeuexpEngine::EventType::MouseCaptureLost
+        || event.type == NeuexpEngine::EventType::WindowMinimized || event.type == NeuexpEngine::EventType::WindowDestroyed) {
         const bool consumed = static_cast<bool>(capture);
         hasCursor = false;
         cancel();
         return consumed;
     }
-    if (event.type == Engine::EventType::MouseLeft) {
+    if (event.type == NeuexpEngine::EventType::MouseLeft) {
         hasCursor = false;
         updateHover();
         return static_cast<bool>(capture) || static_cast<bool>(overlay);
     }
-    const bool mouse = event.type == Engine::EventType::MouseMoved || event.type == Engine::EventType::MousePressed
-        || event.type == Engine::EventType::MouseReleased || event.type == Engine::EventType::MouseWheel
-        || event.type == Engine::EventType::MouseEntered;
+    const bool mouse = event.type == NeuexpEngine::EventType::MouseMoved || event.type == NeuexpEngine::EventType::MousePressed
+        || event.type == NeuexpEngine::EventType::MouseReleased || event.type == NeuexpEngine::EventType::MouseWheel
+        || event.type == NeuexpEngine::EventType::MouseEntered;
     if (!mouse) { return false; }
     cursor = view.screenToUiTransform.transformPoint(Vector2{static_cast<float>(event.x), static_cast<float>(event.y)});
     hasCursor = viewportValid;
@@ -207,7 +207,7 @@ bool Context::handle(const Engine::Event& event)
         cancel();
         return consumed;
     }
-    if (event.type == Engine::EventType::MouseWheel) {
+    if (event.type == NeuexpEngine::EventType::MouseWheel) {
         for (Element* ancestor = target.get(); ancestor; ancestor = ancestor->parent) {
             const auto container = dynamic_cast<Container*>(ancestor);
             if (container && container->scrollable() && container->layout().flow == Flow::Column) {
@@ -220,7 +220,7 @@ bool Context::handle(const Engine::Event& event)
         return consumed;
     }
     if (event.button != MouseButton::Left) { return consumed; }
-    if (event.type == Engine::EventType::MousePressed) {
+    if (event.type == NeuexpEngine::EventType::MousePressed) {
         if (!capture && available(target) && target->interactive()) {
             capture = target;
             target->down = true;
@@ -228,7 +228,7 @@ bool Context::handle(const Engine::Event& event)
             rebuild();
             reconcile();
         }
-    } else if (event.type == Engine::EventType::MouseReleased && capture) {
+    } else if (event.type == NeuexpEngine::EventType::MouseReleased && capture) {
         auto released = std::move(capture);
         released->down = false;
         const bool clicked = target == released;

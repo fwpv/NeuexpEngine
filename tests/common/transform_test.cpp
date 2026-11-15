@@ -20,12 +20,12 @@ bool near(float actual, float expected, float tolerance = 0.0001F)
     return std::isfinite(actual) && std::abs(actual - expected) <= tolerance;
 }
 
-bool near(Engine::Vector2 actual, Engine::Vector2 expected, float tolerance = 0.0001F)
+bool near(NeuexpEngine::Vector2 actual, NeuexpEngine::Vector2 expected, float tolerance = 0.0001F)
 {
     return near(actual.x, expected.x, tolerance) && near(actual.y, expected.y, tolerance);
 }
 
-bool near(const Engine::Affine2& actual, const Engine::Affine2& expected)
+bool near(const NeuexpEngine::Affine2& actual, const NeuexpEngine::Affine2& expected)
 {
     return near(actual.m00, expected.m00) && near(actual.m01, expected.m01) && near(actual.m02, expected.m02)
         && near(actual.m10, expected.m10) && near(actual.m11, expected.m11) && near(actual.m12, expected.m12);
@@ -35,7 +35,7 @@ bool near(const Engine::Affine2& actual, const Engine::Affine2& expected)
 int main()
 {
     try {
-        using namespace Engine;
+        using namespace NeuexpEngine;
         const Vector2 point = { 3, -7 };
         const Affine2 identity;
         require(identity.transformPoint(point) == point && identity.transformVector(point) == point, "Identity failed.");

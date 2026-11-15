@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace Engine
+namespace NeuexpEngine
 {
 bool Animation::load(const Texture& source, const std::vector<AnimationFrame>& sequence, ResourceError& error)
 {

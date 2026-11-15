@@ -6,7 +6,7 @@
 #include <memory>
 #include <cstddef>
 
-namespace Engine
+namespace NeuexpEngine
 {
 namespace Detail
 {

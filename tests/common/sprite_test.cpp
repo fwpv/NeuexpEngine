@@ -17,7 +17,7 @@ void require(bool condition, const char* message)
 int main()
 {
     try {
-        using namespace Engine;
+        using namespace NeuexpEngine;
         Sprite sprite;
         sprite.size = {20, 10};
         require(sprite.polygon() == Quad{Vector2{0, 0}, Vector2{20, 0},
