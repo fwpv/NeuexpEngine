@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace Engine
+namespace NeuexpEngine
 {
 // Физические позиции клавиш, названные по US-клавиатуре. Раскладка влияет только на TextInput.
 enum class Key

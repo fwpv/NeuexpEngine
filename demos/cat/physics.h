@@ -23,16 +23,16 @@ struct SupportShape
 
 struct Body
 {
-    Engine::Vector2 position; // X — центр опоры, Y — уровень контакта; ось Y направлена вниз.
-    Engine::Vector2 velocity;
+    NeuexpEngine::Vector2 position; // X — центр опоры, Y — уровень контакта; ось Y направлена вниз.
+    NeuexpEngine::Vector2 velocity;
     SupportShape supportShape;
 };
 
 struct Surface
 {
     int id = -1; // Уникальный неотрицательный ID.
-    Engine::Vector2 position;
-    Engine::Size2 size;
+    NeuexpEngine::Vector2 position;
+    NeuexpEngine::Size2 size;
     float speed = 0; // Вертикальная скорость; положительное направление — вниз.
     float top = 0; // При ненулевой скорости требуется top < bottom.
     float bottom = 0;
@@ -53,7 +53,7 @@ public:
     CatPhysics(Body& body, const std::vector<Surface*>& surfaces);
     bool supports(int surfaceId) const;
     bool hasSupport() const;
-    void reset(Engine::Vector2 position, Engine::Vector2 velocity);
+    void reset(NeuexpEngine::Vector2 position, NeuexpEngine::Vector2 velocity);
     void launch(float upwardImpulse); // Отрыв с добавлением скорости вверх, включая скорость опоры.
     void dropThrough(float downwardImpulse); // Импульс вниз и запрет приземления на 0,15 секунды.
     // Один плавающий шаг целиком, без внутренних подшагов. duration >= 0, ускорения и импульсы >= 0.

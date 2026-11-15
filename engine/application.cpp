@@ -11,7 +11,7 @@
 #include <utility>
 #include <optional>
 
-namespace Engine
+namespace NeuexpEngine
 {
 namespace
 {

@@ -10,7 +10,7 @@
 
 namespace
 {
-using namespace Engine;
+using namespace NeuexpEngine;
 class SpriteApplication final : public Application
 {
 private:
@@ -143,7 +143,7 @@ private:
     std::vector<Animation> sprites;
 };
 }
-int Engine::applicationMain()
+int NeuexpEngine::applicationMain()
 {
     SpriteApplication app;
     ApplicationOptions options;

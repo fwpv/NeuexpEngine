@@ -16,7 +16,7 @@ struct Assets;
 struct Coin
 {
     // Спрайт монеты: кадр и положение для отрисовки, размер задан при перезапуске.
-    Engine::Animation spin;
+    NeuexpEngine::Animation spin;
     bool collected = false;
 };
 
@@ -28,10 +28,10 @@ enum class EnemyKind
 
 struct Enemy
 {
-    Engine::Vector2 position; // Левый верхний угол корпуса.
+    NeuexpEngine::Vector2 position; // Левый верхний угол корпуса.
     EnemyKind kind = EnemyKind::Walker;
     // Клипы врага: походка и раздавленный кадр для обоих направлений взгляда.
-    Engine::AnimationSet animations;
+    NeuexpEngine::AnimationSet animations;
     float baseY = 0; // Средняя высота полёта для летающего врага.
     float baseX = 0; // Центр патруля по горизонтали.
     float direction = -1;
@@ -44,7 +44,7 @@ struct Enemy
 struct Popup
 {
     // Спрайт всплывающей монеты: кадр и положение для отрисовки.
-    Engine::Animation animation;
+    NeuexpEngine::Animation animation;
     float time = 0;
 };
 
@@ -57,9 +57,9 @@ enum class Phase
 // Гриб: выезжает из блока, ходит по земле и падает в ямы.
 struct Item
 {
-    Engine::Vector2 position; // Левый верхний угол тела; кадр ставится со смещением полей.
-    Engine::Sprite sprite;
-    Engine::Vector2 velocity;
+    NeuexpEngine::Vector2 position; // Левый верхний угол тела; кадр ставится со смещением полей.
+    NeuexpEngine::Sprite sprite;
+    NeuexpEngine::Vector2 velocity;
     bool collected = false;
 };
 
@@ -74,7 +74,7 @@ public:
     static constexpr int InitialLives = 1;
 
     // Кадры анимаций копируются из загруженных ресурсов уровня.
-    bool load(const Engine::ResourceFiles& files, const Assets& source, Engine::ResourceError& error);
+    bool load(const NeuexpEngine::ResourceFiles& files, const Assets& source, NeuexpEngine::ResourceError& error);
     void restart();
     // Полный сброс: жизни, игрок, монеты, враги и предметы.
     void reset();
@@ -114,16 +114,16 @@ private:
     // Переносит положение тела предмета в его кадр для отрисовки.
     void placeItem(Item& item);
     void collectItems();
-    bool itemBlocked(Engine::Vector2 position) const;
+    bool itemBlocked(NeuexpEngine::Vector2 position) const;
     void handleCeilingHit();
     void finishRun();
 
     // Шаблоны кадров: объекты уровня получают их копии при каждом перезапуске.
-    Engine::Animation coinTemplate;
-    Engine::Animation popupTemplate;
-    Engine::AnimationSet walkerAnimations;
-    Engine::AnimationSet flyerAnimations;
-    Engine::Sprite mushroomSprite;
+    NeuexpEngine::Animation coinTemplate;
+    NeuexpEngine::Animation popupTemplate;
+    NeuexpEngine::AnimationSet walkerAnimations;
+    NeuexpEngine::AnimationSet flyerAnimations;
+    NeuexpEngine::Sprite mushroomSprite;
     Level levelValue;
     Player playerValue;
     std::vector<Coin> coinList;

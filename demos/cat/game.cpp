@@ -22,11 +22,11 @@ namespace Cat
 {
 namespace
 {
-bool loadAnimation(Engine::Renderer2D& renderer, const Engine::ResourceFiles& files,
+bool loadAnimation(NeuexpEngine::Renderer2D& renderer, const NeuexpEngine::ResourceFiles& files,
     const std::string& name, std::size_t frameCount,
-    Engine::Animation& animation, Engine::ResourceError& error)
+    NeuexpEngine::Animation& animation, NeuexpEngine::ResourceError& error)
 {
-    Engine::Image image;
+    NeuexpEngine::Image image;
     if (!files.loadPng("cat/" + name + "_atlas.png", image, error)) {
         return false;
     }
@@ -35,17 +35,17 @@ bool loadAnimation(Engine::Renderer2D& renderer, const Engine::ResourceFiles& fi
         image.pixels[pixel + 3] = image.pixels[pixel] == 0 && image.pixels[pixel + 1] == 0
             && image.pixels[pixel + 2] == 0 ? 0 : 255;
     }
-    Engine::Texture texture;
-    Engine::TextureAtlas atlas;
+    NeuexpEngine::Texture texture;
+    NeuexpEngine::TextureAtlas atlas;
     if (!renderer.createTexture(image, texture, error)
         || !atlas.load(texture, files, "cat/" + name + ".atlas", error)) {
         return false;
     }
-    std::vector<Engine::Rect> frames;
+    std::vector<NeuexpEngine::Rect> frames;
     for (std::size_t index = 0; index < frameCount; ++index) {
         const auto* area = atlas.find(std::to_string(index));
         if (!area) {
-            error = Engine::ResourceError{Engine::ResourceErrorCode::InvalidImage,
+            error = NeuexpEngine::ResourceError{NeuexpEngine::ResourceErrorCode::InvalidImage,
                 "Missing animation frame: " + name + "/" + std::to_string(index)};
             return false;
         }
@@ -76,30 +76,30 @@ bool Game::isOver() const
     return world.catPosition().y >= FallBoundary;
 }
 
-bool Game::prepareView(int width, int height, Engine::CameraError& error)
+bool Game::prepareView(int width, int height, NeuexpEngine::CameraError& error)
 {
     const float scale = std::min(static_cast<float>(width) / 935, static_cast<float>(height) / 700);
     const int viewHeight = static_cast<int>(700.0F * scale);
-    Engine::Camera2 camera;
-    camera.referenceSize = Engine::Size2{static_cast<float>(width) / scale, static_cast<float>(viewHeight) / scale};
-    camera.position = Engine::Vector2{world.catPosition().x + camera.referenceSize.width / 2 - 450, camera.referenceSize.height / 2};
-    if (!camera.createView(Engine::Viewport{0, (height - viewHeight) / 2, width, viewHeight}, view, error)) {
+    NeuexpEngine::Camera2 camera;
+    camera.referenceSize = NeuexpEngine::Size2{static_cast<float>(width) / scale, static_cast<float>(viewHeight) / scale};
+    camera.position = NeuexpEngine::Vector2{world.catPosition().x + camera.referenceSize.width / 2 - 450, camera.referenceSize.height / 2};
+    if (!camera.createView(NeuexpEngine::Viewport{0, (height - viewHeight) / 2, width, viewHeight}, view, error)) {
         return false;
     }
     visibleWidth = view.worldBounds.size.width;
     return true;
 }
 
-void Game::draw(Engine::Renderer2D& renderer, const Images& images) const
+void Game::draw(NeuexpEngine::Renderer2D& renderer, const Images& images) const
 {
     renderer.setWorldView(view);
     foliage.draw(renderer, images, view.worldBounds);
     world.draw(renderer, images, view.worldBounds);
 }
 
-bool Images::load(Engine::Renderer2D& renderer, Engine::ResourceError& error)
+bool Images::load(NeuexpEngine::Renderer2D& renderer, NeuexpEngine::ResourceError& error)
 {
-    Engine::ResourceFiles files;
+    NeuexpEngine::ResourceFiles files;
     if (!files.initialize(error)) {
         return false;
     }
@@ -108,7 +108,7 @@ bool Images::load(Engine::Renderer2D& renderer, Engine::ResourceError& error)
         "label1.png", "label2.png", "label3.png"
     };
     for (std::size_t index = 0; index < Files.size(); ++index) {
-        Engine::Image image;
+        NeuexpEngine::Image image;
         if (!files.loadPng("cat/" + std::string(Files[index]), image, error)) {
             return false;
         }
@@ -118,12 +118,12 @@ bool Images::load(Engine::Renderer2D& renderer, Engine::ResourceError& error)
             image.pixels[pixel + 3] = image.pixels[pixel] == 0 && image.pixels[pixel + 1] == 0
                 && image.pixels[pixel + 2] == 0 ? 0 : 255;
         }
-        Engine::Texture texture;
+        NeuexpEngine::Texture texture;
         if (!renderer.createTexture(image, texture, error)) {
             return false;
         }
-        sprites[index] = Engine::Sprite(texture);
-        sprites[index].filter = Engine::TextureFilter::Nearest;
+        sprites[index] = NeuexpEngine::Sprite(texture);
+        sprites[index].filter = NeuexpEngine::TextureFilter::Nearest;
     }
     if (!loadAnimation(renderer, files, "head", 5, head, error)
         || !loadAnimation(renderer, files, "feet", 12, feet, error)) {
@@ -131,23 +131,23 @@ bool Images::load(Engine::Renderer2D& renderer, Engine::ResourceError& error)
     }
     // Атлас обрезан на 9 пустых пикселей слева; сохраняем положение относительно лап.
     head.transform.position.x = 9;
-    head.setMode(Engine::AnimationMode::Clamp);
+    head.setMode(NeuexpEngine::AnimationMode::Clamp);
     head.setFrame(head.frameCount() / 2);
     return true;
 }
 
-void Images::draw(Engine::Renderer2D& renderer, std::size_t image, Engine::Vector2 position, float scale, float angle) const
+void Images::draw(NeuexpEngine::Renderer2D& renderer, std::size_t image, NeuexpEngine::Vector2 position, float scale, float angle) const
 {
-    Engine::Sprite sprite = sprites[image];
+    NeuexpEngine::Sprite sprite = sprites[image];
     sprite.size.width *= scale;
     sprite.size.height *= scale;
     sprite.transform.position = position;
     if (image >= Leaf1 && image <= Leaf3) {
         // Центр задан в единицах сцены и не масштабируется вместе с изображением.
         constexpr float LeafPivot = 17.5F;
-        sprite.transform.position += Engine::Vector2{LeafPivot, LeafPivot};
-        sprite.transform.origin = Engine::Vector2{LeafPivot, LeafPivot};
-        sprite.transform.rotation = -Engine::degreesToRadians(angle);
+        sprite.transform.position += NeuexpEngine::Vector2{LeafPivot, LeafPivot};
+        sprite.transform.origin = NeuexpEngine::Vector2{LeafPivot, LeafPivot};
+        sprite.transform.rotation = -NeuexpEngine::degreesToRadians(angle);
     }
     renderer.drawSprite(sprite);
 }

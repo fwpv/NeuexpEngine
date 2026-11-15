@@ -12,7 +12,7 @@
 #include <string>
 #include <utility>
 
-namespace Engine
+namespace NeuexpEngine
 {
 bool TextureAtlas::load(const Texture& source, const std::string& description, ResourceError& error)
 {

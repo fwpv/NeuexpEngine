@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Engine
+namespace NeuexpEngine
 {
 struct AnimationFrame
 {

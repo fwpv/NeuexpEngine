@@ -21,7 +21,7 @@ struct Error
 // Всегда пишет в stderr; в Windows дополнительно показывает MessageBox, если showDialog == true.
 void reportError(const Error& error, bool showDialog = true);
 
-using Key = Engine::Key;
+using Key = NeuexpEngine::Key;
 
 struct WindowOptions
 {
@@ -71,12 +71,12 @@ bool setWindowTitle(const std::string& title, Error& error);
 
 // Меняет интервал обмена буферов: true — один период развёртки, false — без синхронизации.
 // При отсутствии поддержки возвращает false с ошибкой; режим не меняется.
-// В приложении Engine::Application следует вызывать его setVSync, который также
+// В приложении NeuexpEngine::Application следует вызывать его setVSync, который также
 // согласует программный ограничитель FPS с выбранным режимом.
 bool setVSync(bool enabled, Error& error);
 
 // Обрабатывает события и обновляет снимок окна. false означает ошибку обработки.
-// При использовании Engine::Application обработку событий и present выполняет его цикл.
+// При использовании NeuexpEngine::Application обработку событий и present выполняет его цикл.
 // При изменении размеров обновляет viewport на всю клиентскую область, не меняя матрицы OpenGL.
 // Запрос закрытия читается отдельно через isCloseRequested(); нажатия клавиш не закрывают окно.
 bool processEvents(Error& error);
@@ -98,8 +98,8 @@ bool isKeyReleased(Key key);
 // следующего processEvents/initialize/shutdown. Один вызов processEvents — один кадр ввода.
 // pressed/released, текст, движение и колесо очищаются каждый кадр, down сохраняется.
 // До запуска и после shutdown возвращаются пустые данные. Читать можно многократно.
-const Engine::InputState& getInput();
-const std::vector<Engine::Event>& getEvents();
+const NeuexpEngine::InputState& getInput();
+const std::vector<NeuexpEngine::Event>& getEvents();
 
 // Показывает нарисованный кадр из заднего буфера окна.
 // Для свёрнутого окна пропускает обмен буферов и возвращает true.

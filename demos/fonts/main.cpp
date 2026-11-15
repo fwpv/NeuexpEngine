@@ -13,7 +13,7 @@
 
 namespace
 {
-using namespace Engine;
+using namespace NeuexpEngine;
 
 struct Sample
 {
@@ -185,7 +185,7 @@ private:
 };
 }
 
-int Engine::applicationMain()
+int NeuexpEngine::applicationMain()
 {
     FontApplication app;
     ApplicationOptions options;

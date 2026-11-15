@@ -6,7 +6,7 @@
 #include <cmath>
 #include <cstddef>
 
-namespace Engine
+namespace NeuexpEngine
 {
 bool contains(const Rect& rectangle, Vector2 point)
 {

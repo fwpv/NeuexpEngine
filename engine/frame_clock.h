@@ -2,7 +2,7 @@
 
 #include <chrono>
 
-namespace Engine
+namespace NeuexpEngine
 {
 // Монотонные часы кадра: переводят интервал между отсчётами в секунды.
 class FrameClock

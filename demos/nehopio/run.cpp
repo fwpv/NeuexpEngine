@@ -21,14 +21,14 @@ constexpr float FallLaunchSpeed = -180;
 constexpr float FallGravity = 2100;
 constexpr float FallLimit = 96;
 // Тело гриба меньше его картинки на два пикселя с каждой стороны: так он проходит в проёмы.
-constexpr Engine::Size2 MushroomBox{28, 28};
+constexpr NeuexpEngine::Size2 MushroomBox{28, 28};
 // Тело сдвинуто внутрь картинки: видимая часть гриба стоит ровно на границе плитки.
 constexpr float MushroomInset = 2;
 constexpr float PopupLifetime = 0.5F;
 constexpr float PopupRiseSpeed = 140;
 }
 
-bool Run::load(const Engine::ResourceFiles& files, const Assets& source, Engine::ResourceError& error)
+bool Run::load(const NeuexpEngine::ResourceFiles& files, const Assets& source, NeuexpEngine::ResourceError& error)
 {
     // Шаблоны кадров копируются из ресурсов: перезапуск даёт объектам их копии.
     coinTemplate = source.coin;
@@ -54,7 +54,7 @@ void Run::restart()
     for (const auto& spawn : levelValue.coinSpawns()) {
         Coin coin;
         coin.spin = coinTemplate;
-        coin.spin.transform.position = Engine::Vector2{spawn.x - coin.spin.size.width / 2,
+        coin.spin.transform.position = NeuexpEngine::Vector2{spawn.x - coin.spin.size.width / 2,
             spawn.y - coin.spin.size.height / 2};
         coinList.push_back(coin);
     }
@@ -62,7 +62,7 @@ void Run::restart()
     for (const auto& spawn : levelValue.enemySpawns()) {
         Enemy enemy;
         enemy.animations = walkerAnimations;
-        enemy.position = Engine::Vector2{spawn.x - EnemyWidth / 2, spawn.y - EnemyHeight};
+        enemy.position = NeuexpEngine::Vector2{spawn.x - EnemyWidth / 2, spawn.y - EnemyHeight};
         enemyList.push_back(enemy);
     }
     for (const auto& spawn : levelValue.flyerSpawns()) {
@@ -71,7 +71,7 @@ void Run::restart()
         enemy.animations = flyerAnimations;
         enemy.baseY = spawn.y;
         enemy.baseX = spawn.x;
-        enemy.position = Engine::Vector2{spawn.x - EnemyWidth / 2, spawn.y - EnemyHeight / 2};
+        enemy.position = NeuexpEngine::Vector2{spawn.x - EnemyWidth / 2, spawn.y - EnemyHeight / 2};
         enemyList.push_back(enemy);
     }
     coinTotal = static_cast<int>(coinList.size());
@@ -180,7 +180,7 @@ void Run::step(float deltaTime, const Controls& controls)
         fallIntoPit();
         return;
     }
-    if (Engine::intersects(playerValue.bounds(), levelValue.goal())) {
+    if (NeuexpEngine::intersects(playerValue.bounds(), levelValue.goal())) {
         finishRun();
     }
 }
@@ -229,13 +229,13 @@ void Run::walkEnemy(Enemy& enemy, float deltaTime)
     }
     // Препятствие перед корпусом поворачивает любого врага, обрыв под ногами — только ходячего.
     const float sideX = nextX + (enemy.direction > 0 ? EnemyWidth : 0) + enemy.direction * 2;
-    if (levelValue.solidAt(Engine::Vector2{sideX, enemy.position.y + EnemyHeight / 2})) {
+    if (levelValue.solidAt(NeuexpEngine::Vector2{sideX, enemy.position.y + EnemyHeight / 2})) {
         enemy.direction = -enemy.direction;
         return;
     }
     const float footX = nextX + (enemy.direction > 0 ? EnemyWidth : 0) + enemy.direction * 4;
     if (enemy.kind == EnemyKind::Walker
-        && !levelValue.solidAt(Engine::Vector2{footX, enemy.position.y + EnemyHeight + 4})) {
+        && !levelValue.solidAt(NeuexpEngine::Vector2{footX, enemy.position.y + EnemyHeight + 4})) {
         enemy.direction = -enemy.direction;
         return;
     }
@@ -248,8 +248,8 @@ void Run::walkEnemy(Enemy& enemy, float deltaTime)
 void Run::placeEnemy(Enemy& enemy)
 {
     // Положение и поворот хранит кадр врага, поэтому отрисовка только рисует его.
-    Engine::Animation& frame = enemy.animations.current();
-    frame.transform.position = Engine::Vector2{enemy.position.x + EnemyWidth / 2 - frame.size.width / 2,
+    NeuexpEngine::Animation& frame = enemy.animations.current();
+    frame.transform.position = NeuexpEngine::Vector2{enemy.position.x + EnemyWidth / 2 - frame.size.width / 2,
         enemy.position.y + EnemyHeight - frame.size.height};
     frame.transform.rotation = enemy.falling ? enemy.elapsed * 7 : 0;
 }
@@ -271,7 +271,7 @@ void Run::handleCeilingHit()
         // Монета поднимается из блока и исчезает.
         Popup popup;
         popup.animation = popupTemplate;
-        popup.animation.transform.position = Engine::Vector2{
+        popup.animation.transform.position = NeuexpEngine::Vector2{
             static_cast<float>(column) * Level::TileSize + Level::TileSize / 2 - popup.animation.size.width / 2,
             static_cast<float>(row) * Level::TileSize - popup.animation.size.height / 2};
         popupList.push_back(popup);
@@ -287,10 +287,10 @@ void Run::handleCeilingHit()
         // Гриб выезжает из блока и дальше живёт как предмет.
         Item item;
         item.sprite = mushroomSprite;
-        item.position = Engine::Vector2{static_cast<float>(column) * Level::TileSize + 2,
+        item.position = NeuexpEngine::Vector2{static_cast<float>(column) * Level::TileSize + 2,
             static_cast<float>(row) * Level::TileSize - MushroomBox.height};
         placeItem(item);
-        item.velocity = Engine::Vector2{70, -150};
+        item.velocity = NeuexpEngine::Vector2{70, -150};
         itemList.push_back(item);
         soundList.push_back(Sound::Bump);
         break;
@@ -300,9 +300,9 @@ void Run::handleCeilingHit()
     }
 }
 
-bool Run::itemBlocked(Engine::Vector2 position) const
+bool Run::itemBlocked(NeuexpEngine::Vector2 position) const
 {
-    return levelValue.overlapsSolid(Engine::Rect{position, MushroomBox});
+    return levelValue.overlapsSolid(NeuexpEngine::Rect{position, MushroomBox});
 }
 
 void Run::updateItems(float deltaTime)
@@ -311,14 +311,14 @@ void Run::updateItems(float deltaTime)
         if (item.collected) {
             continue;
         }
-        Engine::Vector2& position = item.position;
+        NeuexpEngine::Vector2& position = item.position;
         item.velocity.y = std::min(item.velocity.y + FallGravity * deltaTime, 900.0F);
         const float moveX = item.velocity.x * deltaTime;
         if (moveX != 0) {
             const int steps = std::max(1, static_cast<int>(std::ceil(std::abs(moveX))));
             const float step = moveX / static_cast<float>(steps);
             for (int index = 0; index < steps; ++index) {
-                if (itemBlocked(position + Engine::Vector2{step, 0})) {
+                if (itemBlocked(position + NeuexpEngine::Vector2{step, 0})) {
                     item.velocity.x = -item.velocity.x;
                     break;
                 }
@@ -330,7 +330,7 @@ void Run::updateItems(float deltaTime)
             const int steps = std::max(1, static_cast<int>(std::ceil(std::abs(moveY))));
             const float step = moveY / static_cast<float>(steps);
             for (int index = 0; index < steps; ++index) {
-                if (itemBlocked(position + Engine::Vector2{0, step})) {
+                if (itemBlocked(position + NeuexpEngine::Vector2{0, step})) {
                     item.velocity.y = 0;
                     break;
                 }
@@ -349,7 +349,7 @@ void Run::updateItems(float deltaTime)
 void Run::placeItem(Item& item)
 {
     // Видимая часть гриба стоит на границе плитки: кадр сдвинут внутрь на поля картинки.
-    item.sprite.transform.position = Engine::Vector2{item.position.x - MushroomInset, item.position.y - MushroomInset};
+    item.sprite.transform.position = NeuexpEngine::Vector2{item.position.x - MushroomInset, item.position.y - MushroomInset};
 }
 
 void Run::collectItems()
@@ -358,8 +358,8 @@ void Run::collectItems()
         if (item.collected) {
             continue;
         }
-        const Engine::Rect box{item.position, MushroomBox};
-        if (!Engine::intersects(playerValue.bounds(), box)) {
+        const NeuexpEngine::Rect box{item.position, MushroomBox};
+        if (!NeuexpEngine::intersects(playerValue.bounds(), box)) {
             continue;
         }
         item.collected = true;
@@ -377,8 +377,8 @@ void Run::updateCoins(float deltaTime)
             continue;
         }
         coin.spin.update(deltaTime);
-        const Engine::Rect area{coin.spin.transform.position, coin.spin.size};
-        if (Engine::intersects(playerValue.bounds(), area)) {
+        const NeuexpEngine::Rect area{coin.spin.transform.position, coin.spin.size};
+        if (NeuexpEngine::intersects(playerValue.bounds(), area)) {
             coin.collected = true;
             soundList.push_back(Sound::Coin);
             ++collected;
@@ -389,7 +389,7 @@ void Run::updateCoins(float deltaTime)
 
 void Run::resolveEnemyContacts()
 {
-    const Engine::Rect playerBox = playerValue.bounds();
+    const NeuexpEngine::Rect playerBox = playerValue.bounds();
     // Решение об ударе сверху принимается один раз на шаг: отскок от первого врага
     // меняет вертикальную скорость, и следующий враг под ногами уже не считался бы раздавленным.
     const bool landsOnEnemies = playerValue.verticalVelocity() > 0;
@@ -398,8 +398,8 @@ void Run::resolveEnemyContacts()
         if (enemy.falling) {
             continue;
         }
-        const Engine::Rect enemyBox{enemy.position, Engine::Size2{EnemyWidth, EnemyHeight}};
-        if (!Engine::intersects(playerBox, enemyBox)) {
+        const NeuexpEngine::Rect enemyBox{enemy.position, NeuexpEngine::Size2{EnemyWidth, EnemyHeight}};
+        if (!NeuexpEngine::intersects(playerBox, enemyBox)) {
             continue;
         }
         // Падение сверху засчитывается, если центр игрока выше центра противника:

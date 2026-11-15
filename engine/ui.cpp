@@ -5,7 +5,7 @@
 #include <cmath>
 #include <limits>
 
-namespace Engine
+namespace NeuexpEngine
 {
 Vector2 UiView::uiToScreen(Vector2 point) const
 {

@@ -30,9 +30,9 @@ void sleepUntil(Clock::time_point deadline)
     }
 }
 
-void addEvent(Engine::EventType type)
+void addEvent(NeuexpEngine::EventType type)
 {
-    Engine::Event event;
+    NeuexpEngine::Event event;
     event.type = type;
     runtime.input.handleEvent(event);
 }
@@ -83,7 +83,7 @@ bool initialize(const WindowOptions&, Error& failure)
     state.initialized = true;
     state.closeRequested = state.closeDuringInitialize;
     if (state.closeRequested) {
-        ApplicationTest::addEvent(Engine::EventType::CloseRequested);
+        ApplicationTest::addEvent(NeuexpEngine::EventType::CloseRequested);
     }
     return true;
 }
@@ -144,12 +144,12 @@ bool setVSync(bool enabled, Error& error)
     return true;
 }
 
-const Engine::InputState& getInput()
+const NeuexpEngine::InputState& getInput()
 {
     return ApplicationTest::runtime.input;
 }
 
-const std::vector<Engine::Event>& getEvents()
+const std::vector<NeuexpEngine::Event>& getEvents()
 {
     return ApplicationTest::runtime.input.events();
 }

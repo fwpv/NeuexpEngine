@@ -13,7 +13,7 @@ namespace
 {
 constexpr char WindowTitle[] = "Nehopio";
 
-class NehopioApplication final : public Engine::Application
+class NehopioApplication final : public NeuexpEngine::Application
 {
 private:
     bool onStart(Platform::Error& error) override
@@ -21,8 +21,8 @@ private:
         if (!initializeRenderer(error)) {
             return false;
         }
-        Engine::ResourceFiles files;
-        Engine::ResourceError failure;
+        NeuexpEngine::ResourceFiles files;
+        NeuexpEngine::ResourceError failure;
         if (!files.initialize(failure) || !assets.load(getRenderer(), files, failure)
             || !game.load(assets, files, failure)) {
             error = Platform::Error{WindowTitle, failure.message, std::optional<int>{}};
@@ -35,35 +35,35 @@ private:
         return true;
     }
 
-    bool onInput(const Engine::FrameInfo&, Platform::Error&) override
+    bool onInput(const NeuexpEngine::FrameInfo&, Platform::Error&) override
     {
         // Одноразовые действия читаются из снимка ввода: флаг pressed действует один кадр
         // и не зависит от того, успел ли в этом кадре начаться фиксированный шаг симуляции.
         // Обработка находится здесь, потому что обновление на паузе не вызывается.
         const auto& input = Platform::getInput();
-        if (input.key(Engine::Key::Escape).pressed) {
+        if (input.key(NeuexpEngine::Key::Escape).pressed) {
             requestExit();
         }
-        if (input.key(Engine::Key::R).pressed) {
+        if (input.key(NeuexpEngine::Key::R).pressed) {
             game.restart();
         }
-        if (input.key(Engine::Key::P).pressed) {
+        if (input.key(NeuexpEngine::Key::P).pressed) {
             setPaused(!isPaused());
         }
         return true;
     }
 
-    bool onUpdate(const Engine::FrameInfo& frame, Platform::Error& error) override
+    bool onUpdate(const NeuexpEngine::FrameInfo& frame, Platform::Error& error) override
     {
         const auto& input = Platform::getInput();
         Nehopio::Controls controls;
-        controls.left = input.key(Engine::Key::ArrowLeft).down || input.key(Engine::Key::A).down;
-        controls.right = input.key(Engine::Key::ArrowRight).down || input.key(Engine::Key::D).down;
-        controls.jump = input.key(Engine::Key::Space).pressed || input.key(Engine::Key::ArrowUp).pressed
-            || input.key(Engine::Key::W).pressed;
-        controls.jumpHeld = input.key(Engine::Key::Space).down || input.key(Engine::Key::ArrowUp).down
-            || input.key(Engine::Key::W).down;
-        Engine::ResourceError failure;
+        controls.left = input.key(NeuexpEngine::Key::ArrowLeft).down || input.key(NeuexpEngine::Key::A).down;
+        controls.right = input.key(NeuexpEngine::Key::ArrowRight).down || input.key(NeuexpEngine::Key::D).down;
+        controls.jump = input.key(NeuexpEngine::Key::Space).pressed || input.key(NeuexpEngine::Key::ArrowUp).pressed
+            || input.key(NeuexpEngine::Key::W).pressed;
+        controls.jumpHeld = input.key(NeuexpEngine::Key::Space).down || input.key(NeuexpEngine::Key::ArrowUp).down
+            || input.key(NeuexpEngine::Key::W).down;
+        NeuexpEngine::ResourceError failure;
         if (!game.update(frame.deltaTime, controls, failure)) {
             error = Platform::Error{WindowTitle, failure.message, std::optional<int>{}};
             return false;
@@ -75,12 +75,12 @@ private:
         return true;
     }
 
-    bool onPrepareFrame(const Engine::FrameInfo& frame, Platform::Error& error) override
+    bool onPrepareFrame(const NeuexpEngine::FrameInfo& frame, Platform::Error& error) override
     {
         if (frame.window.minimized) {
             return true;
         }
-        Engine::CameraError cameraError;
+        NeuexpEngine::CameraError cameraError;
         if (!game.prepareView(frame.window.width, frame.window.height, cameraError)) {
             error = Platform::Error{WindowTitle, "Cannot calculate the camera view.", std::optional<int>{}};
             return false;
@@ -88,10 +88,10 @@ private:
         return true;
     }
 
-    bool onRender(const Engine::FrameInfo& frame, Platform::Error& error) override
+    bool onRender(const NeuexpEngine::FrameInfo& frame, Platform::Error& error) override
     {
-        beginFrame(frame.window.width, frame.window.height, Engine::Color{0.33F, 0.62F, 0.93F});
-        Engine::ResourceError failure;
+        beginFrame(frame.window.width, frame.window.height, NeuexpEngine::Color{0.33F, 0.62F, 0.93F});
+        NeuexpEngine::ResourceError failure;
         if (!game.draw(getRenderer(), assets, frame.paused, failure)) {
             error = Platform::Error{WindowTitle, failure.message, std::optional<int>{}};
             return false;
@@ -111,10 +111,10 @@ private:
 };
 }
 
-int Engine::applicationMain()
+int NeuexpEngine::applicationMain()
 {
     NehopioApplication application;
-    Engine::ApplicationOptions options;
+    NeuexpEngine::ApplicationOptions options;
     options.window.width = 1280;
     options.window.height = 720;
     options.window.minimumWidth = 960;

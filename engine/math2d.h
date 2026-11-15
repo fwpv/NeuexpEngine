@@ -2,7 +2,7 @@
 
 #include <cassert>
 
-namespace Engine
+namespace NeuexpEngine
 {
 inline constexpr float Pi = 3.14159265358979323846F;
 

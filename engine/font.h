@@ -11,7 +11,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Engine
+namespace NeuexpEngine
 {
 namespace Detail
 {

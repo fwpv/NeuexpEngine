@@ -2,7 +2,7 @@
 #include "detail/texture_data.h"
 #include "resources.h"
 
-namespace Engine
+namespace NeuexpEngine
 {
 bool Texture::isValid() const
 {

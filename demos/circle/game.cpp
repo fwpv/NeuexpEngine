@@ -29,7 +29,7 @@ Game::InputState readInput()
     };
 }
 
-class CircleApplication final : public Engine::Application
+class CircleApplication final : public NeuexpEngine::Application
 {
 private:
     bool onStart(Platform::Error& error) override
@@ -37,7 +37,7 @@ private:
         return initializeRenderer(error);
     }
 
-    bool onInput(const Engine::FrameInfo&, Platform::Error&) override
+    bool onInput(const NeuexpEngine::FrameInfo&, Platform::Error&) override
     {
         if (Platform::isKeyDown(Platform::Key::Escape)) {
             requestExit();
@@ -60,13 +60,13 @@ private:
         return true;
     }
 
-    bool onUpdate(const Engine::FrameInfo& frame, Platform::Error&) override
+    bool onUpdate(const NeuexpEngine::FrameInfo& frame, Platform::Error&) override
     {
         scene.update(readInput(), static_cast<float>(frame.elapsedTime), frame.deltaTime);
         return true;
     }
 
-    bool onPrepareFrame(const Engine::FrameInfo& frame, Platform::Error&) override
+    bool onPrepareFrame(const NeuexpEngine::FrameInfo& frame, Platform::Error&) override
     {
         if (frame.fpsUpdated || titleDirty) {
             const int fps = static_cast<int>(std::round(frame.framesPerSecond));
@@ -83,22 +83,22 @@ private:
         return true;
     }
 
-    bool onRender(const Engine::FrameInfo& frame, Platform::Error& error) override
+    bool onRender(const NeuexpEngine::FrameInfo& frame, Platform::Error& error) override
     {
-        const Engine::Size2 worldSize = scene.size();
-        const Engine::Camera2 camera = {Engine::Vector2{worldSize.width / 2, worldSize.height / 2},
-            1, worldSize, Engine::ViewportMode::Fit};
-        Engine::CameraView worldView;
-        Engine::UiView hudView;
-        Engine::CameraError cameraError;
-        if (!camera.createView(Engine::Viewport{0, 0, frame.window.width, frame.window.height}, worldView, cameraError)) {
+        const NeuexpEngine::Size2 worldSize = scene.size();
+        const NeuexpEngine::Camera2 camera = {NeuexpEngine::Vector2{worldSize.width / 2, worldSize.height / 2},
+            1, worldSize, NeuexpEngine::ViewportMode::Fit};
+        NeuexpEngine::CameraView worldView;
+        NeuexpEngine::UiView hudView;
+        NeuexpEngine::CameraError cameraError;
+        if (!camera.createView(NeuexpEngine::Viewport{0, 0, frame.window.width, frame.window.height}, worldView, cameraError)) {
             error = Platform::Error{"Camera2::createView",
                 "Could not calculate the world view. CameraError: " + std::to_string(static_cast<int>(cameraError)),
                 std::nullopt};
             return false;
         }
-        Engine::UiError uiError;
-        if (!Engine::UiCanvas{static_cast<float>(worldView.viewport.width) / worldSize.width}
+        NeuexpEngine::UiError uiError;
+        if (!NeuexpEngine::UiCanvas{static_cast<float>(worldView.viewport.width) / worldSize.width}
                 .createView(worldView.viewport, hudView, uiError)) {
             error = Platform::Error{"UiCanvas::createView",
                 "Could not calculate the interface view. UiError: " + std::to_string(static_cast<int>(uiError)),
@@ -107,8 +107,8 @@ private:
         }
 
         const float time = static_cast<float>(frame.elapsedTime);
-        Engine::Renderer2D& drawing = getRenderer();
-        beginFrame(frame.window.width, frame.window.height, Engine::Color{0.004f, 0.008f, 0.025f, 1.0f});
+        NeuexpEngine::Renderer2D& drawing = getRenderer();
+        beginFrame(frame.window.width, frame.window.height, NeuexpEngine::Color{0.004f, 0.008f, 0.025f, 1.0f});
         drawing.setWorldView(worldView);
         scene.drawWorld(drawing, time);
         drawing.setUiView(hudView);
@@ -125,7 +125,7 @@ private:
 
 int Game::run()
 {
-    Engine::ApplicationOptions options;
+    NeuexpEngine::ApplicationOptions options;
     options.window.width = 800;
     options.window.height = 600;
     options.window.resizable = false;
@@ -141,7 +141,7 @@ int Game::run()
     return success ? 0 : 1;
 }
 
-int Engine::applicationMain()
+int NeuexpEngine::applicationMain()
 {
     return Game::run();
 }

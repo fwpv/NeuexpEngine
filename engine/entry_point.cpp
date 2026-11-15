@@ -8,5 +8,5 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 int main()
 #endif
 {
-    return Engine::applicationMain();
+    return NeuexpEngine::applicationMain();
 }

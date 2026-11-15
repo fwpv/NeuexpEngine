@@ -10,16 +10,16 @@ namespace Platform
 {
 namespace
 {
-Engine::InputState input;
-std::vector<Engine::Event> pendingEvents;
+NeuexpEngine::InputState input;
+std::vector<NeuexpEngine::Event> pendingEvents;
 }
 
-const Engine::InputState& getInput()
+const NeuexpEngine::InputState& getInput()
 {
     return input;
 }
 
-const std::vector<Engine::Event>& getEvents()
+const std::vector<NeuexpEngine::Event>& getEvents()
 {
     return input.events();
 }
@@ -41,15 +41,15 @@ bool isKeyReleased(Key key)
 
 namespace Detail
 {
-void queueEvent(Engine::Event event)
+void queueEvent(NeuexpEngine::Event event)
 {
     event.time = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     pendingEvents.push_back(std::move(event));
 }
 
-void queueEvent(Engine::EventType type)
+void queueEvent(NeuexpEngine::EventType type)
 {
-    Engine::Event event;
+    NeuexpEngine::Event event;
     event.type = type;
     queueEvent(std::move(event));
 }

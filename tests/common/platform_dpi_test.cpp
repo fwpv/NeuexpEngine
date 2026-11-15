@@ -138,12 +138,12 @@ Platform::WindowState process()
 void checkDpiEvent(float scale, bool expected = true)
 {
     const auto& events = Platform::getEvents();
-    const auto count = std::count_if(events.begin(), events.end(), [](const Engine::Event& event) {
-        return event.type == Engine::EventType::WindowDpiChanged;
+    const auto count = std::count_if(events.begin(), events.end(), [](const NeuexpEngine::Event& event) {
+        return event.type == NeuexpEngine::EventType::WindowDpiChanged;
     });
     require(count == (expected ? 1 : 0), "Incorrect DPI event count.");
-    for (const Engine::Event& event : events) {
-        if (event.type == Engine::EventType::WindowDpiChanged) {
+    for (const NeuexpEngine::Event& event : events) {
+        if (event.type == NeuexpEngine::EventType::WindowDpiChanged) {
             require(nearlyEqual(event.systemScale, scale), "Incorrect DPI event scale.");
         }
     }
@@ -163,7 +163,7 @@ void checkViewport(const Platform::WindowState& state)
 
 void run()
 {
-    using namespace Engine;
+    using namespace NeuexpEngine;
     Platform::WindowOptions options;
     options.width = 320;
     options.height = 240;

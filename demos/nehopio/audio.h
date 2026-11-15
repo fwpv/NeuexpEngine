@@ -18,7 +18,7 @@ public:
     Audio(const Audio&) = delete;
     Audio& operator=(const Audio&) = delete;
 
-    bool load(const Engine::ResourceFiles& files, Engine::ResourceError& error);
+    bool load(const NeuexpEngine::ResourceFiles& files, NeuexpEngine::ResourceError& error);
     void play(Sound sound);
     void shutdown();
 

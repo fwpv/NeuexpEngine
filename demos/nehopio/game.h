@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace Engine
+namespace NeuexpEngine
 {
 class Renderer2D;
 }
@@ -25,55 +25,55 @@ class Game
 {
 public:
     // Кадры и шрифт берутся из загруженных ресурсов: спрайты собираются при загрузке.
-    bool load(const Assets& assets, const Engine::ResourceFiles& files, Engine::ResourceError& error);
+    bool load(const Assets& assets, const NeuexpEngine::ResourceFiles& files, NeuexpEngine::ResourceError& error);
     void restart();
-    bool update(float deltaTime, const Controls& controls, Engine::ResourceError& error);
-    bool prepareView(int width, int height, Engine::CameraError& error);
-    bool draw(Engine::Renderer2D& renderer, const Assets& assets, bool paused, Engine::ResourceError& error);
+    bool update(float deltaTime, const Controls& controls, NeuexpEngine::ResourceError& error);
+    bool prepareView(int width, int height, NeuexpEngine::CameraError& error);
+    bool draw(NeuexpEngine::Renderer2D& renderer, const Assets& assets, bool paused, NeuexpEngine::ResourceError& error);
     const std::vector<Sound>& sounds() const;
 
 private:
-    bool updateTexts(Engine::ResourceError& error);
+    bool updateTexts(NeuexpEngine::ResourceError& error);
     void updateCamera(float deltaTime);
-    void drawBackground(Engine::Renderer2D& renderer, const Assets& assets);
-    void drawTiles(Engine::Renderer2D& renderer);
-    void drawEntities(Engine::Renderer2D& renderer);
-    void drawPlayer(Engine::Renderer2D& renderer) const;
+    void drawBackground(NeuexpEngine::Renderer2D& renderer, const Assets& assets);
+    void drawTiles(NeuexpEngine::Renderer2D& renderer);
+    void drawEntities(NeuexpEngine::Renderer2D& renderer);
+    void drawPlayer(NeuexpEngine::Renderer2D& renderer) const;
     // Подпись на панели, выровненная по центру окна; панель повторяет размер текста.
-    void drawPaneledText(Engine::Renderer2D& renderer, const Assets& assets, Engine::Size2 uiSize,
-        const Engine::TextLayout& text, float top, Engine::Size2 padding) const;
-    void drawBanner(Engine::Renderer2D& renderer, const Assets& assets, Engine::Size2 uiSize,
-        const Engine::TextLayout& title, const Engine::TextLayout& note, float top, Engine::Color dim) const;
-    void drawCenteredText(Engine::Renderer2D& renderer, Engine::Size2 uiSize, const Engine::TextLayout& text,
-        Engine::Color dim) const;
-    bool drawHud(Engine::Renderer2D& renderer, const Assets& assets, bool paused,
-        Engine::ResourceError& error) const;
+    void drawPaneledText(NeuexpEngine::Renderer2D& renderer, const Assets& assets, NeuexpEngine::Size2 uiSize,
+        const NeuexpEngine::TextLayout& text, float top, NeuexpEngine::Size2 padding) const;
+    void drawBanner(NeuexpEngine::Renderer2D& renderer, const Assets& assets, NeuexpEngine::Size2 uiSize,
+        const NeuexpEngine::TextLayout& title, const NeuexpEngine::TextLayout& note, float top, NeuexpEngine::Color dim) const;
+    void drawCenteredText(NeuexpEngine::Renderer2D& renderer, NeuexpEngine::Size2 uiSize, const NeuexpEngine::TextLayout& text,
+        NeuexpEngine::Color dim) const;
+    bool drawHud(NeuexpEngine::Renderer2D& renderer, const Assets& assets, bool paused,
+        NeuexpEngine::ResourceError& error) const;
 
     Run run;
     // Спрайты фона и плиток готовятся при загрузке: отрисовка меняет только их положение.
-    Engine::Sprite hillSprite;
-    Engine::Sprite bushSprite;
-    Engine::Sprite flagSprite;
+    NeuexpEngine::Sprite hillSprite;
+    NeuexpEngine::Sprite bushSprite;
+    NeuexpEngine::Sprite flagSprite;
     // Спрайты плиток по символу карты: набор задаёт tiles.h.
-    std::map<char, Engine::Sprite> tileSprites;
-    std::array<Engine::Sprite, 2> cloudSprites;
-    Engine::CameraView view;
-    Engine::BitmapFont hudFont;
+    std::map<char, NeuexpEngine::Sprite> tileSprites;
+    std::array<NeuexpEngine::Sprite, 2> cloudSprites;
+    NeuexpEngine::CameraView view;
+    NeuexpEngine::BitmapFont hudFont;
     // Раскладки подписей собираются при загрузке и обновляются только при смене текста.
     struct Texts
     {
-        Engine::TextLayout hud;
-        Engine::TextLayout hint;
-        Engine::TextLayout winTitle;
-        Engine::TextLayout winNote;
-        Engine::TextLayout pause;
+        NeuexpEngine::TextLayout hud;
+        NeuexpEngine::TextLayout hint;
+        NeuexpEngine::TextLayout winTitle;
+        NeuexpEngine::TextLayout winNote;
+        NeuexpEngine::TextLayout pause;
     };
     Texts texts;
     std::string hudText;
     std::string winNoteText;
     // Кусты ставятся один раз по данным уровня, чтобы не зависеть от камеры.
-    std::vector<Engine::Vector2> bushPositions;
-    Engine::Vector2 cameraCenter;
+    std::vector<NeuexpEngine::Vector2> bushPositions;
+    NeuexpEngine::Vector2 cameraCenter;
     bool cameraInitialized = false;
     int frameWidth = 1;
     int frameHeight = 1;

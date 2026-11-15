@@ -2,7 +2,7 @@
 
 #include <chrono>
 
-namespace Engine
+namespace NeuexpEngine
 {
 FrameClock::FrameClock(float maxDeltaTime, Clock::time_point now)
     : maxDeltaTime(maxDeltaTime)

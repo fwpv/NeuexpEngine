@@ -5,7 +5,7 @@
 
 namespace
 {
-using namespace Engine;
+using namespace NeuexpEngine;
 
 void require(bool condition, const char* message)
 {

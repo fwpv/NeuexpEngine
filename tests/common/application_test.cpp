@@ -18,7 +18,7 @@ using ApplicationTest::advance;
 using ApplicationTest::require;
 using ApplicationTest::requireNear;
 using ApplicationTest::runtime;
-using Engine::FrameInfo;
+using NeuexpEngine::FrameInfo;
 using std::chrono::milliseconds;
 
 struct CapturedFrame
@@ -27,7 +27,7 @@ struct CapturedFrame
     FrameInfo info;
 };
 
-class ProbeApplication final : public Engine::Application
+class ProbeApplication final : public NeuexpEngine::Application
 {
 public:
     std::string failureStage;
@@ -121,9 +121,9 @@ private:
     }
 };
 
-Engine::ApplicationOptions options()
+NeuexpEngine::ApplicationOptions options()
 {
-    Engine::ApplicationOptions result;
+    NeuexpEngine::ApplicationOptions result;
     result.targetFramesPerSecond = 0;
     return result;
 }
@@ -192,26 +192,26 @@ void testClosingEvents()
         ApplicationTest::reset();
         runtime.closeDuringInitialize = mode == 1;
         runtime.events = [mode] {
-            Engine::Event key;
-            key.type = Engine::EventType::KeyPressed;
-            key.key = Engine::Key::A;
+            NeuexpEngine::Event key;
+            key.type = NeuexpEngine::EventType::KeyPressed;
+            key.key = NeuexpEngine::Key::A;
             runtime.input.handleEvent(key);
-            Engine::Event text;
-            text.type = Engine::EventType::TextInput;
+            NeuexpEngine::Event text;
+            text.type = NeuexpEngine::EventType::TextInput;
             text.text = "last";
             runtime.input.handleEvent(text);
             if (mode == 2) {
                 runtime.window = {};
-                ApplicationTest::addEvent(Engine::EventType::WindowDestroyed);
+                ApplicationTest::addEvent(NeuexpEngine::EventType::WindowDestroyed);
             }
-            ApplicationTest::addEvent(Engine::EventType::CloseRequested);
+            ApplicationTest::addEvent(NeuexpEngine::EventType::CloseRequested);
             runtime.closeRequested = true;
         };
         ProbeApplication application;
-        Engine::EventDispatcher dispatcher;
-        std::vector<Engine::EventType> received;
+        NeuexpEngine::EventDispatcher dispatcher;
+        std::vector<NeuexpEngine::EventType> received;
         std::string receivedText;
-        auto subscription = dispatcher.subscribe([&](const Engine::Event& event) {
+        auto subscription = dispatcher.subscribe([&](const NeuexpEngine::Event& event) {
             received.push_back(event.type);
             receivedText += event.text;
         });
@@ -225,15 +225,15 @@ void testClosingEvents()
         require(application.inputs.size() == 1, "Closing batch was not delivered exactly once.");
         require(application.updates.empty() && application.prepared.empty() && application.rendered.empty()
             && runtime.presents == 0, "Simulation or rendering continued after close.");
-        require(!received.empty() && received.back() == Engine::EventType::CloseRequested, "Close event was lost.");
+        require(!received.empty() && received.back() == NeuexpEngine::EventType::CloseRequested, "Close event was lost.");
         if (mode == 1) {
             require(runtime.polls == 0, "Startup close batch was overwritten by another event poll.");
         } else {
-            require(received[0] == Engine::EventType::KeyPressed && received[1] == Engine::EventType::TextInput
+            require(received[0] == NeuexpEngine::EventType::KeyPressed && received[1] == NeuexpEngine::EventType::TextInput
                 && receivedText == "last", "Input preceding close was lost or reordered.");
         }
         if (mode == 2) {
-            require(std::find(received.begin(), received.end(), Engine::EventType::WindowDestroyed) != received.end(),
+            require(std::find(received.begin(), received.end(), NeuexpEngine::EventType::WindowDestroyed) != received.end(),
                 "Window destruction event was lost.");
         }
     }

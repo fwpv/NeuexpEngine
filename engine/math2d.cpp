@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-namespace Engine
+namespace NeuexpEngine
 {
 float length(Vector2 value)
 {

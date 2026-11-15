@@ -4,7 +4,7 @@
 
 namespace Platform::Detail
 {
-using Engine::Key;
+using NeuexpEngine::Key;
 struct KeyMapping
 {
     Key key;

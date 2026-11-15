@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-namespace Engine::Detail
+namespace NeuexpEngine::Detail
 {
 inline double turn(Vector2 a, Vector2 b, Vector2 c)
 {

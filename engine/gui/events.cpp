@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace Engine::Gui
+namespace NeuexpEngine::Gui
 {
 namespace Detail
 {

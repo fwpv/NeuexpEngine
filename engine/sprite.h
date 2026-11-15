@@ -7,7 +7,7 @@
 
 #include <optional>
 
-namespace Engine
+namespace NeuexpEngine
 {
 // Конечность координат, размеров и настроек — предусловие вызывающего кода.
 struct Sprite

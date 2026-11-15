@@ -38,7 +38,7 @@ public:
 
     // Кадры обеих форм берутся из подготовленных ресурсов.
     void load(const Assets& assets);
-    void reset(Engine::Vector2 spawn);
+    void reset(NeuexpEngine::Vector2 spawn);
     void update(float deltaTime, const Controls& controls, const Level& level);
     // Урон: персонаж теряет жизнь, мигает на месте и не получает новый урон, пока мигает.
     void hurt();
@@ -49,16 +49,16 @@ public:
     void bounce();
     // Гриб: увеличивает тело и сохраняет положение ноги.
     bool grow();
-    Engine::Size2 size() const;
+    NeuexpEngine::Size2 size() const;
     // Удар головой о плитку: координаты клетки, в которую упёрлись.
     bool takeCeilingHit(int& column, int& row);
 
-    Engine::Rect bounds() const;
-    Engine::Vector2 position() const;
+    NeuexpEngine::Rect bounds() const;
+    NeuexpEngine::Vector2 position() const;
     float horizontalVelocity() const;
     float verticalVelocity() const;
     // Текущий кадр: состояние и направление взгляда задают участок листа.
-    const Engine::Sprite& sprite() const;
+    const NeuexpEngine::Sprite& sprite() const;
     // Неуязвимость после урона: контакты с врагами в это время не действуют.
     bool invulnerable() const;
     // Мигание во время неуязвимости: кадр показывается через половину периода.
@@ -80,15 +80,15 @@ private:
     void sweepHorizontal(float distance, const Level& level);
     void sweepVertical(float distance, const Level& level);
     // Твёрдая опора под нижней гранью тела: промежуток по горизонтали и его наличие.
-    bool footSupport(Engine::Vector2 position, const Level& level, float& left, float& right) const;
+    bool footSupport(NeuexpEngine::Vector2 position, const Level& level, float& left, float& right) const;
     void updatePresentation(float deltaTime);
     float bodyWidth() const;
     float bodyHeight() const;
 
     // Клипы листа: обычная и увеличенная форма игрока.
-    std::array<Engine::AnimationSet, 2> presentations;
-    Engine::Vector2 positionValue;
-    Engine::Vector2 velocity;
+    std::array<NeuexpEngine::AnimationSet, 2> presentations;
+    NeuexpEngine::Vector2 positionValue;
+    NeuexpEngine::Vector2 velocity;
     float groundContact = 0;
     float jumpBuffer = 0;
     bool onGround = false;

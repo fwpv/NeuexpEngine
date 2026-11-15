@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <memory>
 
-namespace Engine
+namespace NeuexpEngine
 {
 class Renderer2D;
 

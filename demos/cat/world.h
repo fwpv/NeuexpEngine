@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace Engine
+namespace NeuexpEngine
 {
 class Renderer2D;
 }
@@ -22,15 +22,15 @@ class Images;
 struct Decoration
 {
     Art art = Stone;
-    Engine::Vector2 offset;
+    NeuexpEngine::Vector2 offset;
 };
 
 struct Platform
 {
-    Platform(int id, Engine::Vector2 position, Art art);
-    void draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const;
+    Platform(int id, NeuexpEngine::Vector2 position, Art art);
+    void draw(NeuexpEngine::Renderer2D& renderer, const Images& images, const NeuexpEngine::Rect& visible) const;
 
-    static constexpr Engine::Size2 DefaultSize{175, 35};
+    static constexpr NeuexpEngine::Size2 DefaultSize{175, 35};
 
     Surface surface;
     Art art = Stone;
@@ -39,10 +39,10 @@ struct Platform
 
 struct Leaf
 {
-    void draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const;
+    void draw(NeuexpEngine::Renderer2D& renderer, const Images& images, const NeuexpEngine::Rect& visible) const;
 
     Art art = Leaf1;
-    Engine::Vector2 position;
+    NeuexpEngine::Vector2 position;
     float angle = 0; // Градусы.
     float speed = 0; // Пиксели в секунду.
     float spin = 0; // Градусы в секунду.
@@ -57,9 +57,9 @@ public:
     World& operator=(const World&) = delete;
     World(World&&) = delete;
     World& operator=(World&&) = delete;
-    Engine::Vector2 catPosition() const;
+    NeuexpEngine::Vector2 catPosition() const;
     void update(float duration, const Controls& controls, float visibleWidth);
-    void draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const;
+    void draw(NeuexpEngine::Renderer2D& renderer, const Images& images, const NeuexpEngine::Rect& visible) const;
 
 private:
     enum class Pattern
@@ -95,7 +95,7 @@ class Foliage
 public:
     explicit Foliage(std::uint32_t seed);
     void update(float duration, float catX);
-    void draw(Engine::Renderer2D& renderer, const Images& images, const Engine::Rect& visible) const;
+    void draw(NeuexpEngine::Renderer2D& renderer, const Images& images, const NeuexpEngine::Rect& visible) const;
 
 private:
     std::array<Leaf, 50> leaves;

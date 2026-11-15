@@ -18,7 +18,7 @@ void require(bool condition, const char* message)
 int main()
 {
     try {
-        using namespace Engine;
+        using namespace NeuexpEngine;
         const Polygon empty;
         require(bounds(empty) == Rect{} && !contains(empty, Vector2{}), "Empty polygon failed.");
         const Polygon concave = {Vector2{-2, -1}, Vector2{4, -1}, Vector2{4, 1},

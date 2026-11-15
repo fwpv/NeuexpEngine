@@ -11,7 +11,7 @@
 #include <cstddef>
 #include <filesystem>
 
-namespace Engine
+namespace NeuexpEngine
 {
 bool executableDirectory(std::filesystem::path& result, ResourceError& error)
 {

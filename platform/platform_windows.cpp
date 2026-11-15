@@ -189,7 +189,7 @@ bool convertTitle(const std::string& title, std::wstring& wideTitle, Error& erro
     return true;
 }
 
-Engine::Modifiers readModifiers()
+NeuexpEngine::Modifiers readModifiers()
 {
     const auto held = [](Key key) { return heldKeys[static_cast<std::size_t>(key)]; };
     return {held(Key::LeftShift) || held(Key::RightShift),
@@ -204,8 +204,8 @@ void changeFocus(bool focused)
         return;
     }
     windowState.focused = focused;
-    Engine::Event event;
-    event.type = focused ? Engine::EventType::FocusGained : Engine::EventType::FocusLost;
+    NeuexpEngine::Event event;
+    event.type = focused ? NeuexpEngine::EventType::FocusGained : NeuexpEngine::EventType::FocusLost;
     if (!focused) {
         heldKeys = {};
         heldMouseButtons = 0;
@@ -245,20 +245,20 @@ void queueText(std::uint32_t code)
     if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) {
         return;
     }
-    Engine::Event event;
-    event.type = Engine::EventType::TextInput;
+    NeuexpEngine::Event event;
+    event.type = NeuexpEngine::EventType::TextInput;
     event.modifiers = readModifiers();
-    Engine::Detail::appendUtf8(event.text, code);
+    NeuexpEngine::Detail::appendUtf8(event.text, code);
     Detail::queueEvent(event);
 }
 
 bool handleInput(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    using Engine::EventType;
-    using Engine::MouseButton;
+    using NeuexpEngine::EventType;
+    using NeuexpEngine::MouseButton;
     if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN || message == WM_KEYUP || message == WM_SYSKEYUP) {
         if (windowState.focused) {
-            Engine::Event event;
+            NeuexpEngine::Event event;
             const bool down = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
             event.type = down ? EventType::KeyPressed : EventType::KeyReleased;
             event.key = translateKey(wParam, lParam);
@@ -320,7 +320,7 @@ bool handleInput(HWND handle, UINT message, WPARAM wParam, LPARAM lParam)
         }
         return true;
     }
-    Engine::Event event;
+    NeuexpEngine::Event event;
     event.x = static_cast<short>(LOWORD(lParam));
     event.y = static_cast<short>(HIWORD(lParam));
     event.modifiers = readModifiers();
@@ -446,8 +446,8 @@ LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARA
         const float scale = static_cast<float>(dpi) / 96;
         if (windowState.systemScale != scale) {
             windowState.systemScale = scale;
-            Engine::Event event;
-            event.type = Engine::EventType::WindowDpiChanged;
+            NeuexpEngine::Event event;
+            event.type = NeuexpEngine::EventType::WindowDpiChanged;
             event.systemScale = scale;
             Detail::queueEvent(event);
         }
@@ -463,15 +463,15 @@ LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARA
         const int height = static_cast<int>(HIWORD(lParam));
         viewportNeedsUpdate = viewportNeedsUpdate || width != windowState.width || height != windowState.height;
         if (width != windowState.width || height != windowState.height) {
-            Engine::Event event;
-            event.type = Engine::EventType::WindowResized;
+            NeuexpEngine::Event event;
+            event.type = NeuexpEngine::EventType::WindowResized;
             event.width = width;
             event.height = height;
             Detail::queueEvent(event);
         }
         const bool minimized = wParam == SIZE_MINIMIZED;
         if (minimized != windowState.minimized) {
-            Detail::queueEvent(minimized ? Engine::EventType::WindowMinimized : Engine::EventType::WindowRestored);
+            Detail::queueEvent(minimized ? NeuexpEngine::EventType::WindowMinimized : NeuexpEngine::EventType::WindowRestored);
         }
         windowState.width = width;
         windowState.height = height;
@@ -489,16 +489,16 @@ LRESULT CALLBACK windowProcedure(HWND handle, UINT message, WPARAM wParam, LPARA
     // WM_CLOSE только запрашивает выход. Контекст и HDC освобождаются до уничтожения окна в shutdown().
     if (message == WM_CLOSE) {
         closeRequested = true;
-        Detail::queueEvent(Engine::EventType::CloseRequested);
+        Detail::queueEvent(NeuexpEngine::EventType::CloseRequested);
         return 0;
     }
 
     if (message == WM_DESTROY) {
         if (handle == window) {
             changeFocus(false);
-            Detail::queueEvent(Engine::EventType::WindowDestroyed);
+            Detail::queueEvent(NeuexpEngine::EventType::WindowDestroyed);
             if (!closeRequested) {
-                Detail::queueEvent(Engine::EventType::CloseRequested);
+                Detail::queueEvent(NeuexpEngine::EventType::CloseRequested);
             }
             window = nullptr;
             deviceContext = nullptr; // При внешнем уничтожении окна его частный DC уже недоступен.
@@ -767,7 +767,7 @@ bool processEvents(Error& error)
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
         if (message.message == WM_QUIT) {
             if (!closeRequested) {
-                Detail::queueEvent(Engine::EventType::CloseRequested);
+                Detail::queueEvent(NeuexpEngine::EventType::CloseRequested);
             }
             closeRequested = true;
             continue;

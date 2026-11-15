@@ -41,11 +41,11 @@ namespace
 bool blocked(const World& world, Vector2 point, float radius, bool homeLocked)
 {
     const Circle body = {point, radius};
-    if (homeLocked && Engine::intersects(world.homeBounds, body)) {
+    if (homeLocked && NeuexpEngine::intersects(world.homeBounds, body)) {
         return true;
     }
     return std::any_of(world.obstacles.begin(), world.obstacles.end(), [&](const Rect& obstacle) {
-        return Engine::intersects(obstacle, body);
+        return NeuexpEngine::intersects(obstacle, body);
     });
 }
 
@@ -54,7 +54,7 @@ bool canPlaceTrash(const World& world, const Rules& rules, Vector2 point)
     const float clearance = rules.trashRadius + rules.playerRadius;
     return !blocked(world, point, clearance, true)
         && std::none_of(world.puddles.begin(), world.puddles.end(), [&](const Puddle& puddle) {
-            return Engine::intersects(puddle.shape, Circle{point, clearance});
+            return NeuexpEngine::intersects(puddle.shape, Circle{point, clearance});
         });
 }
 
@@ -63,14 +63,14 @@ Vector2 movePlayer(const World& world, const Rules& rules, Vector2 position, Vec
     const Rect playerBounds = {rules.playerRadius, rules.playerRadius,
         world.bounds.size.width - 2 * rules.playerRadius, world.bounds.size.height - 2 * rules.playerRadius};
     // Короткие шаги исключают проход сквозь препятствие; раздельные оси дают скольжение вдоль стен.
-    const int steps = std::max(1, static_cast<int>(std::ceil(Engine::length(movement) / (rules.playerRadius / 4))));
+    const int steps = std::max(1, static_cast<int>(std::ceil(NeuexpEngine::length(movement) / (rules.playerRadius / 4))));
     const Vector2 step = movement / static_cast<float>(steps);
     for (int index = 0; index < steps; ++index) {
-        Vector2 next = Engine::closestPoint(playerBounds, position + Vector2{step.x, 0});
+        Vector2 next = NeuexpEngine::closestPoint(playerBounds, position + Vector2{step.x, 0});
         if (!blocked(world, next, rules.playerRadius, homeLocked)) {
             position = next;
         }
-        next = Engine::closestPoint(playerBounds, position + Vector2{0, step.y});
+        next = NeuexpEngine::closestPoint(playerBounds, position + Vector2{0, step.y});
         if (!blocked(world, next, rules.playerRadius, homeLocked)) {
             position = next;
         }
@@ -110,7 +110,7 @@ void Game::setTarget(Vector2 position)
 {
     const auto& rules = currentState.rules;
     const auto& bounds = currentState.world.bounds;
-    currentState.target = Engine::closestPoint(Rect{rules.playerRadius, rules.playerRadius,
+    currentState.target = NeuexpEngine::closestPoint(Rect{rules.playerRadius, rules.playerRadius,
         bounds.size.width - 2 * rules.playerRadius, bounds.size.height - 2 * rules.playerRadius}, position);
 }
 
@@ -141,14 +141,14 @@ void Game::update(Vector2 direction, float deltaTime)
     Vector2 movement;
     if (direction != Vector2{}) {
         game.target.reset();
-        direction = Engine::normalized(direction);
+        direction = NeuexpEngine::normalized(direction);
     } else if (game.target) {
         const Vector2 offset = *game.target - game.player;
-        if (Engine::length(offset) <= speed * deltaTime) {
+        if (NeuexpEngine::length(offset) <= speed * deltaTime) {
             movement = offset;
             game.target.reset();
         } else {
-            direction = Engine::normalized(offset);
+            direction = NeuexpEngine::normalized(offset);
         }
     }
     if (direction != Vector2{}) {
@@ -165,7 +165,7 @@ void Game::update(Vector2 direction, float deltaTime)
     bool inOrange = false;
     bool inBlue = false;
     for (const Puddle& puddle : game.world.puddles) {
-        if (Engine::intersects(puddle.shape, Circle{game.player, game.rules.playerRadius})) {
+        if (NeuexpEngine::intersects(puddle.shape, Circle{game.player, game.rules.playerRadius})) {
             inOrange = inOrange || puddle.sticky;
             inBlue = inBlue || !puddle.sticky;
         }
@@ -206,11 +206,11 @@ void Game::update(Vector2 direction, float deltaTime)
                 break;
             }
             if (item.state == TrashState::Ground && item.pickupDelay == 0
-                && Engine::intersects(Circle{game.player, pickupRadius}, Circle{item.position, game.rules.trashRadius})) {
+                && NeuexpEngine::intersects(Circle{game.player, pickupRadius}, Circle{item.position, game.rules.trashRadius})) {
                 item.state = TrashState::Carried;
                 // Золотой угол в радианах разносит груз вокруг игрока.
                 constexpr float AttachmentAngleStep = 2.39996323F;
-                item.attachment = Engine::rotated(Vector2{game.rules.playerRadius + 9.0f + 4.0f * std::sqrt(static_cast<float>(game.carried)), 0},
+                item.attachment = NeuexpEngine::rotated(Vector2{game.rules.playerRadius + 9.0f + 4.0f * std::sqrt(static_cast<float>(game.carried)), 0},
                     static_cast<float>(game.carried) * AttachmentAngleStep);
                 ++game.carried;
                 --game.glue;
@@ -224,15 +224,15 @@ void Game::update(Vector2 direction, float deltaTime)
             for (Trash& item : game.trash) {
                 if (item.state == TrashState::Carried) {
                     item.state = TrashState::Ground;
-                    item.position = Engine::closestPoint(Rect{game.rules.trashRadius, game.rules.trashRadius,
+                    item.position = NeuexpEngine::closestPoint(Rect{game.rules.trashRadius, game.rules.trashRadius,
                         game.world.bounds.size.width - 2 * game.rules.trashRadius, game.world.bounds.size.height - 2 * game.rules.trashRadius},
-                        game.player + Engine::rotated(item.attachment, game.heading));
+                        game.player + NeuexpEngine::rotated(item.attachment, game.heading));
                     // Упавший предмет остаётся доступен для повторного сбора.
                     if (blocked(game.world, item.position, game.rules.trashRadius + game.rules.playerRadius, game.washed < game.rules.homeGoal)) {
                         item.position = game.player;
                     }
                     for (const Puddle& puddle : game.world.puddles) {
-                        if (!puddle.sticky && Engine::intersects(puddle.shape, Circle{item.position, game.rules.trashRadius})) {
+                        if (!puddle.sticky && NeuexpEngine::intersects(puddle.shape, Circle{item.position, game.rules.trashRadius})) {
                             item.position = game.player;
                         }
                     }
@@ -256,7 +256,7 @@ void Game::update(Vector2 direction, float deltaTime)
             }
         }
     }
-    if (game.washed >= game.rules.homeGoal && Engine::contains(game.world.homeBounds, game.player)) {
+    if (game.washed >= game.rules.homeGoal && NeuexpEngine::contains(game.world.homeBounds, game.player)) {
         game.outcome = Outcome::Won;
         game.target.reset();
     }

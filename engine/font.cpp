@@ -8,7 +8,7 @@
 #include <sstream>
 #include <utility>
 
-namespace Engine
+namespace NeuexpEngine
 {
 namespace
 {

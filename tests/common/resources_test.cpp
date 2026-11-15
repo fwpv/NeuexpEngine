@@ -11,7 +11,7 @@
 
 namespace
 {
-using namespace Engine;
+using namespace NeuexpEngine;
 
 void require(bool success, const std::string& message)
 {

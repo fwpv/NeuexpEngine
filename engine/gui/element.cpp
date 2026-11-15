@@ -7,7 +7,7 @@
 #include <sstream>
 #include <utility>
 
-namespace Engine::Gui
+namespace NeuexpEngine::Gui
 {
 void Element::setPlacement(const Placement& value)
 {

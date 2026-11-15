@@ -17,14 +17,14 @@ Cat::Cat(const Images& images)
     : head(images.headAnimation())
     , feet(images.feetAnimation())
 {
-    body.position = Engine::Vector2{450, 223.75F};
+    body.position = NeuexpEngine::Vector2{450, 223.75F};
     body.supportShape.segments = std::array<Interval, 2>{Interval{-60.75F, -20.25F}, Interval{8.25F, 54.75F}};
     body.supportShape.overhang = 10;
     body.supportShape.heightAllowance = 5;
     body.supportShape.minimumOverlap = 3;
 }
 
-Engine::Vector2 Cat::position() const
+NeuexpEngine::Vector2 Cat::position() const
 {
     return body.position;
 }
@@ -38,26 +38,26 @@ void Cat::updateAnimation(float duration, const Controls& controls, bool support
 {
     grounded = supported;
     const int direction = static_cast<int>(controls.right) - static_cast<int>(controls.left);
-    for (Engine::Animation* animation : {&head, &feet}) {
+    for (NeuexpEngine::Animation* animation : {&head, &feet}) {
         if (direction == 0) {
             animation->pause();
             animation->setFrame(animation->currentFrame());
         } else {
-            animation->setDirection(direction > 0 ? Engine::AnimationDirection::Forward : Engine::AnimationDirection::Backward);
+            animation->setDirection(direction > 0 ? NeuexpEngine::AnimationDirection::Forward : NeuexpEngine::AnimationDirection::Backward);
             animation->play();
             animation->update(duration);
         }
     }
 }
 
-void Cat::draw(Engine::Renderer2D& renderer) const
+void Cat::draw(NeuexpEngine::Renderer2D& renderer) const
 {
-    const Engine::Vector2 origin = body.position + Engine::Vector2{-101.25F, -123.75F + 3 + (grounded ? 2 : 0)};
-    Engine::DrawOptions options;
-    options.transform = Engine::Transform2{origin, 0, Engine::Vector2{0.75F, 0.75F}, Engine::Vector2{}}.toAffine();
+    const NeuexpEngine::Vector2 origin = body.position + NeuexpEngine::Vector2{-101.25F, -123.75F + 3 + (grounded ? 2 : 0)};
+    NeuexpEngine::DrawOptions options;
+    options.transform = NeuexpEngine::Transform2{origin, 0, NeuexpEngine::Vector2{0.75F, 0.75F}, NeuexpEngine::Vector2{}}.toAffine();
     renderer.drawSprite(head, options);
-    options.transform = Engine::Transform2{origin + Engine::Vector2{44 * 0.75F, 120 * 0.75F},
-        0, Engine::Vector2{0.75F, 0.75F}, Engine::Vector2{}}.toAffine();
+    options.transform = NeuexpEngine::Transform2{origin + NeuexpEngine::Vector2{44 * 0.75F, 120 * 0.75F},
+        0, NeuexpEngine::Vector2{0.75F, 0.75F}, NeuexpEngine::Vector2{}}.toAffine();
     renderer.drawSprite(feet, options);
 }
 

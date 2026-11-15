@@ -8,9 +8,9 @@
 
 namespace Cleanup
 {
-using Engine::Circle;
-using Engine::Rect;
-using Engine::Vector2;
+using NeuexpEngine::Circle;
+using NeuexpEngine::Rect;
+using NeuexpEngine::Vector2;
 
 struct Puddle
 {

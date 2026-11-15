@@ -45,20 +45,20 @@ int main()
         SendMessageW(window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(20, 30));
         require(!Platform::processEvents(error), "Capture failure was reported as success.");
         require(error.operation == "SetCapture" && !error.message.empty(), "Capture failure lost its diagnostic.");
-        const auto failedButton = Platform::getInput().button(Engine::MouseButton::Left);
+        const auto failedButton = Platform::getInput().button(NeuexpEngine::MouseButton::Left);
         require(!failedButton.down && !failedButton.pressed, "Failed capture published a mouse press.");
         for (const auto& event : Platform::getEvents()) {
-            require(event.type != Engine::EventType::MousePressed, "Failed capture published a mouse event.");
+            require(event.type != NeuexpEngine::EventType::MousePressed, "Failed capture published a mouse event.");
         }
 
         failCapture = false;
         SendMessageW(window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(20, 30));
         require(Platform::processEvents(error), "Event processing did not recover after capture failure.");
-        require(GetCapture() == window && Platform::getInput().button(Engine::MouseButton::Left).down,
+        require(GetCapture() == window && Platform::getInput().button(NeuexpEngine::MouseButton::Left).down,
             "Successful capture did not start dragging.");
         require(ReleaseCapture() != FALSE, "Could not release the test capture.");
         require(Platform::processEvents(error), "Could not publish capture loss.");
-        const auto releasedButton = Platform::getInput().button(Engine::MouseButton::Left);
+        const auto releasedButton = Platform::getInput().button(NeuexpEngine::MouseButton::Left);
         require(!releasedButton.down && releasedButton.released, "Capture loss left the mouse button held.");
         require(Platform::shutdown(error), "Shutdown failed.");
         return 0;

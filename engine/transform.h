@@ -3,7 +3,7 @@
 #include "geometry.h"
 #include "math2d.h"
 
-namespace Engine
+namespace NeuexpEngine
 {
 // [m00 m01 m02; m10 m11 m12; 0 0 1], умножение на вектор-столбец (x, y, 1).
 // По умолчанию — тождественное преобразование. Коэффициенты должны быть конечными.

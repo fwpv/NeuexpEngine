@@ -21,7 +21,7 @@ struct Runtime
 {
     Clock::duration time = std::chrono::seconds(1);
     std::vector<std::string> calls;
-    Engine::InputState input;
+    NeuexpEngine::InputState input;
     Platform::WindowState window{ 320, 240, true, false };
     std::function<void()> events;
     std::vector<Platform::Error> reportedErrors;
@@ -44,7 +44,7 @@ extern Runtime runtime;
 void reset();
 void advance(std::chrono::milliseconds duration);
 void sleepUntil(Clock::time_point deadline);
-void addEvent(Engine::EventType type);
+void addEvent(NeuexpEngine::EventType type);
 void require(bool condition, const char* message);
 void requireNear(double actual, double expected);
 }

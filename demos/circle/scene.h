@@ -20,14 +20,14 @@ struct HudState
 class Hud
 {
 public:
-    void draw(Engine::Renderer2D& renderer, const HudState& state, float time) const;
+    void draw(NeuexpEngine::Renderer2D& renderer, const HudState& state, float time) const;
 
 private:
-    void drawFrame(Engine::Renderer2D& renderer) const;
-    void drawRadar(Engine::Renderer2D& renderer, const HudState& state, float time) const;
-    void drawStatusBars(Engine::Renderer2D& renderer) const;
-    void drawScore(Engine::Renderer2D& renderer, int score) const;
-    void drawTarget(Engine::Renderer2D& renderer, Vector2 position, bool locked) const;
+    void drawFrame(NeuexpEngine::Renderer2D& renderer) const;
+    void drawRadar(NeuexpEngine::Renderer2D& renderer, const HudState& state, float time) const;
+    void drawStatusBars(NeuexpEngine::Renderer2D& renderer) const;
+    void drawScore(NeuexpEngine::Renderer2D& renderer, int score) const;
+    void drawTarget(NeuexpEngine::Renderer2D& renderer, Vector2 position, bool locked) const;
 };
 
 class Scene
@@ -36,8 +36,8 @@ public:
     Scene();
     Size2 size() const;
     void update(const InputState& input, float time, float deltaTime);
-    void drawWorld(Engine::Renderer2D& renderer, float time) const;
-    void drawHud(Engine::Renderer2D& renderer, float time) const;
+    void drawWorld(NeuexpEngine::Renderer2D& renderer, float time) const;
+    void drawHud(NeuexpEngine::Renderer2D& renderer, float time) const;
 
 private:
     void updateBolts(float time, float deltaTime);

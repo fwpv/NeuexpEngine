@@ -5,7 +5,7 @@
 #include <string_view>
 #include <cstddef>
 
-namespace Engine::Detail
+namespace NeuexpEngine::Detail
 {
 // При ошибке потребляет один байт, записывает U+FFFD и возвращает false.
 inline bool nextUtf8(std::string_view text, std::size_t& offset, std::uint32_t& result)

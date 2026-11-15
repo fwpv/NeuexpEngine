@@ -17,7 +17,7 @@
 
 namespace
 {
-using namespace Engine;
+using namespace NeuexpEngine;
 
 constexpr Color Grid = {0.17F, 0.25F, 0.28F};
 constexpr Color Panel = {0.035F, 0.055F, 0.08F};
@@ -212,9 +212,9 @@ private:
         drawing.drawRectangle(Rect{-160, -90, 100, 160}, Blue);
         drawing.drawRectangle(Rect{150, -180, 170, 80}, Color{0.35F, 0.95F, 0.55F});
         constexpr Color Orange = {1, 0.65F, 0.28F};
-        drawing.drawCircle(Circle{Vector2{}, 40}, Orange, Engine::ShapeFill::Filled, 40);
-        drawing.drawCircle(Circle{marker, 13}, White, Engine::ShapeFill::Filled, 40);
-        drawing.drawCircle(Circle{marker, 8}, Orange, Engine::ShapeFill::Filled, 40);
+        drawing.drawCircle(Circle{Vector2{}, 40}, Orange, NeuexpEngine::ShapeFill::Filled, 40);
+        drawing.drawCircle(Circle{marker, 13}, White, NeuexpEngine::ShapeFill::Filled, 40);
+        drawing.drawCircle(Circle{marker, 8}, Orange, NeuexpEngine::ShapeFill::Filled, 40);
 
         drawing.setUiView(uiView);
         drawing.drawRectangle(UiPanel, Panel);
@@ -237,7 +237,7 @@ private:
         return endFrame(error);
     }
 
-    Engine::Renderer2D& drawing = getRenderer();
+    NeuexpEngine::Renderer2D& drawing = getRenderer();
     Camera2 camera = {Vector2{}, 1, Size2{960, 600}, ViewportMode::Expand};
     UiCanvas canvas;
     CameraView worldView;
@@ -250,7 +250,7 @@ private:
 };
 }
 
-int Engine::applicationMain()
+int NeuexpEngine::applicationMain()
 {
     ApplicationOptions options;
     options.window.title = "DPI";

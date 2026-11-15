@@ -29,7 +29,7 @@ bool CatPhysics::hasSupport() const
     return supportId >= 0;
 }
 
-void CatPhysics::reset(Engine::Vector2 position, Engine::Vector2 velocity)
+void CatPhysics::reset(NeuexpEngine::Vector2 position, NeuexpEngine::Vector2 velocity)
 {
     body.position = position;
     body.velocity = velocity;
@@ -84,7 +84,7 @@ void CatPhysics::update(float duration, const MotionRequest& request)
     if (duration == 0) {
         return;
     }
-    const Engine::Vector2 previousPosition = body.position;
+    const NeuexpEngine::Vector2 previousPosition = body.position;
     const bool dropping = dropTime > 0;
     dropTime = std::max(0.0F, dropTime - duration);
     std::vector<float> previousHeights;
