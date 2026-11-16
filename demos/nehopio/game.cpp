@@ -30,6 +30,10 @@ constexpr float CloudRowSpacing = 38;
 // Узор провала уходит в глубину вместе с холмами: прокручивается медленнее земли.
 constexpr float AbyssParallax = 0.5F;
 
+// Камера целится в центр ног и держит его ниже центра экрана: над головой остаётся
+// больше обзора, а смена формы не двигает кадр, потому что ноги остаются на месте.
+constexpr float CameraFeetLift = 45;
+
 // Оверлеи состояний: отступ заголовка от центра экрана и затенение сцены.
 constexpr float WinTitleOffset = 120;
 constexpr NeuexpEngine::Color WinDim{0.02F, 0.04F, 0.08F, 0.5F};
@@ -100,8 +104,9 @@ void Game::updateCamera(float deltaTime)
 {
     const Player& player = run.player();
     const float lookahead = std::clamp(player.horizontalVelocity() * 0.12F, -36.0F, 36.0F);
-    const NeuexpEngine::Vector2 desired{player.position().x + Player::Width / 2 + lookahead,
-        player.position().y + Player::Height / 2 - 30};
+    const NeuexpEngine::Size2 body = player.size();
+    const NeuexpEngine::Vector2 desired{player.position().x + body.width / 2 + lookahead,
+        player.position().y + body.height - CameraFeetLift};
     if (!cameraInitialized) {
         cameraCenter = desired;
         cameraInitialized = true;

@@ -219,10 +219,16 @@ PLAYER_POSES = ["idle0", "idle1", "run0", "run1", "run2", "run3", "jump", "fall"
 PLAYER_FRAME_NAMES = ["idle.0", "idle.1", "run.0", "run.1", "run.2", "run.3", "jump", "fall", "win"]
 
 
+def write_text(path, text):
+    """Текстовый ассет всегда с LF: .gitattributes требует eol=lf, а Windows иначе пишет CRLF."""
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
+
+
 def write_atlas(filename, entries):
     """Описание атласа: имя участка, затем x y ширина высота. Формат engine/atlas.h."""
     lines = [f"{name} {x} {y} {width} {height}" for name, (x, y, width, height) in entries]
-    (OUT / filename).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_text(OUT / filename, "\n".join(lines) + "\n")
 
 
 def strip_entries(names, frame_width, frame_height):
@@ -652,7 +658,7 @@ def build_level():
     fill(172, 11, "F")
 
     rows = ["".join(row) for row in grid]
-    (OUT / "level.txt").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    write_text(OUT / "level.txt", "\n".join(rows) + "\n")
     return rows
 
 
