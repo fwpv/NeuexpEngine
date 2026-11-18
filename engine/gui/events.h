@@ -47,6 +47,8 @@ public:
     Events(const Events&) = delete;
     Events& operator=(const Events&) = delete;
     [[nodiscard]] Subscription subscribe(EventType type, Handler handler);
+    // Действие без данных события: движок сам отбрасывает Event.
+    [[nodiscard]] Subscription subscribe(EventType type, std::function<void()> handler);
     // Снимок подписок: добавленные ждут следующей рассылки, отключённые пропускаются.
     void emit(const Event& event);
 

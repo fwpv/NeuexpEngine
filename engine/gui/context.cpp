@@ -93,7 +93,7 @@ void Context::append(const std::shared_ptr<Element>& element, const Rect& bounds
     for (const auto& child : container->children()) {
         if (!child->visible()) { continue; }
         const auto& placement = child->placement();
-        const float childScale = placement.scale == ScaleMode::Pixels ? 1 : elementScale;
+        const float childScale = placement.scaleMode == ScaleMode::Pixels ? 1 : elementScale;
         total += (layout.flow == Flow::Row ? placement.size.width : placement.size.height) * childScale;
         ++count;
     }
@@ -108,7 +108,7 @@ void Context::append(const std::shared_ptr<Element>& element, const Rect& bounds
     for (const auto& child : container->children()) {
         if (!child->visible()) { continue; }
         const auto& placement = child->placement();
-        const float childScale = placement.scale == ScaleMode::Pixels ? 1 : elementScale;
+        const float childScale = placement.scaleMode == ScaleMode::Pixels ? 1 : elementScale;
         Size2 size{placement.size.width * childScale, placement.size.height * childScale};
         if (placement.horizontal == Align::Stretch && layout.flow != Flow::Row) { size.width = content.size.width; }
         if (placement.vertical == Align::Stretch && layout.flow != Flow::Column) { size.height = content.size.height; }

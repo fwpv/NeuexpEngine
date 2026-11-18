@@ -77,7 +77,7 @@ if(MSVC)
     target_compile_options(fonts_demo PRIVATE /utf-8)
 endif()
 
-add_executable(gui_demo gui/main.cpp gui/settings.cpp)
+add_executable(gui_demo gui/main.cpp gui/menu.cpp gui/scene.cpp gui/settings.cpp gui/ui_theme.cpp)
 if(WIN32)
     set_target_properties(gui_demo PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()

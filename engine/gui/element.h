@@ -4,6 +4,7 @@
 #include "renderer.h"
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -24,7 +25,13 @@ struct Placement
     Vector2 offset;
     Align horizontal = Align::Start;
     Align vertical = Align::Start;
-    ScaleMode scale = ScaleMode::Inherit;
+    // Inherit — размеры и текст масштабируются вместе с контекстом,
+    // Pixels — нет.
+    ScaleMode scaleMode = ScaleMode::Inherit;
+
+    // Размер по центру по горизонтали;
+    // вертикаль задаёт раскладка или offset.
+    static Placement horizontalCenter(Size2 size);
 };
 
 struct Layout
@@ -56,6 +63,11 @@ struct Style
 
 class Container;
 class Context;
+class Label;
+class Button;
+class Checkbox;
+class ProgressBar;
+class NumericIndicator;
 
 class Element
 {
@@ -74,6 +86,8 @@ public:
     Style& style();
     const Style& style() const;
     [[nodiscard]] Subscription subscribe(EventType type, Events::Handler handler);
+    // Действие без данных события: движок сам отбрасывает Event.
+    [[nodiscard]] Subscription subscribe(EventType type, std::function<void()> handler);
     bool hovered() const;
     bool pressed() const;
 
@@ -108,6 +122,15 @@ public:
     ~Container() override;
     // Один родитель; циклы и повторное добавление отклоняются.
     bool add(const std::shared_ptr<Element>& element);
+    // Создают элемент, задают размещение и добавляют его.
+    // nullptr означает, что добавление отклонено
+    // (например, повторное владение).
+    std::shared_ptr<Container> addContainer(const Placement& placement);
+    std::shared_ptr<Label> addLabel(const Placement& placement, std::string text = {});
+    std::shared_ptr<Button> addButton(const Placement& placement, std::string text = {});
+    std::shared_ptr<Checkbox> addCheckbox(const Placement& placement, std::string text = {});
+    std::shared_ptr<ProgressBar> addProgressBar(const Placement& placement);
+    std::shared_ptr<NumericIndicator> addNumericIndicator(const Placement& placement);
     bool remove(const std::shared_ptr<Element>& element);
     void clear();
     const std::vector<std::shared_ptr<Element>>& children() const;

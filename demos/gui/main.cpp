@@ -1,409 +1,347 @@
+#include "menu.h"
+#include "scene.h"
 #include "settings.h"
+#include "ui_theme.h"
+
 #include "application.h"
-#include "atlas.h"
 #include "entry_point.h"
 #include "gui/context.h"
+#include "input.h"
+#include "platform.h"
+#include "renderer.h"
+#include "resources.h"
+#include "texture.h"
+#include "ui.h"
 
-#include <algorithm>
-#include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string>
-#include <vector>
-#include <utility>
-#include <array>
 
-namespace
+namespace NE = NeuexpEngine;
+namespace UI = NE::Gui;
+
+constexpr char WindowTitle[] = "GUI / Orbital menu";
+constexpr char ErrorTitle[] = "GUI demo";
+constexpr float StatusBarHeight = 34;
+constexpr NE::Color SceneBackground{0.025F, 0.045F, 0.075F, 1};
+
+enum class Mode
 {
-using namespace NeuexpEngine;
-namespace UI = NeuexpEngine::Gui;
+    Menu,
+    Playing,
+    Paused
+};
 
-class MenuDemo final : public Application
+// Приложение связывает окно, меню и игровую сцену:
+// выбирает активный экран, передаёт ему ввод,
+// обновление и отрисовку, а общие ресурсы загружает один раз.
+class GuiDemoApplication final : public NE::Application
 {
 private:
-    template<class T, class... Args>
-    std::shared_ptr<T> add(const std::shared_ptr<UI::Container>& parent, Size2 size, Args&&... args)
+    bool onStart(Platform::Error& error) override
     {
-        auto element = std::make_shared<T>(std::forward<Args>(args)...);
+        if (!initializeRenderer(error) || !initializeWindow(error) || !initializePaths(error)) {
+            return false;
+        }
+        const std::string settingsProblem = loadSettingsFile();
+        const std::string resourcesProblem = loadResources();
+        bool vsyncAvailable = false;
+        const std::string vsyncProblem = applySavedVSync(vsyncAvailable);
+
+        menu_ = std::make_unique<GuiDemo::Menu>(settings_, resources_, settingsPath_, vsyncAvailable,
+            makeMenuCallbacks());
+        menu_->build();
+        scene_ = std::make_unique<GuiDemo::GameScene>(resources_, [this] { pauseGame(); });
+        scene_->build();
+        scene_->applyStyle(settings_);
+        buildStatusBar();
+        mode_ = Mode::Menu;
+        menu_->showMain();
+
+        if (!settingsProblem.empty()) {
+            showMessage(settingsProblem);
+        }
+        if (!resourcesProblem.empty()) {
+            showMessage(resourcesProblem);
+        }
+        if (!vsyncProblem.empty()) {
+            showMessage(vsyncProblem);
+        }
+        return true;
+    }
+
+    bool onInput(const NE::FrameInfo& frame, Platform::Error& error) override
+    {
+        if (!configure(frame, error)) {
+            return false;
+        }
+        for (const NE::Event& event : Platform::getInput().events()) {
+            if (mode_ == Mode::Playing) {
+                if (scene_->handle(event)) {
+                    continue;
+                }
+                if (event.type == NE::EventType::KeyPressed && event.key == NE::Key::Escape
+                    && !event.repeat) {
+                    pauseGame();
+                }
+            } else {
+                menu_->handle(event);
+            }
+        }
+        return true;
+    }
+
+    bool onUpdate(const NE::FrameInfo& frame, Platform::Error&) override
+    {
+        if (mode_ == Mode::Playing) {
+            scene_->update(frame.deltaTime);
+        }
+        return true;
+    }
+
+    bool onRender(const NE::FrameInfo& frame, Platform::Error& error) override
+    {
+        beginFrame(frame.window.width, frame.window.height, SceneBackground);
+        auto& renderer = getRenderer();
+        NE::ResourceError failure;
+        bool drawn = true;
+        if (mode_ != Mode::Menu) {
+            const bool withHud = mode_ == Mode::Playing || !menu_->settingsOpen();
+            drawn = scene_->draw(renderer, withHud, failure);
+        }
+        if (drawn && mode_ != Mode::Playing) {
+            drawn = menu_->draw(renderer, failure);
+        }
+        if (drawn) {
+            drawn = statusGui_.draw(renderer, failure);
+        }
+        const bool finished = endFrame(error);
+        if (!drawn) {
+            error = Platform::Error{ErrorTitle, failure.message, {}};
+        }
+        return drawn && finished;
+    }
+
+    bool initializeWindow(Platform::Error& error)
+    {
+        Platform::WindowState window;
+        return Platform::getWindowState(window, error);
+    }
+
+    bool initializePaths(Platform::Error& error)
+    {
+        NE::ResourceError failure;
+        std::filesystem::path executable;
+        if (!executableDirectory(executable, failure)) {
+            error = Platform::Error{ErrorTitle, failure.message, {}};
+            return false;
+        }
+        settingsPath_ = executable / GuiDemo::SettingsFileName;
+        return true;
+    }
+
+    // Ошибка чтения не мешает запуску:
+    // используются начальные настройки.
+    std::string loadSettingsFile()
+    {
+        std::string error;
+        if (!GuiDemo::loadSettings(settingsPath_, settings_, error)) {
+            return error;
+        }
+        return {};
+    }
+
+    std::string loadResources()
+    {
+        NE::ResourceFiles files;
+        NE::ResourceError failure;
+        if (!files.initialize(failure)) {
+            resources_.skinReady = false;
+            settings_.images = false;
+            settings_.bitmapText = false;
+            return failure.message;
+        }
+        std::string problem;
+        std::string skinError;
+        if (!loadSkin(files, skinError)) {
+            problem = skinError;
+        }
+        std::string fontError;
+        if (!loadFont(files, fontError)) {
+            if (!problem.empty()) {
+                problem += " / ";
+            }
+            problem += fontError;
+        }
+        if (!resources_.skinReady) {
+            settings_.images = false;
+        }
+        if (!resources_.font.isValid()) {
+            settings_.bitmapText = false;
+        }
+        return problem;
+    }
+
+    bool loadSkin(const NE::ResourceFiles& files, std::string& error)
+    {
+        NE::ResourceError failure;
+        NE::Texture texture;
+        if (!getRenderer().loadTexture(files, "gui/btns.png", texture, failure)) {
+            error = failure.message;
+            return false;
+        }
+        if (!resources_.atlas.load(texture, files, "gui/gui_atlas.txt", failure)) {
+            error = failure.message;
+            return false;
+        }
+        if (!resources_.skin.load(resources_.atlas)) {
+            error = "Cannot build the GUI skin from the atlas.";
+            return false;
+        }
+        resources_.skinReady = true;
+        return true;
+    }
+
+    bool loadFont(const NE::ResourceFiles& files, std::string& error)
+    {
+        NE::ResourceError failure;
+        if (!getRenderer().loadFont(files, "font/fnt14.fnt", resources_.font, failure)) {
+            error = failure.message;
+            return false;
+        }
+        return true;
+    }
+
+    std::string applySavedVSync(bool& available)
+    {
+        Platform::Error failure;
+        if (setVSync(settings_.vsync, failure)) {
+            available = true;
+            return {};
+        }
+        available = false;
+        settings_.vsync = false;
+        return failure.message;
+    }
+
+    GuiDemo::MenuCallbacks makeMenuCallbacks()
+    {
+        GuiDemo::MenuCallbacks callbacks;
+        callbacks.startGame = [this] { startGame(); };
+        callbacks.resumeGame = [this] { resumeGame(); };
+        callbacks.goToMainMenu = [this] { goToMainMenu(); };
+        callbacks.exitApplication = [this] { requestExit(); };
+        callbacks.settingsApplied = [this] { scene_->applyStyle(settings_); };
+        callbacks.setVSync = [this](bool enabled, std::string& error) {
+            Platform::Error failure;
+            if (!setVSync(enabled, failure)) {
+                error = failure.message;
+                return false;
+            }
+            return true;
+        };
+        callbacks.showMessage = [this](const std::string& text) { showMessage(text); };
+        return callbacks;
+    }
+
+    void buildStatusBar()
+    {
+        const std::string text = u8"Esc: назад / пауза. Колесо: прокрутка / "
+            + std::string(GuiDemo::SettingsFileName);
+
+        // Подпись статусной строки
+        status_ = std::make_shared<UI::Label>(text);
         UI::Placement placement;
-        placement.size = size;
-        placement.horizontal = UI::Align::Center;
-        element->setPlacement(placement);
-        parent->add(element);
-        styled.push_back(element);
-        return element;
+        placement.size = NE::Size2{0, StatusBarHeight};
+        placement.horizontal = UI::Align::Stretch;
+        placement.vertical = UI::Align::End;
+        placement.scaleMode = UI::ScaleMode::Pixels;
+        status_->setPlacement(placement);
+        status_->style().debugPixel = 1;
+
+        // Экран статусной строки
+        auto footer = std::make_shared<UI::Screen>();
+        footer->add(status_);
+        statusGui_.setScreen(footer);
     }
 
-    std::shared_ptr<UI::Button> addButton(const std::shared_ptr<UI::Container>& parent,
-        float width, const std::string& text = {})
+    bool configure(const NE::FrameInfo& frame, Platform::Error& error)
     {
-        // Размер элемента и его области ввода сохраняет пропорции выбранного скина.
-        const auto region = atlas.find(width < 100 ? "btn2_normal" : "btn1_normal");
-        const Size2 imageSize = region ? region->size : Size2{width < 100 ? 96.0F : 150.0F, 41};
-        const float buttonWidth = width * 0.89F;
-        return add<UI::Button>(parent, Size2{buttonWidth, buttonWidth * imageSize.height / imageSize.width}, text);
+        if (frame.window.minimized) {
+            return true;
+        }
+        const NE::Viewport viewport{0, 0, frame.window.width, frame.window.height};
+        const float scale = menu_->scale();
+        if (!menu_->setViewport(viewport, scale)) {
+            error = Platform::Error{ErrorTitle, "Cannot configure the menu viewport.", {}};
+            return false;
+        }
+        if (!scene_->setViewport(viewport, scale)) {
+            error = Platform::Error{ErrorTitle, "Cannot configure the scene viewport.", {}};
+            return false;
+        }
+        if (!statusGui_.setViewport(viewport)) {
+            error = Platform::Error{ErrorTitle, "Cannot configure the status bar viewport.", {}};
+            return false;
+        }
+        return true;
     }
 
-    std::shared_ptr<UI::Container> panel(const std::shared_ptr<UI::Screen>& page, Size2 size)
+    void showMessage(const std::string& text)
     {
-        auto result = add<UI::Container>(page, size);
-        auto placement = result->placement();
-        placement.vertical = UI::Align::Center;
-        result->setPlacement(placement);
-        result->layout() = UI::Layout{UI::Flow::Column, 14, 8, UI::Align::Center};
-        result->setBackgroundVisible(true);
-        result->setScrollable(true);
-        panels.push_back(result);
-        panelSizes.push_back(size);
-        result->setPointerPolicy(UI::PointerPolicy::Block);
-        return result;
-    }
-
-    template<class Handler>
-    void click(const std::shared_ptr<UI::Button>& button, Handler handler)
-    {
-        subscriptions.push_back(button->subscribe(UI::EventType::Click, [handler](const UI::Event&) { handler(); }));
-    }
-
-    void message(const std::string& text)
-    {
-        status->setText(text);
+        status_->setText(text);
         std::cerr << text << '\n';
     }
 
-    bool onStart(Platform::Error& error) override
+    void startGame()
     {
-        if (!initializeRenderer(error)) { return false; }
-        Platform::WindowState window;
-        if (!Platform::getWindowState(window, error)) { return false; }
-        applied.scale = std::clamp(window.systemScale, 0.75F, 2.0F);
-        ResourceFiles files;
-        ResourceError failure;
-        const bool assetsAvailable = files.initialize(failure);
-        std::string assetError = assetsAvailable ? std::string{} : failure.message;
-        std::filesystem::path executablePath;
-        if (!executableDirectory(executablePath, failure)) {
-            error = Platform::Error{"GUI demo", failure.message, {}};
-            return false;
-        }
-        settingsPath = executablePath / "gui_demo_settings.tmp";
-        std::string loadError;
-        GuiDemo::loadSettings(settingsPath, applied, loadError);
-        draft = applied;
-        // Ассеты необязательны; ошибки доступного оформления видны в статусе и stderr.
-        Texture texture;
-        if (assetsAvailable && getRenderer().loadTexture(files, "gui/btns.png", texture, failure)
-            && atlas.load(texture, files, "gui/gui_atlas.txt", failure)) {
-            imagesAvailable = true;
-        } else if (assetsAvailable) {
-            assetError = failure.message;
-        }
-        if (assetsAvailable && !getRenderer().loadFont(files, "font/fnt14.fnt", bitmap, failure)) {
-            if (!assetError.empty()) { assetError += " / "; }
-            assetError += failure.message;
-        }
-        if (!imagesAvailable) { applied.images = draft.images = false; }
-        if (!bitmap.isValid()) { applied.bitmapText = draft.bitmapText = false; }
-        buildPages();
-        applyStyle();
-        if (!loadError.empty()) { message(loadError); }
-        if (!assetError.empty()) { message(assetError); }
-        Platform::Error vsyncError;
-        if (!setVSync(applied.vsync, vsyncError)) {
-            applied.vsync = draft.vsync = false;
-            vsync->setEnabled(false);
-            message(vsyncError.message);
-        }
-        gui.setScreen(mainMenu);
-        return true;
+        mode_ = Mode::Playing;
+        setPaused(false);
+        scene_->reset();
     }
 
-    void buildPages()
-    {
-        mainMenu = std::make_shared<UI::Screen>();
-        settings = std::make_shared<UI::Screen>();
-        game = std::make_shared<UI::Screen>();
-        pause = std::make_shared<UI::Screen>();
-        auto mainPanel = panel(mainMenu, Size2{340, 340});
-        add<UI::Label>(mainPanel, Size2{310, 34}, u8"ОРБИТА / МЕНЮ");
-        auto start = addButton(mainPanel, 230, u8"Начать");
-        click(start, [this] {
-            elapsed = 0;
-            playing = true;
-            gui.setScreen(game);
-            setPaused(false);
-        });
-        auto options = addButton(mainPanel, 230, u8"Настройки");
-        click(options, [this] { openSettings(); });
-        auto exit = addButton(mainPanel, 230, u8"Выход");
-        click(exit, [this] { requestExit(); });
-
-        auto settingsPanel = panel(settings, Size2{360, 560});
-        add<UI::Label>(settingsPanel, Size2{320, 32}, u8"НАСТРОЙКИ");
-        auto scaleRow = add<UI::Container>(settingsPanel, Size2{320, 41});
-        scaleRow->layout() = UI::Layout{UI::Flow::Row, 0, 8, UI::Align::Center};
-        auto less = addButton(scaleRow, 96, "-");
-        scaleValue = add<UI::NumericIndicator>(scaleRow, Size2{96, 41});
-        auto more = addButton(scaleRow, 96, "+");
-        click(less, [this] { changeScale(-0.25F); });
-        click(more, [this] { changeScale(0.25F); });
-        add<UI::Label>(settingsPanel, Size2{320, 24}, u8"Масштаб интерфейса");
-        vsync = add<UI::Checkbox>(settingsPanel, Size2{310, 30}, "VSync");
-        images = add<UI::Checkbox>(settingsPanel, Size2{310, 30}, u8"Изображения кнопок");
-        font = add<UI::Checkbox>(settingsPanel, Size2{310, 30}, u8"Растровый шрифт");
-        textFiltering = add<UI::Checkbox>(settingsPanel, Size2{310, 30}, u8"Фильтрация текста");
-        images->setEnabled(imagesAvailable);
-        font->setEnabled(bitmap.isValid());
-        subscriptions.push_back(vsync->subscribe(UI::EventType::Change, [this](const UI::Event& event) {
-            draft.vsync = event.checked;
-        }));
-        subscriptions.push_back(images->subscribe(UI::EventType::Change, [this](const UI::Event& event) {
-            draft.images = event.checked;
-            applyStyle();
-        }));
-        subscriptions.push_back(font->subscribe(UI::EventType::Change, [this](const UI::Event& event) {
-            draft.bitmapText = event.checked;
-            applyStyle();
-        }));
-        subscriptions.push_back(textFiltering->subscribe(UI::EventType::Change, [this](const UI::Event& event) {
-            draft.textFiltering = event.checked;
-            applyStyle();
-        }));
-        auto apply = addButton(settingsPanel, 250, u8"Применить");
-        click(apply, [this] { applySettings(); });
-        auto cancel = addButton(settingsPanel, 250, u8"Отмена");
-        click(cancel, [this] { closeSettings(); });
-        auto hint = add<UI::Label>(settingsPanel, Size2{320, 56}, u8"Настройки сохраняются\nрядом с демо");
-        hint->style().debugPixel = 2;
-
-        auto hud = add<UI::Container>(game, Size2{320, 170});
-        hud->layout() = UI::Layout{UI::Flow::Column, 12, 8, UI::Align::Start};
-        hud->setBackgroundVisible(true);
-        hud->setPointerPolicy(UI::PointerPolicy::Block);
-        add<UI::Label>(hud, Size2{280, 24}, u8"ВРЕМЯ ПОЛЁТА");
-        counter = add<UI::NumericIndicator>(hud, Size2{280, 26});
-        progress = add<UI::ProgressBar>(hud, Size2{280, 18});
-        auto pauseButton = addButton(hud, 180, u8"Пауза");
-        click(pauseButton, [this] { pauseGame(); });
-        auto controls = add<UI::Container>(game, Size2{352, 60});
-        auto controlsPlacement = controls->placement();
-        controlsPlacement.vertical = UI::Align::End;
-        controlsPlacement.offset.y = -46;
-        controls->setPlacement(controlsPlacement);
-        controls->layout() = UI::Layout{UI::Flow::Row, 8, 8, UI::Align::Center};
-        auto restart = addButton(controls, 64);
-        restart->style().background = Color{0.2F, 0.65F, 0.4F, 1};
-        click(restart, [this] { elapsed = 0; });
-        add<UI::Label>(controls, Size2{110, 32}, u8"Сброс");
-        auto orbit = add<UI::Checkbox>(controls, Size2{24, 32});
-        orbit->setChecked(true);
-        subscriptions.push_back(orbit->subscribe(UI::EventType::Change, [this](const UI::Event& event) {
-            showOrbit = event.checked;
-        }));
-        add<UI::Label>(controls, Size2{100, 32}, u8"Орбита");
-        auto pausePanel = panel(pause, Size2{340, 320});
-        add<UI::Label>(pausePanel, Size2{310, 30}, u8"ПАУЗА");
-        auto resume = addButton(pausePanel, 230, u8"Продолжить");
-        click(resume, [this] { gui.setModal({}); setPaused(false); });
-        auto pauseOptions = addButton(pausePanel, 230, u8"Настройки");
-        click(pauseOptions, [this] { openSettings(); });
-        auto home = addButton(pausePanel, 230, u8"Главное меню");
-        click(home, [this] {
-            playing = false;
-            gui.setScreen(mainMenu);
-            setPaused(false);
-        });
-
-        // Эта строка остаётся пиксельной и выравнивается при любом масштабе меню.
-        status = std::make_shared<UI::Label>(u8"Esc: назад / пауза. Колесо: прокрутка / gui_demo_settings.tmp");
-        UI::Placement placement;
-        placement.size = Size2{0, 34};
-        placement.horizontal = UI::Align::Stretch;
-        placement.vertical = UI::Align::End;
-        placement.scale = UI::ScaleMode::Pixels;
-        status->setPlacement(placement);
-        status->style().debugPixel = 1;
-        // Общий статус рисуется отдельным контекстом и не перехватывает ввод.
-        auto footer = std::make_shared<UI::Screen>();
-        footer->add(status);
-        footerGui.setScreen(footer);
-        applyStyle();
-    }
-
-    void changeScale(float delta)
-    {
-        draft.scale = std::clamp(draft.scale + delta, 0.75F, 2.0F);
-        scaleValue->setValue(draft.scale, 2);
-    }
-    void openSettings()
-    {
-        draft = applied;
-        vsync->setChecked(draft.vsync);
-        images->setChecked(draft.images);
-        font->setChecked(draft.bitmapText);
-        textFiltering->setChecked(draft.textFiltering);
-        scaleValue->setValue(draft.scale, 2);
-        applyStyle();
-        gui.setScreen(settings);
-    }
-    void closeSettings()
-    {
-        draft = applied;
-        applyStyle();
-        gui.setScreen(playing ? game : mainMenu);
-        if (playing) { gui.setModal(pause); }
-    }
-    void applySettings()
-    {
-        Platform::Error failure;
-        if (draft.vsync != applied.vsync && !setVSync(draft.vsync, failure)) {
-            message(failure.message);
-            return;
-        }
-        std::string error;
-        if (!GuiDemo::saveSettings(settingsPath, draft, error)) {
-            Platform::Error rollback;
-            if (!setVSync(applied.vsync, rollback)) { error += " / " + rollback.message; }
-            message(error);
-            return;
-        }
-        applied = draft;
-        message(u8"Настройки сохранены / gui_demo_settings.tmp");
-        closeSettings();
-    }
     void pauseGame()
     {
+        mode_ = Mode::Paused;
         setPaused(true);
-        gui.setModal(pause);
-    }
-    void applyStyle()
-    {
-        textFiltering->setEnabled(draft.bitmapText && bitmap.isValid());
-        for (const auto& element : styled) {
-            auto& style = element->style();
-            style.font = draft.bitmapText ? bitmap : BitmapFont{};
-            style.textFilter = draft.textFiltering ? TextureFilter::Linear : TextureFilter::Nearest;
-            style.images = {};
-            style.checkedImages = {};
-            style.foreground = Color{0.93F, 0.96F, 1, 1};
-            if (!draft.images) { continue; }
-            const bool button = static_cast<bool>(std::dynamic_pointer_cast<UI::Button>(element));
-            const bool check = static_cast<bool>(std::dynamic_pointer_cast<UI::Checkbox>(element));
-            if (!button && !check) { continue; }
-            const std::string prefix = check ? "check_box_off_"
-                : element->placement().size.width < 100 ? "btn2_" : "btn1_";
-            const std::array<std::string, 3> states{"normal", "hover", "pressed"};
-            for (std::size_t index = 0; index < states.size(); ++index) {
-                atlas.createSprite(prefix + states[index], style.images[index]);
-                if (button) { style.images[index].filter = TextureFilter::Nearest; }
-                if (check) { atlas.createSprite("check_box_on_" + states[index], style.checkedImages[index]); }
-            }
-            if (button) { style.foreground = Color{0.07F, 0.12F, 0.2F, 1}; }
-        }
+        menu_->showPause();
     }
 
-    bool configure(const FrameInfo& frame)
+    void resumeGame()
     {
-        const Viewport viewport{0, 0, frame.window.width, frame.window.height};
-        for (std::size_t index = 0; index < panels.size(); ++index) {
-            auto placement = panels[index]->placement();
-            placement.size.width = std::min(panelSizes[index].width, std::max(0.0F,
-                static_cast<float>(frame.window.width - 16) / draft.scale));
-            placement.size.height = std::min(panelSizes[index].height, std::max(0.0F,
-                static_cast<float>(frame.window.height - 84) / draft.scale));
-            panels[index]->setPlacement(placement);
-        }
-        return gui.setViewport(viewport, draft.scale) && footerGui.setViewport(viewport);
-    }
-    bool onInput(const FrameInfo& frame, Platform::Error&) override
-    {
-        configure(frame);
-        for (const auto& event : Platform::getInput().events()) {
-            if (gui.handle(event)) { configure(frame); continue; }
-            if (event.type == NeuexpEngine::EventType::KeyPressed && event.key == Key::Escape && !event.repeat) {
-                if (gui.screen() == settings) { closeSettings(); }
-                else if (playing && gui.modal()) { gui.setModal({}); setPaused(false); }
-                else if (playing) { pauseGame(); }
-                else { requestExit(); }
-            }
-        }
-        return true;
-    }
-    bool onUpdate(const FrameInfo& frame, Platform::Error&) override
-    {
-        if (playing) {
-            elapsed += frame.deltaTime;
-            counter->setValue(elapsed, 1);
-            progress->setValue(std::fmod(elapsed, 30.0F) / 30);
-        }
-        return true;
-    }
-    bool onRender(const FrameInfo& frame, Platform::Error& error) override
-    {
-        if (!configure(frame)) { return true; }
-        beginFrame(frame.window.width, frame.window.height, Color{0.025F, 0.045F, 0.075F, 1});
-        auto& renderer = getRenderer();
-        UiView view;
-        UiError viewError;
-        UiCanvas{}.createView(Viewport{0, 0, frame.window.width, frame.window.height}, view, viewError);
-        renderer.setUiView(view);
-        if (playing) {
-            const Vector2 center{view.size.width / 2, view.size.height * 0.63F};
-            if (showOrbit) {
-                renderer.drawCircle(Circle{center, 110}, Color{0.15F, 0.3F, 0.4F, 1}, ShapeFill::Outline);
-            }
-            renderer.drawCircle(Circle{center + Vector2{110 * std::cos(elapsed), 110 * std::sin(elapsed)}, 12},
-                Color{0.25F, 0.8F, 0.65F, 1});
-        }
-        ResourceError failure;
-        const bool drawn = gui.draw(renderer, failure) && footerGui.draw(renderer, failure);
-        const bool ended = endFrame(error);
-        if (!drawn) { error = Platform::Error{"GUI demo", failure.message, {}}; }
-        return drawn && ended;
+        mode_ = Mode::Playing;
+        setPaused(false);
     }
 
-    UI::Context gui;
-    UI::Context footerGui;
-    std::shared_ptr<UI::Screen> mainMenu;
-    std::shared_ptr<UI::Screen> settings;
-    std::shared_ptr<UI::Screen> game;
-    std::shared_ptr<UI::Screen> pause;
-    std::shared_ptr<UI::Label> status;
-    std::shared_ptr<UI::NumericIndicator> scaleValue;
-    std::shared_ptr<UI::NumericIndicator> counter;
-    std::shared_ptr<UI::ProgressBar> progress;
-    std::shared_ptr<UI::Checkbox> vsync;
-    std::shared_ptr<UI::Checkbox> images;
-    std::shared_ptr<UI::Checkbox> font;
-    std::shared_ptr<UI::Checkbox> textFiltering;
-    std::vector<std::shared_ptr<UI::Element>> styled;
-    std::vector<std::shared_ptr<UI::Container>> panels;
-    std::vector<Size2> panelSizes;
-    std::vector<UI::Subscription> subscriptions;
-    TextureAtlas atlas;
-    BitmapFont bitmap;
-    GuiDemo::Settings applied;
-    GuiDemo::Settings draft;
-    std::filesystem::path settingsPath;
-    float elapsed = 0;
-    bool playing = false;
-    bool imagesAvailable = false;
-    bool showOrbit = true;
+    void goToMainMenu()
+    {
+        mode_ = Mode::Menu;
+        setPaused(false);
+        menu_->showMain();
+    }
+
+    GuiDemo::Settings settings_;
+    GuiDemo::UiResources resources_;
+    std::filesystem::path settingsPath_;
+    std::unique_ptr<GuiDemo::Menu> menu_;
+    std::unique_ptr<GuiDemo::GameScene> scene_;
+    UI::Context statusGui_;
+    std::shared_ptr<UI::Label> status_;
+    Mode mode_ = Mode::Menu;
 };
-}
 
 int NeuexpEngine::applicationMain()
 {
-    MenuDemo app;
-    ApplicationOptions options;
-    options.window.title = "GUI / Orbital menu";
+    GuiDemoApplication application;
+    NE::ApplicationOptions options;
+    options.window.title = WindowTitle;
     options.window.width = 900;
     options.window.height = 700;
     options.window.minimumWidth = 480;
     options.window.minimumHeight = 360;
     Platform::Error error;
-    if (!app.run(options, error)) {
+    if (!application.run(options, error)) {
         Platform::reportError(error);
         return 1;
     }
