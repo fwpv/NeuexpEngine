@@ -9,6 +9,14 @@
 
 namespace NeuexpEngine::Gui
 {
+Placement Placement::horizontalCenter(Size2 size)
+{
+    Placement result;
+    result.size = size;
+    result.horizontal = Align::Center;
+    return result;
+}
+
 void Element::setPlacement(const Placement& value)
 {
     location = value;
@@ -65,6 +73,10 @@ void Element::activate()
 {
 }
 Subscription Element::subscribe(EventType type, Events::Handler handler)
+{
+    return events.subscribe(type, std::move(handler));
+}
+Subscription Element::subscribe(EventType type, std::function<void()> handler)
 {
     return events.subscribe(type, std::move(handler));
 }
@@ -349,5 +361,65 @@ bool NumericIndicator::paint(Renderer2D& renderer, const Rect& bounds, float sca
         drawSurface(renderer, bounds, state);
     }
     return drawText(renderer, caption, bounds, scale, state, error);
+}
+
+std::shared_ptr<Container> Container::addContainer(const Placement& placement)
+{
+    auto element = std::make_shared<Container>();
+    element->setPlacement(placement);
+    if (!add(element)) {
+        return {};
+    }
+    return element;
+}
+
+std::shared_ptr<Label> Container::addLabel(const Placement& placement, std::string text)
+{
+    auto element = std::make_shared<Label>(std::move(text));
+    element->setPlacement(placement);
+    if (!add(element)) {
+        return {};
+    }
+    return element;
+}
+
+std::shared_ptr<Button> Container::addButton(const Placement& placement, std::string text)
+{
+    auto element = std::make_shared<Button>(std::move(text));
+    element->setPlacement(placement);
+    if (!add(element)) {
+        return {};
+    }
+    return element;
+}
+
+std::shared_ptr<Checkbox> Container::addCheckbox(const Placement& placement, std::string text)
+{
+    auto element = std::make_shared<Checkbox>(std::move(text));
+    element->setPlacement(placement);
+    if (!add(element)) {
+        return {};
+    }
+    return element;
+}
+
+std::shared_ptr<ProgressBar> Container::addProgressBar(const Placement& placement)
+{
+    auto element = std::make_shared<ProgressBar>();
+    element->setPlacement(placement);
+    if (!add(element)) {
+        return {};
+    }
+    return element;
+}
+
+std::shared_ptr<NumericIndicator> Container::addNumericIndicator(const Placement& placement)
+{
+    auto element = std::make_shared<NumericIndicator>();
+    element->setPlacement(placement);
+    if (!add(element)) {
+        return {};
+    }
+    return element;
 }
 }

@@ -45,6 +45,16 @@ bool Subscription::connected() const
     const auto current = slot.lock();
     return current && static_cast<bool>(current->handler);
 }
+Subscription Events::subscribe(EventType type, std::function<void()> handler)
+{
+    if (!handler) {
+        return {};
+    }
+    return subscribe(type, [handler = std::move(handler)](const Event&) {
+        handler();
+    });
+}
+
 Events::~Events()
 {
     for (const auto& slot : slots) {

@@ -170,6 +170,19 @@ void subscriptions()
     button.reset();
     require(!moved.connected() && !added.connected(), "Subscription survived emitter destruction as connected");
 }
+void actionSubscription()
+{
+    auto button = std::make_shared<UI::Button>();
+    auto screen = std::make_shared<UI::Screen>();
+    screen->add(button);
+    UI::Context context;
+    context.setViewport(Viewport{0, 0, 400, 300});
+    context.setScreen(screen);
+    int clicks = 0;
+    auto subscription = button->subscribe(UI::EventType::Click, [&] { ++clicks; });
+    click(context, 10, 10);
+    require(clicks == 1, "Action subscriber did not fire");
+}
 void layout()
 {
     UI::Context context;
@@ -189,7 +202,7 @@ void layout()
     placement.horizontal = UI::Align::End;
     scaled->setPlacement(placement);
     auto fixed = std::make_shared<UI::Button>();
-    placement.scale = UI::ScaleMode::Pixels;
+    placement.scaleMode = UI::ScaleMode::Pixels;
     fixed->setPlacement(placement);
     panel->add(scaled);
     panel->add(fixed);
@@ -241,6 +254,27 @@ void scrolling()
     click(context, 20, 70);
     require(clicks == 1, "Scrolled element not clickable");
 }
+void construction()
+{
+    auto screen = std::make_shared<UI::Screen>();
+    const UI::Placement placement = UI::Placement::horizontalCenter(Size2{120, 24});
+    auto label = screen->addLabel(placement, "Text");
+    require(label != nullptr, "Label construction returned null");
+    require(screen->children().size() == 1, "Label construction did not add child");
+    require(near(label->placement().size.width, 120), "Label construction lost width");
+    require(near(label->placement().size.height, 24), "Label construction lost height");
+    require(label->placement().horizontal == UI::Align::Center, "Label construction lost alignment");
+
+    UI::Placement indicatorPlacement;
+    indicatorPlacement.size = Size2{80, 20};
+    auto indicator = screen->addNumericIndicator(indicatorPlacement);
+    require(indicator != nullptr, "Indicator construction returned null");
+    require(screen->addButton(placement, "Button") != nullptr, "Button construction failed");
+    require(screen->addCheckbox(placement, "Check") != nullptr, "Checkbox construction failed");
+    require(screen->addProgressBar(placement) != nullptr, "Progress bar construction failed");
+    require(screen->addContainer(placement) != nullptr, "Container construction failed");
+    require(screen->children().size() == 6, "Construction methods did not add children");
+}
 void textMetrics()
 {
     require(Renderer2D::measureDebugText("A", 1) == Size2{5, 7}, "Latin glyph metrics incorrect");
@@ -257,8 +291,10 @@ int main()
         routing();
         mutation();
         subscriptions();
+        actionSubscription();
         layout();
         scrolling();
+        construction();
         textMetrics();
         return 0;
     } catch (const std::exception& exception) {
