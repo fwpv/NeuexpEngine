@@ -35,6 +35,19 @@ constexpr int HudFooterHeight = 150;
 
 constexpr std::array<Vector2, 5> TourPositions = {Vector2{-240, 70}, Vector2{180, 70},
     Vector2{-340, -140}, Vector2{0, 120}, Vector2{0, 120}};
+constexpr std::array<Vector2, 6> Trees = {Vector2{-240, 50}, Vector2{-365, 140}, Vector2{-140, -80},
+    Vector2{390, 190}, Vector2{280, 270}, Vector2{-260, 290}};
+constexpr std::array<std::string_view, 5> TourTitles = {"1 / WALK BEHIND AND IN FRONT OF TREES",
+    "2 / WALK UNDER THE GLASS CANOPY", "3 / WATCH THE WINDMILL BLADES",
+    "4 / MOVE AND ZOOM THE WORLD", "5 / WATCH THE PARCEL WINDOW"};
+constexpr std::array<std::string_view, 5> TourExplanations = {"FEET SET THE ORDER / LOWER FEET APPEAR IN FRONT",
+    "WORLD SHOWS THROUGH GLASS / FRAME STAYS ABOVE IT",
+    "LOCAL SHAPES ROTATE AND SCALE AROUND THE HUB",
+    "MAP IS A SECOND VIEW / HUD STAYS FIXED ON SCREEN",
+    "MOVING PARCELS ARE CUT AT THE WINDOW EDGES"};
+constexpr std::array<std::string_view, 5> TourHints = {"Y TOGGLE SORTING / O REVERSE COMMANDS",
+    "G TOGGLE GLASS / MOVE THROUGH THE BLUE AREA", "P PAUSE ROTATION / BLADES SHARE ONE PIVOT",
+    "F FOLLOW CAMERA / WHEEL ZOOM / CLICK TO WALK", "C TOGGLE CLIPPING / L RESTART RENDERER"};
 
 DrawOptions paint(Color color, int layer = 0, float order = 0, const Transform2& transform = Transform2{})
 {
@@ -84,9 +97,8 @@ private:
         return initializeRenderer(error);
     }
 
-    bool onInput(const FrameInfo& frame, Platform::Error& error) override
+    void handleToggles(const InputState& input)
     {
-        const auto& input = Platform::getInput();
         if (input.key(Key::Escape).pressed) {
             requestExit();
         }
@@ -108,6 +120,10 @@ private:
         if (input.key(Key::F).pressed) {
             follow = !follow;
         }
+    }
+
+    void handleTour(const InputState& input)
+    {
         if (input.key(Key::Tab).pressed) {
             tour = (tour + 1) % static_cast<int>(TourPositions.size());
             player = TourPositions[static_cast<std::size_t>(tour)];
@@ -123,27 +139,57 @@ private:
             camera.position = Vector2{};
             camera.zoom = 1;
         }
-        if (input.key(Key::L).pressed) {
-            renderer.shutdown();
-            if (!initializeRenderer(error)) {
-                return false;
-            }
-            ++restarts;
+    }
+
+    bool restartRenderer(const InputState& input, Platform::Error& error)
+    {
+        if (!input.key(Key::L).pressed) {
+            return true;
         }
-        if (input.mouse().inside) {
-            camera.zoom = std::clamp(camera.zoom + static_cast<float>(input.mouse().wheelY) * 0.1F, 0.6F, 2.5F);
+        renderer.shutdown();
+        if (!initializeRenderer(error)) {
+            return false;
         }
+        ++restarts;
+        return true;
+    }
+
+    void handleCamera(const InputState& input)
+    {
+        if (!input.mouse().inside) {
+            return;
+        }
+        const float zoom = camera.zoom + static_cast<float>(input.mouse().wheelY) * 0.1F;
+        camera.zoom = std::clamp(zoom, 0.6F, 2.5F);
+    }
+
+    void handleMapClick(const InputState& input)
+    {
+        if (!ready || !input.button(MouseButton::Left).pressed) {
+            return;
+        }
+        const Vector2 pixel = {static_cast<float>(input.mouse().x), static_cast<float>(input.mouse().y)};
+        if (contains(map.viewport.bounds(), pixel)) {
+            return;
+        }
+        walking = world.screenToWorld(pixel, destination);
+        destination.x = std::clamp(destination.x, -ParkHalfSize.x, ParkHalfSize.x);
+        destination.y = std::clamp(destination.y, -ParkHalfSize.y, ParkHalfSize.y);
+    }
+
+    bool onInput(const FrameInfo& frame, Platform::Error& error) override
+    {
+        const auto& input = Platform::getInput();
+        handleToggles(input);
+        handleTour(input);
+        if (!restartRenderer(input, error)) {
+            return false;
+        }
+        handleCamera(input);
         if (!updateViews(frame, error)) {
             return false;
         }
-        if (ready && input.button(MouseButton::Left).pressed) {
-            const Vector2 pixel = {static_cast<float>(input.mouse().x), static_cast<float>(input.mouse().y)};
-            if (!contains(map.viewport.bounds(), pixel)) {
-                walking = world.screenToWorld(pixel, destination);
-                destination.x = std::clamp(destination.x, -ParkHalfSize.x, ParkHalfSize.x);
-                destination.y = std::clamp(destination.y, -ParkHalfSize.y, ParkHalfSize.y);
-            }
-        }
+        handleMapClick(input);
         return true;
     }
 
@@ -217,13 +263,16 @@ private:
         renderer.drawCircle(Circle{player, 4}, paint(Mint, ActorLayer, order));
     }
 
-    void drawTown(const CameraView& view)
+    void drawGround()
     {
-        renderer.setWorldView(view);
         renderer.drawRectangle(Rect{-560, -380, 1120, 760}, paint(Color{0.18F, 0.32F, 0.27F}, -20));
         constexpr int PathLayer = -15;
         renderer.drawRectangle(Rect{-540, 60, 1080, 80}, paint(Color{0.59F, 0.54F, 0.39F}, PathLayer));
         renderer.drawRectangle(Rect{-40, -350, 80, 700}, paint(Color{0.59F, 0.54F, 0.39F}, PathLayer));
+    }
+
+    void drawLandmarks()
+    {
         constexpr int LandscapeLayer = -10;
         constexpr int LandscapeDetailLayer = -9;
         renderer.drawRectangle(Rect{85, -35, 255, 195}, paint(Color{0.29F, 0.39F, 0.39F}, LandscapeLayer));
@@ -236,15 +285,22 @@ private:
         for (int flower = 0; flower < 4; ++flower) {
             renderer.drawCircle(Circle{Vector2{111, 225 + static_cast<float>(flower) * 23}, 6}, paint(Gold, -7));
         }
-        if (walking) {
-            DrawOptions target = paint(Mint, -3);
-            target.pointSize = 6;
-            renderer.drawLine(player, destination, target);
-            renderer.drawCircle(Circle{destination, 16}, target, ShapeFill::Outline);
-            renderer.drawPoint(destination, target);
+    }
+
+    void drawWalkingTarget()
+    {
+        if (!walking) {
+            return;
         }
-        constexpr std::array<Vector2, 6> Trees = {Vector2{-240, 50}, Vector2{-365, 140}, Vector2{-140, -80},
-            Vector2{390, 190}, Vector2{280, 270}, Vector2{-260, 290}};
+        DrawOptions target = paint(Mint, -3);
+        target.pointSize = 6;
+        renderer.drawLine(player, destination, target);
+        renderer.drawCircle(Circle{destination, 16}, target, ShapeFill::Outline);
+        renderer.drawPoint(destination, target);
+    }
+
+    void drawTreesAndPlayer()
+    {
         // Перестановка подачи не меняет результат при разных ключах Y.
         const int treeCount = static_cast<int>(Trees.size());
         for (int step = 0; step <= treeCount; ++step) {
@@ -255,6 +311,10 @@ private:
                 drawTree(Trees[static_cast<std::size_t>(index)]);
             }
         }
+    }
+
+    void drawMill()
+    {
         constexpr float MillSortY = -70;
         renderer.drawRectangle(Rect{-385, -195, 90, 125}, paint(Color{0.79F, 0.70F, 0.51F}, ActorLayer, MillSortY));
         const Polygon roof = {Vector2{-402, -195}, Vector2{-340, -252}, Vector2{-278, -195}};
@@ -268,6 +328,10 @@ private:
             renderer.drawRectangle(Rect{8, -9, 69, 18}, paint(White, RotorLayer, 0, transform), ShapeFill::Filled);
         }
         renderer.drawCircle(Circle{rotor.position, 12}, paint(Gold, RotorLayer));
+    }
+
+    void drawGlass()
+    {
         if (glass) {
             renderer.drawRectangle(Rect{95, -80, 235, 190}, paint(Color{0.3F, 0.8F, 0.95F, 0.38F}, 5));
         }
@@ -277,37 +341,53 @@ private:
         renderer.drawRectangle(Rect{322, -80, 8, 190}, paint(White, GlassFrameLayer));
     }
 
-    void drawHud()
+    void drawTown(const CameraView& view)
+    {
+        renderer.setWorldView(view);
+        drawGround();
+        drawLandmarks();
+        drawWalkingTarget();
+        drawTreesAndPlayer();
+        drawMill();
+        drawGlass();
+    }
+
+    void drawHeader()
     {
         const float width = ui.size.width;
-        const float bottom = ui.size.height - HudFooterHeight;
-        renderer.setUiView(ui);
         renderer.drawRectangle(Rect{0, 0, width, HudHeaderHeight}, paint(Ink));
         renderer.drawDebugText("RENDERER TOWN", Vector2{22, 16}, Mint, 2);
         renderer.drawDebugText("WASD WALK / CLICK DESTINATION / WHEEL ZOOM", Vector2{22, 45}, White, 1);
         renderer.drawDebugText("TAB NEXT STOP / R RESET / ESC EXIT", Vector2{22, 66}, Gold, 1);
         renderer.drawDebugText("YOU ARE THE COURIER", Vector2{width - 264, 20}, Gold, 1);
         renderer.drawDebugText(isPaused() ? "PAUSED / P RESUME" : "P PAUSE / RESUME", Vector2{width - 264, 45}, White, 1);
+    }
+
+    void drawFooter()
+    {
+        const float width = ui.size.width;
+        const float bottom = ui.size.height - HudFooterHeight;
         renderer.drawRectangle(Rect{0, bottom, width, HudFooterHeight}, paint(Ink));
-        constexpr std::array<std::string_view, 5> TourTitles = {"1 / WALK BEHIND AND IN FRONT OF TREES",
-            "2 / WALK UNDER THE GLASS CANOPY", "3 / WATCH THE WINDMILL BLADES",
-            "4 / MOVE AND ZOOM THE WORLD", "5 / WATCH THE PARCEL WINDOW"};
-        constexpr std::array<std::string_view, 5> TourExplanations = {"FEET SET THE ORDER / LOWER FEET APPEAR IN FRONT",
-            "WORLD SHOWS THROUGH GLASS / FRAME STAYS ABOVE IT",
-            "LOCAL SHAPES ROTATE AND SCALE AROUND THE HUB",
-            "MAP IS A SECOND VIEW / HUD STAYS FIXED ON SCREEN",
-            "MOVING PARCELS ARE CUT AT THE WINDOW EDGES"};
-        constexpr std::array<std::string_view, 5> TourHints = {"Y TOGGLE SORTING / O REVERSE COMMANDS",
-            "G TOGGLE GLASS / MOVE THROUGH THE BLUE AREA", "P PAUSE ROTATION / BLADES SHARE ONE PIVOT",
-            "F FOLLOW CAMERA / WHEEL ZOOM / CLICK TO WALK", "C TOGGLE CLIPPING / L RESTART RENDERER"};
         renderer.drawDebugText(TourTitles[static_cast<std::size_t>(tour)], Vector2{22, bottom + 16}, Mint, 1);
         renderer.drawDebugText(TourExplanations[static_cast<std::size_t>(tour)], Vector2{22, bottom + 40}, White, 1);
         renderer.drawDebugText(TourHints[static_cast<std::size_t>(tour)], Vector2{22, bottom + 62}, Gold, 1);
-        renderer.drawDebugText(std::string("SORT ") + (sorting ? "ON" : "OFF") + " / GLASS " + (glass ? "ON" : "OFF")
-                + " / CLIP " + (clipping ? "ON" : "OFF"), Vector2{22, bottom + 92}, White, 1);
+        renderer.drawDebugText(std::string("SORT ") + (sorting ? "ON" : "OFF") + " / GLASS "
+                + (glass ? "ON" : "OFF") + " / CLIP " + (clipping ? "ON" : "OFF"),
+            Vector2{22, bottom + 92}, White, 1);
         renderer.drawDebugText("RENDERER RESTARTS " + std::to_string(restarts), Vector2{22, bottom + 116}, Mint, 1);
+    }
+
+    void drawMapPanel()
+    {
+        const float width = ui.size.width;
         renderer.drawRectangle(map.viewport.bounds(), paint(Mint), ShapeFill::Outline);
         renderer.drawDebugText("LIVE MAP", Vector2{width - 224, 116}, White, 1);
+    }
+
+    void drawParcelWindow()
+    {
+        const float width = ui.size.width;
+        const float bottom = ui.size.height - HudFooterHeight;
         // Лента остаётся в экранном пространстве при движении и масштабировании мира.
         const Rect slot = {width - 270, bottom + 38, 242, 62};
         renderer.drawDebugText("PARCEL WINDOW", Vector2{width - 270, bottom + 14}, Mint, 1);
@@ -325,6 +405,15 @@ private:
         renderer.setClip(std::nullopt);
         renderer.drawRectangle(slot, paint(White), ShapeFill::Outline);
         renderer.drawDebugText(clipping ? "C CLIP ON" : "C CLIP OFF", Vector2{width - 270, bottom + 116}, Gold, 1);
+    }
+
+    void drawHud()
+    {
+        renderer.setUiView(ui);
+        drawHeader();
+        drawFooter();
+        drawMapPanel();
+        drawParcelWindow();
     }
 
     bool onRender(const FrameInfo& frame, Platform::Error& error) override
