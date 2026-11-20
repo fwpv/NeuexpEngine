@@ -9,7 +9,9 @@
 #include "graphics/renderer.h"
 #include "core/resources.h"
 #include "scene/scene.h"
+#include "graphics/sprite.h"
 #include "core/texture.h"
+#include "core/transform.h"
 #include "graphics/ui_view.h"
 #include "world.h"
 
@@ -34,6 +36,19 @@ const NE::Color FocusColor{1, 0.85F, 0.3F, 1};
 
 using Populate = void (*)(NE::Scene&, const NE::Texture&, SceneDemo::Statistics&);
 
+// Как найден выбранный объект: по имени или обратным поиском по щелчку.
+enum class SelectionKind
+{
+    None,
+    Name,
+    Click
+};
+
+// Цифровые клавиши соответствуют номерам объектов второй сцены.
+constexpr std::array<NE::Key, 10> DigitKeys{
+    NE::Key::Digit0, NE::Key::Digit1, NE::Key::Digit2, NE::Key::Digit3, NE::Key::Digit4,
+    NE::Key::Digit5, NE::Key::Digit6, NE::Key::Digit7, NE::Key::Digit8, NE::Key::Digit9};
+
 // Сцена демо вместе с подписями для HUD и счётчиками, которые видит пользователь.
 struct World
 {
@@ -49,10 +64,13 @@ struct World
     std::string title;
     // Группа, видимость которой переключается клавишей H.
     std::string hiddenGroup;
-    // Объект, который демо ищет по имени и обводит рамкой.
+    // Объект, который обновление сцены находит по имени каждый кадр; пусто — нет такого.
     std::string leaderName;
     Populate populate = nullptr;
     SceneDemo::Statistics statistics;
+    // Выбранный объект и способ поиска: их показывают HUD и обводка.
+    NE::ObjectId selection = 0;
+    SelectionKind selectionKind = SelectionKind::None;
     int restarts = 0;
 };
 
@@ -76,7 +94,7 @@ private:
         return true;
     }
 
-    bool onInput(const NE::FrameInfo&, Platform::Error&) override
+    bool onInput(const NE::FrameInfo& frame, Platform::Error&) override
     {
         if (Platform::isKeyDown(Platform::Key::Escape)) {
             requestExit();
@@ -91,12 +109,21 @@ private:
         if (Platform::isKeyPressed(Platform::Key::H)) {
             toggleHidden(active());
         }
+        selectByNumber(active());
+        selectByClick(active(), frame);
         return true;
     }
 
     bool onUpdate(const NE::FrameInfo& frame, Platform::Error&) override
     {
-        active().scene.update(frame.deltaTime);
+        World& world = active();
+        world.scene.update(frame.deltaTime);
+        // Первая сцена сама находит охотника по имени: выбор обновляется каждый кадр.
+        if (!world.leaderName.empty()) {
+            const NE::GameObject* leader = world.scene.findByName(world.leaderName);
+            world.selection = leader ? leader->id() : 0;
+            world.selectionKind = leader ? SelectionKind::Name : SelectionKind::None;
+        }
         return true;
     }
 
@@ -122,7 +149,7 @@ private:
         beginFrame(frame.window.width, frame.window.height, Background);
         drawing.setWorldView(worldView);
         world.scene.draw(drawing);
-        drawLeader(drawing, world);
+        drawSelection(drawing, world);
         drawing.setUiView(hudView);
         drawHud(drawing, world, activeWorld + 1);
         return endFrame(error);
@@ -137,6 +164,8 @@ private:
     {
         world.scene.clear();
         world.statistics = SceneDemo::Statistics{};
+        world.selection = 0;
+        world.selectionKind = SelectionKind::None;
         world.populate(world.scene, art, world.statistics);
     }
 
@@ -149,35 +178,84 @@ private:
         }
     }
 
-    // Объект, найденный по имени, обводится рамкой: ссылка живёт только внутри кадра.
-    void drawLeader(NE::Renderer2D& drawing, const World& world) const
+    // Прямой поиск: цифра выбирает объект по имени. В сцене без такого имени выбор не меняется.
+    void selectByNumber(World& world)
     {
-        const NE::GameObject* leader = world.scene.findByName(world.leaderName);
-        if (!leader) {
+        for (std::size_t digit = 0; digit < DigitKeys.size(); ++digit) {
+            if (!Platform::isKeyPressed(DigitKeys[digit])) {
+                continue;
+            }
+            const NE::GameObject* object = world.scene.findByName("box-" + std::to_string(digit));
+            if (object) {
+                world.selection = object->id();
+                world.selectionKind = SelectionKind::Name;
+            }
+        }
+    }
+
+    // Обратный поиск: щелчок по объекту показывает его номер. Верхний объект проверяется первым.
+    void selectByClick(World& world, const NE::FrameInfo& frame)
+    {
+        if (!Platform::getInput().button(NE::MouseButton::Left).pressed) {
+            return;
+        }
+        NE::CameraView view;
+        NE::CameraError cameraError;
+        if (!world.scene.createView(frame.window.width, frame.window.height, view, cameraError)) {
+            return;
+        }
+        const NE::MouseState& mouse = Platform::getInput().mouse();
+        NE::Vector2 point;
+        if (!view.screenToWorld(NE::Vector2{static_cast<float>(mouse.x), static_cast<float>(mouse.y)}, point)) {
+            return;
+        }
+        const std::vector<NE::GameObject*> objects = world.scene.findByGroup("box");
+        for (auto object = objects.rbegin(); object != objects.rend(); ++object) {
+            const NE::Quad shape = NE::transformed((*object)->visual().polygon(), (*object)->transform().toAffine());
+            if (NE::contains(shape, point)) {
+                world.selection = (*object)->id();
+                world.selectionKind = SelectionKind::Click;
+                return;
+            }
+        }
+    }
+
+    // Найденный объект обводится рамкой: ссылка живёт только внутри кадра и проверяется заново.
+    void drawSelection(NE::Renderer2D& drawing, const World& world) const
+    {
+        const NE::GameObject* object = world.scene.find(world.selection);
+        if (!object) {
             return;
         }
         NE::DrawOptions options;
         options.color = FocusColor;
         options.lineWidth = 2;
-        drawing.drawCircle(NE::Circle{leader->transform().position, 16}, options, NE::ShapeFill::Outline);
+        drawing.drawCircle(NE::Circle{object->transform().position, 26}, options, NE::ShapeFill::Outline);
+    }
+
+    // Имя и идентификатор выбранного объекта с указанием того, каким поиском он найден.
+    std::string foundText(const World& world) const
+    {
+        const NE::GameObject* object = world.scene.find(world.selection);
+        if (!object) {
+            return "none";
+        }
+        const char* source = world.selectionKind == SelectionKind::Click ? "click" : "name";
+        return object->name() + " #" + std::to_string(object->id()) + " (" + source + ")";
     }
 
     void drawHud(NE::Renderer2D& drawing, const World& world, int number) const
     {
         const std::size_t live = world.scene.count();
         const std::size_t grouped = world.scene.findByGroup(world.hiddenGroup).size();
-        const NE::GameObject* leader = world.scene.findByName(world.leaderName);
-        const std::string leaderText = leader
-            ? world.leaderName + " #" + std::to_string(leader->id())
-            : std::string("none");
         const std::array<std::string, 5> lines{
             "SCENE " + std::to_string(number) + " OF 2: " + world.title,
             "OBJECTS " + std::to_string(live) + "   GROUP " + world.hiddenGroup + " " + std::to_string(grouped),
-            "FOUND BY NAME: " + leaderText,
+            "FOUND: " + foundText(world),
             "CAUGHT " + std::to_string(world.statistics.caught) + "   EXPIRED "
                 + std::to_string(world.statistics.expired) + "   RESTARTS " + std::to_string(world.restarts)
                 + "   TEXTURES " + std::to_string(drawing.textureStats().count),
-            "TAB SCENE   R RESTART   H HIDE   ESC EXIT"};
+            "TAB SCENE   R RESTART   H HIDE   DIGITS/CLICK FIND   ESC EXIT"};
         for (std::size_t index = 0; index < lines.size(); ++index) {
             const NE::Color color = index == 0 ? TitleColor : (index + 1 == lines.size() ? HintColor : TextColor);
             drawing.drawDebugText(lines[index], NE::Vector2{18, 16 + static_cast<float>(index) * 20}, color, 1);
@@ -185,7 +263,7 @@ private:
     }
 
     World orbit{"ORBIT", "star", "hunter", &SceneDemo::populateOrbit};
-    World grid{"GRID", "box", "owner", &SceneDemo::populateGrid};
+    World grid{"GRID", "box", "", &SceneDemo::populateGrid};
     NE::Texture art;
     int activeWorld = 0;
 };

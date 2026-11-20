@@ -295,26 +295,21 @@ void populateGrid(NeuexpEngine::Scene& scene, const NeuexpEngine::Texture& textu
     scene.camera().position = worldCenter();
     scene.camera().mode = NeuexpEngine::ViewportMode::Fit;
 
-    auto owner = std::make_unique<NeuexpEngine::GameObject>();
-    owner->setName("owner");
-    owner->setGroup("owner");
-    owner->visual() = makeSprite(texture, Art::Ship);
-    owner->transform().position = worldCenter();
-    owner->transform().scale = NeuexpEngine::Vector2{2, 2};
-    scene.add(std::move(owner));
-
-    constexpr int Columns = 8;
-    constexpr int Rows = 5;
+    // Десять ящиков с номерами 0..9: их ищут по имени цифровой клавишей,
+    // а щелчок по ящику находит его обратным поиском.
+    constexpr int Columns = 5;
+    constexpr int Rows = 2;
     for (int row = 0; row < Rows; ++row) {
         for (int column = 0; column < Columns; ++column) {
             const int index = row * Columns + column;
-            const float x = 100.0F + static_cast<float>(column) * 82.0F;
-            const float y = 140.0F + static_cast<float>(row) * 70.0F;
-            auto box = std::make_unique<Floater>(y, 11.0F, static_cast<float>(index) * 0.53F);
+            const float x = 160.0F + static_cast<float>(column) * 120.0F;
+            const float y = 220.0F + static_cast<float>(row) * 160.0F;
+            auto box = std::make_unique<Floater>(y, 9.0F, static_cast<float>(index) * 0.53F);
             box->setName("box-" + std::to_string(index));
             box->setGroup("box");
             box->visual() = makeSprite(texture, Art::Box);
             box->transform().position = NeuexpEngine::Vector2{x, y};
+            box->transform().scale = NeuexpEngine::Vector2{2, 2};
             scene.add(std::move(box));
         }
     }
