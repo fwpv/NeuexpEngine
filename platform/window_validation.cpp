@@ -1,5 +1,5 @@
 #include "window_validation.h"
-#include "platform.h"
+#include "app/platform.h"
 #include "detail/unicode.h"
 
 #include <limits>

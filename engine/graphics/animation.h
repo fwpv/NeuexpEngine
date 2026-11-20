@@ -2,7 +2,7 @@
 
 #include "atlas.h"
 #include "sprite.h"
-#include "resources.h"
+#include "core/resources.h"
 
 #include <cstddef>
 #include <initializer_list>

@@ -45,6 +45,18 @@ add_executable(sprite_test sprite_test.cpp)
 target_link_libraries(sprite_test PRIVATE neuexpengine project_warnings)
 add_test(NAME sprite COMMAND sprite_test)
 
+add_executable(scene_test scene_test.cpp)
+target_link_libraries(scene_test PRIVATE neuexpengine project_warnings)
+add_test(NAME scene COMMAND scene_test)
+
+add_executable(scene_render_test scene_render_test.cpp)
+target_link_libraries(scene_render_test PRIVATE neuexpengine project_warnings)
+if(WIN32)
+    target_compile_definitions(scene_render_test PRIVATE NOMINMAX)
+endif()
+add_test(NAME scene_render COMMAND scene_render_test)
+set_tests_properties(scene_render PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
+
 add_executable(event_dispatcher_test event_dispatcher_test.cpp)
 target_link_libraries(event_dispatcher_test PRIVATE neuexpengine project_warnings)
 add_test(NAME event_dispatcher COMMAND event_dispatcher_test)
@@ -139,13 +151,13 @@ target_link_libraries(frame_clock_test PRIVATE neuexpengine project_warnings)
 add_test(NAME frame_clock COMMAND frame_clock_test)
 
 # Тестовая копия исходника заменяет только часы и ожидание, без привязки к ABI стандартной библиотеки.
-set(APPLICATION_SOURCE "${PROJECT_SOURCE_DIR}/engine/application.cpp")
+set(APPLICATION_SOURCE "${PROJECT_SOURCE_DIR}/engine/app/application.cpp")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${APPLICATION_SOURCE}")
 file(READ "${APPLICATION_SOURCE}" APPLICATION_TEST_SOURCE)
 foreach(dependency "using Clock = FrameClock::Clock;" "std::this_thread::sleep_until(")
     string(FIND "${APPLICATION_TEST_SOURCE}" "${dependency}" dependencyPosition)
     if(dependencyPosition EQUAL -1)
-        message(FATAL_ERROR "Application test timing substitution no longer matches engine/application.cpp: ${dependency}")
+        message(FATAL_ERROR "Application test timing substitution no longer matches engine/app/application.cpp: ${dependency}")
     endif()
 endforeach()
 string(REPLACE "using Clock = FrameClock::Clock;" "using Clock = ApplicationTest::Clock;"
@@ -157,7 +169,10 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/application_under_test.cpp"
 
 add_executable(application_test application_test.cpp application_runtime.cpp
     "${CMAKE_CURRENT_BINARY_DIR}/application_under_test.cpp")
-target_include_directories(application_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+# Копия исходника создаётся в каталоге сборки, поэтому соседние заголовки движка
+# ищутся через дополнительный каталог включений.
+target_include_directories(application_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${PROJECT_SOURCE_DIR}/engine/app")
 target_link_libraries(application_test PRIVATE neuexpengine project_warnings)
 
 foreach(group lifecycle pause failures vsync limiter statistics)

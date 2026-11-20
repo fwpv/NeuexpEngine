@@ -1,6 +1,6 @@
-#include "application.h"
+#include "app/application.h"
 #include "application_runtime.h"
-#include "events.h"
+#include "app/events.h"
 
 #include <algorithm>
 #include <chrono>

@@ -1,6 +1,6 @@
 #include "run.h"
 
-#include "geometry.h"
+#include "core/geometry.h"
 #include "assets.h"
 #include "tiles.h"
 

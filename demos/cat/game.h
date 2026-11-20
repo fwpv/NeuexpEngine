@@ -1,11 +1,11 @@
 #pragma once
 
 #include "world.h"
-#include "camera.h"
-#include "math2d.h"
-#include "resources.h"
-#include "sprite.h"
-#include "animation.h"
+#include "core/camera.h"
+#include "core/math2d.h"
+#include "core/resources.h"
+#include "graphics/sprite.h"
+#include "graphics/animation.h"
 
 #include <array>
 #include <cstddef>

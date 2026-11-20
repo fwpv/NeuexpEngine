@@ -1,6 +1,6 @@
 #include "cat.h"
 #include "game.h"
-#include "renderer.h"
+#include "graphics/renderer.h"
 
 #include <algorithm>
 #include <array>

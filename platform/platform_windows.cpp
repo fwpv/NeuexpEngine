@@ -1,11 +1,11 @@
-#include "platform.h"
+#include "app/platform.h"
 #include "detail/cleanup_error.h"
 #include "window_validation.h"
 #include "key_codes.h"
 #include "extension_names.h"
 #include "detail/platform_input.h"
 #include "detail/unicode.h"
-#include "input.h"
+#include "app/input.h"
 
 #include <windows.h>
 #include <mmsystem.h>

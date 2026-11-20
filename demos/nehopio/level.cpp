@@ -1,6 +1,6 @@
 #include "level.h"
 
-#include "geometry.h"
+#include "core/geometry.h"
 #include "tiles.h"
 
 #include <algorithm>

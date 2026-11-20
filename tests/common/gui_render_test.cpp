@@ -1,5 +1,5 @@
 #include "gui/context.h"
-#include "platform.h"
+#include "app/platform.h"
 #include "render_target.h"
 #include "detail/unicode.h"
 

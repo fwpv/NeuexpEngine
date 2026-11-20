@@ -1,4 +1,4 @@
-#include "application.h"
+#include "app/application.h"
 #include "platform_test_diagnostics.h"
 
 #ifdef _WIN32

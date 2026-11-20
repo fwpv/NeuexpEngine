@@ -1,13 +1,13 @@
-#include "application.h"
-#include "entry_point.h"
+#include "app/application.h"
+#include "app/entry_point.h"
 #include "game.h"
-#include "input.h"
-#include "platform.h"
-#include "renderer.h"
-#include "resources.h"
-#include "camera.h"
-#include "font.h"
-#include "ui.h"
+#include "app/input.h"
+#include "app/platform.h"
+#include "graphics/renderer.h"
+#include "core/resources.h"
+#include "core/camera.h"
+#include "graphics/font.h"
+#include "graphics/ui_view.h"
 
 #include <cmath>
 #include <optional>

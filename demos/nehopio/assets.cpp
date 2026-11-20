@@ -1,6 +1,6 @@
 #include "assets.h"
 
-#include "renderer.h"
+#include "graphics/renderer.h"
 #include "tiles.h"
 
 #include <array>

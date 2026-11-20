@@ -1,6 +1,6 @@
 #pragma once
 
-#include "resources.h"
+#include "core/image.h"
 
 #include <cstddef>
 #include <filesystem>

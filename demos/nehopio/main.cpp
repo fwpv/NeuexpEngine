@@ -1,11 +1,11 @@
-#include "application.h"
+#include "app/application.h"
 #include "assets.h"
 #include "audio.h"
-#include "entry_point.h"
+#include "app/entry_point.h"
 #include "game.h"
-#include "input.h"
-#include "platform.h"
-#include "resources.h"
+#include "app/input.h"
+#include "app/platform.h"
+#include "core/resources.h"
 
 #include <optional>
 

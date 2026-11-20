@@ -1,7 +1,7 @@
 #pragma once
 
-#include "geometry.h"
-#include "math2d.h"
+#include "core/geometry.h"
+#include "core/math2d.h"
 
 #include <array>
 #include <optional>

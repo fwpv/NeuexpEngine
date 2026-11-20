@@ -1,4 +1,4 @@
-#include "resources.h"
+#include "image.h"
 #include "decode_memory.h"
 
 #include <stb_image.h>

@@ -1,11 +1,11 @@
 #include "renderer.h"
 #include "detail/polygon.h"
 #include "detail/texture_data.h"
-#include "camera.h"
-#include "geometry.h"
-#include "math2d.h"
-#include "texture.h"
-#include "transform.h"
+#include "core/camera.h"
+#include "core/geometry.h"
+#include "core/math2d.h"
+#include "core/texture.h"
+#include "core/transform.h"
 
 #ifdef _WIN32
 #include <windows.h>

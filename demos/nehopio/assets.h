@@ -1,10 +1,10 @@
 #pragma once
 
-#include "animation.h"
-#include "atlas.h"
-#include "font.h"
-#include "resources.h"
-#include "texture.h"
+#include "graphics/animation.h"
+#include "graphics/atlas.h"
+#include "graphics/font.h"
+#include "core/resources.h"
+#include "core/texture.h"
 
 #include <array>
 #include <map>

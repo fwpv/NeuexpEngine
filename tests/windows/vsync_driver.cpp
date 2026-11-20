@@ -1,4 +1,4 @@
-#include "platform.h"
+#include "app/platform.h"
 #include "../vsync/vsync_driver.h"
 
 #include <windows.h>

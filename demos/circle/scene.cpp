@@ -1,9 +1,9 @@
 #include "scene.h"
 #include "entities.h"
-#include "geometry.h"
-#include "math2d.h"
-#include "renderer.h"
-#include "transform.h"
+#include "core/geometry.h"
+#include "core/math2d.h"
+#include "graphics/renderer.h"
+#include "core/transform.h"
 
 namespace Game
 {

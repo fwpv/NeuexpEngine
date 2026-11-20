@@ -1,6 +1,6 @@
 #include "game.h"
-#include "geometry.h"
-#include "math2d.h"
+#include "core/geometry.h"
+#include "core/math2d.h"
 
 #include <algorithm>
 #include <cmath>

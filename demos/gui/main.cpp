@@ -3,15 +3,15 @@
 #include "settings.h"
 #include "ui_theme.h"
 
-#include "application.h"
-#include "entry_point.h"
+#include "app/application.h"
+#include "app/entry_point.h"
 #include "gui/context.h"
-#include "input.h"
-#include "platform.h"
-#include "renderer.h"
-#include "resources.h"
-#include "texture.h"
-#include "ui.h"
+#include "app/input.h"
+#include "app/platform.h"
+#include "graphics/renderer.h"
+#include "core/resources.h"
+#include "core/texture.h"
+#include "graphics/ui_view.h"
 
 #include <filesystem>
 #include <iostream>

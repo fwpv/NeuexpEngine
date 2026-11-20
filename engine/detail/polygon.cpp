@@ -1,6 +1,6 @@
 #include "polygon.h"
 #include "segments.h"
-#include "math2d.h"
+#include "core/math2d.h"
 
 #include <algorithm>
 #include <cmath>

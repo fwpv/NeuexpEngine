@@ -1,13 +1,13 @@
 #include "game.h"
-#include "atlas.h"
-#include "camera.h"
-#include "geometry.h"
-#include "math2d.h"
-#include "renderer.h"
-#include "resources.h"
-#include "sprite.h"
-#include "texture.h"
-#include "transform.h"
+#include "graphics/atlas.h"
+#include "core/camera.h"
+#include "core/geometry.h"
+#include "core/math2d.h"
+#include "graphics/renderer.h"
+#include "core/resources.h"
+#include "graphics/sprite.h"
+#include "core/texture.h"
+#include "core/transform.h"
 
 #include <algorithm>
 #include <array>

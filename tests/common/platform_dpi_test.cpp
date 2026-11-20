@@ -1,5 +1,5 @@
-#include "ui.h"
-#include "platform.h"
+#include "graphics/ui_view.h"
+#include "app/platform.h"
 #include "platform_test_diagnostics.h"
 
 #ifdef _WIN32

@@ -1,7 +1,7 @@
-#include "atlas.h"
-#include "animation.h"
-#include "renderer.h"
-#include "platform.h"
+#include "graphics/atlas.h"
+#include "graphics/animation.h"
+#include "graphics/renderer.h"
+#include "app/platform.h"
 #include "platform_test_diagnostics.h"
 #include "render_target.h"
 

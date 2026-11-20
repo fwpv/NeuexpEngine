@@ -1,7 +1,7 @@
 #include "application.h"
 #include "frame_clock.h"
 #include "detail/cleanup_error.h"
-#include "math2d.h"
+#include "core/math2d.h"
 #include "platform.h"
 
 #include <chrono>

@@ -1,8 +1,8 @@
-#include "application.h"
-#include "entry_point.h"
-#include "atlas.h"
-#include "animation.h"
-#include "input.h"
+#include "app/application.h"
+#include "app/entry_point.h"
+#include "graphics/atlas.h"
+#include "graphics/animation.h"
+#include "app/input.h"
 #include <cmath>
 #include <vector>
 #include <string>

@@ -1,12 +1,12 @@
 #pragma once
 
-#include "camera.h"
+#include "core/camera.h"
 #include "gui/context.h"
-#include "input.h"
-#include "renderer.h"
-#include "resources.h"
+#include "app/input.h"
+#include "graphics/renderer.h"
+#include "core/resources.h"
 #include "settings.h"
-#include "ui.h"
+#include "graphics/ui_view.h"
 #include "ui_theme.h"
 
 #include <functional>

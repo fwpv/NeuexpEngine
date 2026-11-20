@@ -1,9 +1,9 @@
 #pragma once
 
-#include "geometry.h"
-#include "renderer.h"
-#include "math2d.h"
-#include "transform.h"
+#include "core/geometry.h"
+#include "graphics/renderer.h"
+#include "core/math2d.h"
+#include "core/transform.h"
 
 #include <array>
 #include <optional>

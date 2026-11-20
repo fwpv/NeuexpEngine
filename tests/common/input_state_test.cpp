@@ -1,4 +1,4 @@
-#include "input.h"
+#include "app/input.h"
 
 #include <iostream>
 #include <stdexcept>

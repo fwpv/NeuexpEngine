@@ -1,8 +1,8 @@
 #include "atlas.h"
-#include "geometry.h"
-#include "resources.h"
+#include "core/geometry.h"
+#include "core/resources.h"
 #include "sprite.h"
-#include "texture.h"
+#include "core/texture.h"
 
 #include <cstddef>
 #include <functional>
