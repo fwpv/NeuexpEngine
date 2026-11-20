@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -21,6 +22,33 @@ constexpr float HunterSpeed = 90;
 NeuexpEngine::Vector2 worldCenter()
 {
     return {WorldWidth / 2, WorldHeight / 2};
+}
+
+// Камень не истекает: удалить его может только охотник.
+void createRock(NeuexpEngine::Scene& scene, const NeuexpEngine::Texture& texture, int number)
+{
+    const float radius = 60.0F + static_cast<float>(number % 6) * 36.0F;
+    const float phase = static_cast<float>(number) * 0.71F;
+    const float speed = 0.30F + static_cast<float>(number % 4) * 0.12F;
+    auto rock = std::make_unique<Orbiter>(scene, radius, phase, speed, 0.0F);
+    rock->setName("rock-" + std::to_string(number));
+    rock->setGroup("rock");
+    rock->visual() = makeSprite(texture, Art::Rock);
+    scene.add(std::move(rock));
+}
+
+// Звезда истекает по времени жизни — это второй повод для удаления объекта.
+void createStar(NeuexpEngine::Scene& scene, const NeuexpEngine::Texture& texture, int number)
+{
+    const float radius = 250.0F + static_cast<float>(number % 3) * 18.0F;
+    const float phase = static_cast<float>(number) * 0.87F + 0.35F;
+    const float speed = 0.12F + static_cast<float>(number % 2) * 0.07F;
+    const float lifetime = 8.0F + static_cast<float>(number % 5) * 2.0F;
+    auto star = std::make_unique<Orbiter>(scene, radius, phase, speed, lifetime);
+    star->setName("star-" + std::to_string(number));
+    star->setGroup("star");
+    star->visual() = makeSprite(texture, Art::Star);
+    scene.add(std::move(star));
 }
 
 void writePixel(NeuexpEngine::Image& image, int art, int x, int y,
@@ -155,9 +183,10 @@ void Orbiter::update(float deltaTime)
     }
 }
 
-Hunter::Hunter(NeuexpEngine::Scene& owner, std::string targetGroup)
+Hunter::Hunter(NeuexpEngine::Scene& owner, std::string targetGroup, Statistics& statistics)
     : owner(owner)
     , targetGroup(std::move(targetGroup))
+    , statistics(statistics)
 {
 }
 
@@ -178,6 +207,7 @@ void Hunter::update(float deltaTime)
     }
     if (bestDistance < 12) {
         owner.destroy(target->id());
+        ++statistics.caught;
         return;
     }
     const NeuexpEngine::Vector2 step = normalized(target->transform().position - transform().position)
@@ -200,46 +230,66 @@ void Floater::update(float deltaTime)
     transform().rotation = std::sin(elapsed * 0.8F + phase) * 0.5F;
 }
 
-void populateOrbit(NeuexpEngine::Scene& scene, const NeuexpEngine::Texture& texture)
+Warden::Warden(NeuexpEngine::Scene& owner, const NeuexpEngine::Texture& texture, Statistics& statistics)
+    : owner(owner)
+    , texture(texture)
+    , statistics(statistics)
+{
+}
+
+void Warden::update(float)
+{
+    // Замена создаётся только вместо исчезнувшего объекта и не больше одной
+    // за кадр, поэтому население сцены остаётся постоянным.
+    if (owner.findByGroup("rock").size() < static_cast<std::size_t>(RockTarget)) {
+        spawnRock();
+    }
+    if (owner.findByGroup("star").size() < static_cast<std::size_t>(StarTarget)) {
+        spawnStar();
+    }
+}
+
+void Warden::spawnRock()
+{
+    createRock(owner, texture, nextRock);
+    ++nextRock;
+}
+
+void Warden::spawnStar()
+{
+    createStar(owner, texture, nextStar);
+    ++nextStar;
+    // Звезду удаляет только истечение срока, поэтому каждая новая звезда — замена истёкшей.
+    ++statistics.expired;
+}
+
+void populateOrbit(NeuexpEngine::Scene& scene, const NeuexpEngine::Texture& texture, Statistics& statistics)
 {
     scene.camera().referenceSize = NeuexpEngine::Size2{WorldWidth, WorldHeight};
     scene.camera().position = worldCenter();
     scene.camera().mode = NeuexpEngine::ViewportMode::Fit;
 
-    auto hunter = std::make_unique<Hunter>(scene, "rock");
+    auto hunter = std::make_unique<Hunter>(scene, "rock", statistics);
     hunter->setName("hunter");
     hunter->setGroup("hunter");
     hunter->visual() = makeSprite(texture, Art::Ship);
     hunter->transform().position = worldCenter();
     scene.add(std::move(hunter));
 
-    // Камни истекают и удаляются во время обновления сцены.
-    for (int index = 0; index < 22; ++index) {
-        const float radius = 60.0F + static_cast<float>(index % 6) * 36.0F;
-        const float phase = static_cast<float>(index) * 0.71F;
-        const float speed = 0.30F + static_cast<float>(index % 4) * 0.12F;
-        const float lifetime = 6.0F + static_cast<float>(index % 7) * 1.4F;
-        auto rock = std::make_unique<Orbiter>(scene, radius, phase, speed, lifetime);
-        rock->setName("rock-" + std::to_string(index));
-        rock->setGroup("rock");
-        rock->visual() = makeSprite(texture, Art::Rock);
-        scene.add(std::move(rock));
+    for (int index = 0; index < RockTarget; ++index) {
+        createRock(scene, texture, index);
+    }
+    for (int index = 0; index < StarTarget; ++index) {
+        createStar(scene, texture, index);
     }
 
-    // Звёзды не истекают: видимость их группы переключается клавишей H.
-    for (int index = 0; index < 9; ++index) {
-        const float radius = 250.0F + static_cast<float>(index % 3) * 18.0F;
-        const float phase = static_cast<float>(index) * 0.87F + 0.35F;
-        const float speed = 0.12F + static_cast<float>(index % 2) * 0.07F;
-        auto star = std::make_unique<Orbiter>(scene, radius, phase, speed, 0.0F);
-        star->setName("star-" + std::to_string(index));
-        star->setGroup("star");
-        star->visual() = makeSprite(texture, Art::Star);
-        scene.add(std::move(star));
-    }
+    auto warden = std::make_unique<Warden>(scene, texture, statistics);
+    warden->setName("warden");
+    warden->setGroup("keeper");
+    scene.add(std::move(warden));
 }
 
-void populateGrid(NeuexpEngine::Scene& scene, const NeuexpEngine::Texture& texture)
+void populateGrid(NeuexpEngine::Scene& scene, const NeuexpEngine::Texture& texture, Statistics&)
 {
     scene.camera().referenceSize = NeuexpEngine::Size2{WorldWidth, WorldHeight};
     scene.camera().position = worldCenter();

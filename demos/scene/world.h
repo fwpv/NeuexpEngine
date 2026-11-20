@@ -46,17 +46,26 @@ private:
     float elapsed = 0;
 };
 
+// Счётчики исчезновений для HUD: камень пропадает только после касания корабля,
+// а звезда — по истечении времени жизни.
+struct Statistics
+{
+    int caught = 0;
+    int expired = 0;
+};
+
 // Охотник: подходит к ближайшему объекту группы и удаляет его при касании.
 // Так объект удаляет другой объект во время обхода сцены.
 class Hunter : public NeuexpEngine::GameObject
 {
 public:
-    Hunter(NeuexpEngine::Scene& owner, std::string targetGroup);
+    Hunter(NeuexpEngine::Scene& owner, std::string targetGroup, Statistics& statistics);
     void update(float deltaTime) override;
 
 private:
     NeuexpEngine::Scene& owner;
     std::string targetGroup;
+    Statistics& statistics;
 };
 
 // Плавающий объект: колеблется по вертикали и покачивается вокруг своей оси.
@@ -73,7 +82,32 @@ private:
     float elapsed = 0;
 };
 
-// Наполнение пустых сцен: камера, объекты, имена и группы.
-void populateOrbit(NeuexpEngine::Scene& scene, const NeuexpEngine::Texture& texture);
-void populateGrid(NeuexpEngine::Scene& scene, const NeuexpEngine::Texture& texture);
+// Население орбитальной сцены: столько камней и звёзд поддерживает хранитель.
+constexpr int RockTarget = 22;
+constexpr int StarTarget = 9;
+
+// Хранитель населения: создаёт замену исчезнувшему камню или звезде, поэтому
+// число объектов не растёт и не падает. Замены появляются во время обновления
+// сцены и начинают обновляться со следующего кадра.
+class Warden : public NeuexpEngine::GameObject
+{
+public:
+    Warden(NeuexpEngine::Scene& owner, const NeuexpEngine::Texture& texture, Statistics& statistics);
+    void update(float deltaTime) override;
+
+private:
+    void spawnRock();
+    void spawnStar();
+
+    NeuexpEngine::Scene& owner;
+    NeuexpEngine::Texture texture;
+    Statistics& statistics;
+    // Номера продолжают нумерацию исходного населения: имена остаются уникальными.
+    int nextRock = RockTarget;
+    int nextStar = StarTarget;
+};
+
+// Наполнение пустых сцен: камера, объекты, имена и группы. statistics обнуляет вызывающий.
+void populateOrbit(NeuexpEngine::Scene& scene, const NeuexpEngine::Texture& texture, Statistics& statistics);
+void populateGrid(NeuexpEngine::Scene& scene, const NeuexpEngine::Texture& texture, Statistics& statistics);
 }

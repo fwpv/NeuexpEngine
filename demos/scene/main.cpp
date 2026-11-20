@@ -32,7 +32,7 @@ const NE::Color TextColor{0.88F, 0.9F, 0.94F, 1};
 const NE::Color HintColor{0.95F, 0.8F, 0.4F, 1};
 const NE::Color FocusColor{1, 0.85F, 0.3F, 1};
 
-using Populate = void (*)(NE::Scene&, const NE::Texture&);
+using Populate = void (*)(NE::Scene&, const NE::Texture&, SceneDemo::Statistics&);
 
 // Сцена демо вместе с подписями для HUD и счётчиками, которые видит пользователь.
 struct World
@@ -52,7 +52,7 @@ struct World
     // Объект, который демо ищет по имени и обводит рамкой.
     std::string leaderName;
     Populate populate = nullptr;
-    int removed = 0;
+    SceneDemo::Statistics statistics;
     int restarts = 0;
 };
 
@@ -96,13 +96,7 @@ private:
 
     bool onUpdate(const NE::FrameInfo& frame, Platform::Error&) override
     {
-        World& world = active();
-        const std::size_t before = world.scene.count();
-        world.scene.update(frame.deltaTime);
-        const std::size_t after = world.scene.count();
-        if (after < before) {
-            world.removed += static_cast<int>(before - after);
-        }
+        active().scene.update(frame.deltaTime);
         return true;
     }
 
@@ -142,8 +136,8 @@ private:
     void rebuild(World& world)
     {
         world.scene.clear();
-        world.populate(world.scene, art);
-        world.removed = 0;
+        world.statistics = SceneDemo::Statistics{};
+        world.populate(world.scene, art, world.statistics);
     }
 
     void toggleHidden(World& world)
@@ -180,7 +174,8 @@ private:
             "SCENE " + std::to_string(number) + " OF 2: " + world.title,
             "OBJECTS " + std::to_string(live) + "   GROUP " + world.hiddenGroup + " " + std::to_string(grouped),
             "FOUND BY NAME: " + leaderText,
-            "REMOVED " + std::to_string(world.removed) + "   RESTARTS " + std::to_string(world.restarts)
+            "CAUGHT " + std::to_string(world.statistics.caught) + "   EXPIRED "
+                + std::to_string(world.statistics.expired) + "   RESTARTS " + std::to_string(world.restarts)
                 + "   TEXTURES " + std::to_string(drawing.textureStats().count),
             "TAB SCENE   R RESTART   H HIDE   ESC EXIT"};
         for (std::size_t index = 0; index < lines.size(); ++index) {
