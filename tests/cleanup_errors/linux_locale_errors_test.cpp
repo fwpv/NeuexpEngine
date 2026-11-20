@@ -1,4 +1,4 @@
-#include "platform.h"
+#include "app/platform.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xresource.h>

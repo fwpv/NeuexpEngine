@@ -1,11 +1,11 @@
 #include "renderer.h"
 #include "detail/texture_data.h"
 #include "detail/font_data.h"
-#include "geometry.h"
-#include "math2d.h"
-#include "resources.h"
+#include "core/geometry.h"
+#include "core/math2d.h"
+#include "core/resources.h"
 #include "sprite.h"
-#include "texture.h"
+#include "core/texture.h"
 
 #ifdef _WIN32
 #include <windows.h>

@@ -1,8 +1,8 @@
 #include "game.h"
 
 #include "assets.h"
-#include "renderer.h"
-#include "ui.h"
+#include "graphics/renderer.h"
+#include "graphics/ui_view.h"
 
 #include <algorithm>
 #include <array>

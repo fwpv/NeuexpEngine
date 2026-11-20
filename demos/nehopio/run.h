@@ -1,10 +1,10 @@
 #pragma once
 
-#include "animation.h"
+#include "graphics/animation.h"
 #include "level.h"
-#include "math2d.h"
+#include "core/math2d.h"
 #include "player.h"
-#include "resources.h"
+#include "core/resources.h"
 #include "sound.h"
 
 #include <vector>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "resources.h"
+#include "core/resources.h"
 #include "sound.h"
 
 #include <memory>

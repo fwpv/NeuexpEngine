@@ -2,11 +2,11 @@
 #include "detail/unicode.h"
 #include "renderer.h"
 #include "detail/debug_font.h"
-#include "camera.h"
-#include "geometry.h"
-#include "math2d.h"
-#include "transform.h"
-#include "ui.h"
+#include "core/camera.h"
+#include "core/geometry.h"
+#include "core/math2d.h"
+#include "core/transform.h"
+#include "ui_view.h"
 
 #include <cmath>
 #include <string_view>

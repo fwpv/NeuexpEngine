@@ -1,4 +1,5 @@
 #include "resources.h"
+#include "image.h"
 
 #include <fstream>
 #include <limits>

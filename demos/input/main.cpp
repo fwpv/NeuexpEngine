@@ -1,13 +1,13 @@
-#include "entry_point.h"
-#include "platform.h"
-#include "events.h"
-#include "application.h"
-#include "camera.h"
-#include "geometry.h"
-#include "input.h"
-#include "math2d.h"
-#include "renderer.h"
-#include "ui.h"
+#include "app/entry_point.h"
+#include "app/platform.h"
+#include "app/events.h"
+#include "app/application.h"
+#include "core/camera.h"
+#include "core/geometry.h"
+#include "app/input.h"
+#include "core/math2d.h"
+#include "graphics/renderer.h"
+#include "graphics/ui_view.h"
 
 #include <array>
 #include <cstddef>

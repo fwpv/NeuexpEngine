@@ -1,6 +1,6 @@
 #pragma once
 
-#include "camera.h"
+#include "core/camera.h"
 #include "object.h"
 
 #include <cstddef>

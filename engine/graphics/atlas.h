@@ -1,9 +1,9 @@
 #pragma once
 
 #include "sprite.h"
-#include "geometry.h"
-#include "resources.h"
-#include "texture.h"
+#include "core/geometry.h"
+#include "core/resources.h"
+#include "core/texture.h"
 
 #include <functional>
 #include <map>

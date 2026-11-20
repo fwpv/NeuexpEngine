@@ -1,4 +1,4 @@
-#include "sprite.h"
+#include "graphics/sprite.h"
 
 #include <cmath>
 #include <iostream>

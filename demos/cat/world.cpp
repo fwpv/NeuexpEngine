@@ -1,6 +1,6 @@
 #include "world.h"
 #include "game.h"
-#include "geometry.h"
+#include "core/geometry.h"
 
 #include <algorithm>
 #include <cmath>

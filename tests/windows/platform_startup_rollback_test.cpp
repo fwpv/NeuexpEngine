@@ -1,4 +1,4 @@
-#include "platform.h"
+#include "app/platform.h"
 #include "../common/platform_test_diagnostics.h"
 #include "windows_gl_context.h"
 

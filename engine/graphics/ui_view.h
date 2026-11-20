@@ -1,8 +1,8 @@
 #pragma once
 
-#include "camera.h"
-#include "math2d.h"
-#include "transform.h"
+#include "core/camera.h"
+#include "core/math2d.h"
+#include "core/transform.h"
 
 namespace NeuexpEngine
 {

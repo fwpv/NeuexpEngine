@@ -1,8 +1,8 @@
 #pragma once
 
 #include "entities.h"
-#include "math2d.h"
-#include "renderer.h"
+#include "core/math2d.h"
+#include "graphics/renderer.h"
 
 #include <vector>
 

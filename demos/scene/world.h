@@ -1,11 +1,11 @@
 #pragma once
 
-#include "math2d.h"
-#include "object.h"
-#include "resources.h"
-#include "scene.h"
-#include "sprite.h"
-#include "texture.h"
+#include "core/math2d.h"
+#include "scene/object.h"
+#include "core/resources.h"
+#include "scene/scene.h"
+#include "graphics/sprite.h"
+#include "core/texture.h"
 
 #include <string>
 

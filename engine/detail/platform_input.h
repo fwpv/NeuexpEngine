@@ -1,6 +1,6 @@
 #pragma once
 
-#include "input.h"
+#include "app/input.h"
 
 // Входящие события сохраняются до публикации снимка в finishInputFrame().
 namespace Platform::Detail

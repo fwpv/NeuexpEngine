@@ -1,11 +1,11 @@
 #pragma once
 
-#include "atlas.h"
-#include "font.h"
+#include "graphics/atlas.h"
+#include "graphics/font.h"
 #include "gui/element.h"
-#include "math2d.h"
+#include "core/math2d.h"
 #include "settings.h"
-#include "sprite.h"
+#include "graphics/sprite.h"
 
 #include <array>
 #include <memory>

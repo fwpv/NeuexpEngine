@@ -1,7 +1,7 @@
 #pragma once
 
 #include "events.h"
-#include "renderer.h"
+#include "graphics/renderer.h"
 
 #include <array>
 #include <functional>

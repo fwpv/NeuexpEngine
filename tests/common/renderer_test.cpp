@@ -1,5 +1,5 @@
-#include "platform.h"
-#include "renderer.h"
+#include "app/platform.h"
+#include "graphics/renderer.h"
 #include "platform_test_diagnostics.h"
 #include "render_target.h"
 

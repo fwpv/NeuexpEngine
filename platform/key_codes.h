@@ -1,6 +1,6 @@
 #pragma once
 
-#include "input.h"
+#include "app/input.h"
 
 namespace Platform::Detail
 {

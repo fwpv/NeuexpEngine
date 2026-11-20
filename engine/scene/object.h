@@ -1,8 +1,8 @@
 #pragma once
 
-#include "math2d.h"
-#include "sprite.h"
-#include "transform.h"
+#include "core/math2d.h"
+#include "graphics/sprite.h"
+#include "core/transform.h"
 
 #include <cstdint>
 #include <string>

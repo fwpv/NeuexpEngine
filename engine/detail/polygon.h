@@ -1,6 +1,6 @@
 #pragma once
 
-#include "math2d.h"
+#include "core/math2d.h"
 
 #include <array>
 #include <cstddef>

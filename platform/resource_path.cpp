@@ -1,4 +1,4 @@
-#include "resources.h"
+#include "core/resources.h"
 
 #ifdef _WIN32
 #include <windows.h>

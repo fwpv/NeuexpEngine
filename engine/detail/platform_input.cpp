@@ -1,6 +1,6 @@
-#include "platform.h"
+#include "app/platform.h"
 #include "platform_input.h"
-#include "input.h"
+#include "app/input.h"
 
 #include <chrono>
 #include <utility>

@@ -1,14 +1,14 @@
 #include "game.h"
-#include "entry_point.h"
-#include "application.h"
+#include "app/entry_point.h"
+#include "app/application.h"
 #include "entities.h"
-#include "input.h"
-#include "math2d.h"
-#include "platform.h"
+#include "app/input.h"
+#include "core/math2d.h"
+#include "app/platform.h"
 #include "scene.h"
-#include "renderer.h"
-#include "camera.h"
-#include "ui.h"
+#include "graphics/renderer.h"
+#include "core/camera.h"
+#include "graphics/ui_view.h"
 
 #include <cmath>
 #include <optional>

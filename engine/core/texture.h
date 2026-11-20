@@ -1,6 +1,6 @@
 #pragma once
 
-#include "resources.h"
+#include "image.h"
 #include "math2d.h"
 
 #include <memory>

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "physics.h"
-#include "animation.h"
-#include "math2d.h"
+#include "graphics/animation.h"
+#include "core/math2d.h"
 
 #include <cstddef>
 

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "camera.h"
-#include "font.h"
-#include "resources.h"
+#include "core/camera.h"
+#include "graphics/font.h"
+#include "core/resources.h"
 #include "run.h"
 
 #include <array>

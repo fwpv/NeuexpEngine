@@ -1,5 +1,5 @@
-#include "platform.h"
-#include "input.h"
+#include "app/platform.h"
+#include "app/input.h"
 
 #include <windows.h>
 #include <exception>

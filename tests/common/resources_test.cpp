@@ -1,4 +1,5 @@
-#include "resources.h"
+#include "core/image.h"
+#include "core/resources.h"
 
 #include <algorithm>
 #include <filesystem>

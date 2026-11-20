@@ -1,9 +1,9 @@
-#include "scene.h"
-#include "platform.h"
-#include "renderer.h"
+#include "scene/scene.h"
+#include "app/platform.h"
+#include "graphics/renderer.h"
 #include "render_target.h"
-#include "resources.h"
-#include "sprite.h"
+#include "core/resources.h"
+#include "graphics/sprite.h"
 
 #include <array>
 #include <cstdint>

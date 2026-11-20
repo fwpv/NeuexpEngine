@@ -1,7 +1,7 @@
-#include "application.h"
-#include "entry_point.h"
-#include "font.h"
-#include "input.h"
+#include "app/application.h"
+#include "app/entry_point.h"
+#include "graphics/font.h"
+#include "app/input.h"
 
 #include <algorithm>
 #include <array>

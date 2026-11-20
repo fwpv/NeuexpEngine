@@ -1,8 +1,8 @@
 #pragma once
 
-#include "animation.h"
-#include "geometry.h"
-#include "math2d.h"
+#include "graphics/animation.h"
+#include "core/geometry.h"
+#include "core/math2d.h"
 
 #include <array>
 #include <cstddef>
