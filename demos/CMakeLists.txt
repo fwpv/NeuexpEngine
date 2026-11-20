@@ -88,6 +88,13 @@ if(MSVC)
     target_compile_options(gui_demo PRIVATE /utf-8)
 endif()
 
+add_executable(scene_demo scene/main.cpp scene/world.cpp)
+if(WIN32)
+    set_target_properties(scene_demo PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+target_link_libraries(scene_demo PRIVATE neuexpengine_entry_point neuexpengine project_warnings)
+set_target_properties(scene_demo PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
+
 add_executable(nehopio
     nehopio/main.cpp
     nehopio/game.cpp
