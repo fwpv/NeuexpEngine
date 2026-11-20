@@ -119,17 +119,18 @@ void paintArt(NeuexpEngine::Image& image)
                     }
                     break;
                 case Art::Box:
-                    if (x >= 2 && x <= 15 && y >= 2 && y <= 15) {
+                    // Ящик закрашен до границ кадра: щелчок по его прямоугольнику
+                    // попадает только в видимые пиксели, без прозрачных полей.
+                    if (x == 0 || x == Cell - 1 || y == 0 || y == Cell - 1) {
+                        red = 0.22F;
+                        green = 0.42F;
+                        blue = 0.24F;
+                    } else {
                         red = 0.45F;
                         green = 0.75F;
                         blue = 0.47F;
-                        alpha = 1;
-                        if (x == 2 || x == 15 || y == 2 || y == 15) {
-                            red = 0.22F;
-                            green = 0.42F;
-                            blue = 0.24F;
-                        }
                     }
+                    alpha = 1;
                     break;
                 }
                 writePixel(image, art, x, y, red, green, blue, alpha);
