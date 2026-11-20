@@ -21,6 +21,8 @@ add_library(neuexpengine STATIC
     sprite.cpp
     animation.cpp
     atlas.cpp
+    object.cpp
+    scene.cpp
     renderer_drawing.cpp
     detail/polygon.cpp
     application.cpp

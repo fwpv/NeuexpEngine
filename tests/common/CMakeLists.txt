@@ -45,6 +45,18 @@ add_executable(sprite_test sprite_test.cpp)
 target_link_libraries(sprite_test PRIVATE neuexpengine project_warnings)
 add_test(NAME sprite COMMAND sprite_test)
 
+add_executable(scene_test scene_test.cpp)
+target_link_libraries(scene_test PRIVATE neuexpengine project_warnings)
+add_test(NAME scene COMMAND scene_test)
+
+add_executable(scene_render_test scene_render_test.cpp)
+target_link_libraries(scene_render_test PRIVATE neuexpengine project_warnings)
+if(WIN32)
+    target_compile_definitions(scene_render_test PRIVATE NOMINMAX)
+endif()
+add_test(NAME scene_render COMMAND scene_render_test)
+set_tests_properties(scene_render PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
+
 add_executable(event_dispatcher_test event_dispatcher_test.cpp)
 target_link_libraries(event_dispatcher_test PRIVATE neuexpengine project_warnings)
 add_test(NAME event_dispatcher COMMAND event_dispatcher_test)
