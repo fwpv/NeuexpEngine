@@ -39,6 +39,8 @@ public:
     // Все объекты группы в порядке добавления.
     std::vector<GameObject*> findByGroup(std::string_view group);
     std::vector<const GameObject*> findByGroup(std::string_view group) const;
+    // Все живые объекты в порядке добавления; ожидающие освобождения не входят.
+    std::vector<const GameObject*> findAll() const;
     // Число живых объектов; ожидающие освобождения не учитываются.
     std::size_t count() const;
 

@@ -3,6 +3,7 @@
 #include "core/math2d.h"
 #include "graphics/sprite.h"
 #include "core/transform.h"
+#include "collision/collider.h"
 
 #include <cstdint>
 #include <string>
@@ -51,6 +52,11 @@ public:
     const Sprite& visual() const { return appearance; }
     Sprite& visual() { return appearance; }
 
+    // Форма и правила участия в столкновениях; проверки выполняет приложение
+    // или ContactTracker.
+    const Collider& collider() const { return collision; }
+    Collider& collider() { return collision; }
+
     // Вызываются сценой. Обновление по умолчанию ничего не делает; базовый draw()
     // рисует visual и пропускается для спрайта без текстуры. Подкласс расширяет
     // поведение переопределением методов и при необходимости вызывает базовую отрисовку.
@@ -65,9 +71,9 @@ private:
     std::string objectGroup;
     Transform2 placement;
     Sprite appearance;
+    Collider collision;
     bool visible = true;
-    // Удалён из сцены: до освобождения памяти объект не обновляется, не рисуется
-    // и не находится запросами.
+    // Удалён из сцены; память освобождается в конце update() или в clear().
     bool removalPending = false;
 };
 }

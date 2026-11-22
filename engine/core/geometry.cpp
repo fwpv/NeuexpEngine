@@ -8,6 +8,20 @@
 
 namespace NeuexpEngine
 {
+Quad Box::corners() const
+{
+    const float halfWidth = size.width / 2;
+    const float halfHeight = size.height / 2;
+    const std::array<Vector2, 4> local = {
+        Vector2{-halfWidth, -halfHeight}, Vector2{halfWidth, -halfHeight},
+        Vector2{halfWidth, halfHeight}, Vector2{-halfWidth, halfHeight}};
+    Quad result;
+    for (std::size_t index = 0; index < local.size(); ++index) {
+        result[index] = center + rotated(local[index], rotation);
+    }
+    return result;
+}
+
 bool contains(const Rect& rectangle, Vector2 point)
 {
     return point.x >= rectangle.position.x && point.y >= rectangle.position.y
@@ -19,6 +33,15 @@ bool contains(const Circle& circle, Vector2 point)
 {
     return std::hypot(static_cast<double>(point.x) - circle.center.x,
         static_cast<double>(point.y) - circle.center.y) <= circle.radius;
+}
+
+bool contains(const Box& box, Vector2 point)
+{
+    const Vector2 local = rotated(point - box.center, -box.rotation);
+    const float halfWidth = box.size.width / 2;
+    const float halfHeight = box.size.height / 2;
+    return local.x >= -halfWidth && local.x <= halfWidth
+        && local.y >= -halfHeight && local.y <= halfHeight;
 }
 
 namespace
@@ -86,12 +109,27 @@ Rect bounds(const Quad& polygon)
     return vertexBounds(polygon.data(), polygon.size());
 }
 
+Rect bounds(const Box& box)
+{
+    return bounds(box.corners());
+}
+
 Vector2 closestPoint(const Rect& rectangle, Vector2 point)
 {
     return {
         std::clamp(point.x, rectangle.position.x, rectangle.position.x + rectangle.size.width),
         std::clamp(point.y, rectangle.position.y, rectangle.position.y + rectangle.size.height)
     };
+}
+
+Vector2 closestPoint(const Box& box, Vector2 point)
+{
+    const Vector2 local = rotated(point - box.center, -box.rotation);
+    const float halfWidth = box.size.width / 2;
+    const float halfHeight = box.size.height / 2;
+    const Vector2 clamped{
+        std::clamp(local.x, -halfWidth, halfWidth), std::clamp(local.y, -halfHeight, halfHeight)};
+    return box.center + rotated(clamped, box.rotation);
 }
 
 bool intersects(const Rect& first, const Rect& second)

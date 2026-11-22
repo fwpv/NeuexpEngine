@@ -1,6 +1,6 @@
-# Демонстрационные приложения и игры на движке. Любая новая игра собирается так же:
-# add_executable, линковка neuexpengine плюс neuexpengine_entry_point, вывод в каталог
-# сборки и копия ресурсов из assets. Правила одинаковы для демо и будущих игр.
+# Демонстрационные приложения и игры на движке: add_executable, линковка neuexpengine
+# вместе с neuexpengine_entry_point и вывод в каталог сборки. Ресурсы из assets копирует
+# цель demo_assets, её подключают только те демо, которые читают эти ресурсы.
 add_executable(circle
     circle/game.cpp
     circle/entities.cpp
@@ -94,6 +94,19 @@ if(WIN32)
 endif()
 target_link_libraries(scene_demo PRIVATE neuexpengine_entry_point neuexpengine project_warnings)
 set_target_properties(scene_demo PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
+
+add_executable(collision_demo collision/main.cpp collision/world.cpp)
+if(WIN32)
+    set_target_properties(collision_demo PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+target_link_libraries(collision_demo PRIVATE neuexpengine_entry_point neuexpengine project_warnings)
+set_target_properties(collision_demo PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
+
+# Инструмент проверки демо: гоняет зоны без окна и печатает, что обнаружено.
+add_executable(collision_checks ../utils/collision/check_demo.cpp collision/world.cpp)
+target_include_directories(collision_checks PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/collision")
+target_link_libraries(collision_checks PRIVATE neuexpengine project_warnings)
+set_target_properties(collision_checks PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 
 add_executable(nehopio
     nehopio/main.cpp

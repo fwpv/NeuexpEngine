@@ -117,6 +117,17 @@ std::vector<const GameObject*> Scene::findByGroup(std::string_view group) const
     return result;
 }
 
+std::vector<const GameObject*> Scene::findAll() const
+{
+    std::vector<const GameObject*> result;
+    for (const auto& object : objects) {
+        if (!object->removalPending) {
+            result.push_back(object.get());
+        }
+    }
+    return result;
+}
+
 std::size_t Scene::count() const
 {
     const auto live = std::count_if(objects.begin(), objects.end(),

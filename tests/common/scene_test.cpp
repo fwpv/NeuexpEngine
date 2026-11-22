@@ -97,6 +97,10 @@ void testIdentityAndQueries()
     require(scene.findByGroup("neutral").size() == 1, "Second group query failed.");
     require(scene.findByGroup("missing").empty(), "Empty group query must be empty.");
 
+    const std::vector<const GameObject*> all = scene.findAll();
+    require(all.size() == 3 && all[0] == firstPointer && all[1] == secondPointer && all[2] == thirdPointer,
+        "Full query must return objects in add order.");
+
     firstPointer->setName("scout");
     firstPointer->setGroup("neutral");
     require(scene.findByName("scout") == firstPointer && scene.findByName("ship") == secondPointer,
@@ -150,6 +154,7 @@ void testDeferredRemoval()
         require(scene.find(removedId) == nullptr, "Destroyed object must not be found.");
         require(scene.findByName("third") == nullptr, "Destroyed object must not be found by name.");
         require(scene.findByGroup("").size() == 2, "Destroyed object must not appear in group queries.");
+        require(scene.findAll().size() == 2, "Destroyed object must not appear in the full query.");
         scene.destroy(removedId);
         scene.destroy(removedId + 1000);
         removalChecked = true;
