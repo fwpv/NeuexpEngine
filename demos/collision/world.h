@@ -28,9 +28,6 @@ constexpr float GridGapY = 12;
 constexpr NeuexpEngine::CollisionLayer ShapeLayer = 1U;
 constexpr NeuexpEngine::CollisionLayer SlabLayer = 2U;
 
-// Зона сетки: column и row начинаются с нуля.
-NeuexpEngine::Rect cellArea(int column, int row);
-
 // Оформление формы: полупрозрачная заливка и контур по виду формы.
 struct ShapeStyle
 {

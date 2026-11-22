@@ -42,6 +42,19 @@ Vector2 zoneCenter(const Rect& area)
     return {area.center().x, area.center().y + ShapesOffset};
 }
 
+Rect cellArea(int column, int row)
+{
+    return {GridLeft + static_cast<float>(column) * (CellWidth + GridGapX),
+        GridTop + static_cast<float>(row) * (CellHeight + GridGapY), CellWidth, CellHeight};
+}
+
+// Единственный ряд зон по центру области под полосой подписей.
+Rect centeredRowCell(int column)
+{
+    return {GridLeft + static_cast<float>(column) * (CellWidth + GridGapX),
+        GridTop + (CellHeight + GridGapY) / 2, CellWidth, CellHeight};
+}
+
 std::string formatFloat(float value, int precision)
 {
     std::ostringstream stream;
@@ -378,6 +391,168 @@ private:
     bool inside = false;
 };
 
+// Удаление в контакте: объект исчезает, пока пара в контакте, и появляется снова.
+// Счётчики показывают, что начало и завершение срабатывают по одному разу.
+class DeleteZone final : public ContactZone
+{
+public:
+    DeleteZone(Rect area, std::string title)
+        : ContactZone(area, std::move(title))
+    {
+        const Vector2 center = zoneCenter(area);
+        addShape(scene(), Circle{Vector2{}, 26}, Vector2{center.x - 55, center.y});
+        centerX = center.x;
+        centerY = center.y;
+        spawn();
+    }
+
+    std::string state() const override
+    {
+        if (moving == nullptr) {
+            return "SHAPE REMOVED  (its contact ended once)";
+        }
+        return contacts().empty() ? "NO CONTACT" : "CONTACT";
+    }
+
+private:
+    void spawn()
+    {
+        moving = addShape(scene(), Circle{Vector2{}, 26}, Vector2{centerX + StartOffset, centerY});
+    }
+
+    void move() override
+    {
+        const float phase = std::fmod(elapsedSeconds(), Period);
+        if (moving == nullptr) {
+            if (phase >= RecreateTime) {
+                spawn();
+            }
+            return;
+        }
+        const float travel = phase >= RecreateTime ? phase - RecreateTime : phase;
+        moving->transform().position = Vector2{centerX + StartOffset + Speed * travel, centerY};
+        if (phase >= DestroyTime && phase < RecreateTime) {
+            scene().destroy(moving->id());
+            moving = nullptr;
+        }
+    }
+
+    static constexpr float Period = 4.5F;
+    static constexpr float DestroyTime = 1.0F;
+    static constexpr float RecreateTime = 2.6F;
+    static constexpr float StartOffset = -120;
+    static constexpr float Speed = 80;
+
+    GameObject* moving = nullptr;
+    float centerX = 0;
+    float centerY = 0;
+};
+
+// Остановка сцены: обновление зоны прекращается, а после возврата контакт
+// продолжается без повторного начала.
+class StopZone final : public ContactZone
+{
+public:
+    StopZone(Rect area, std::string title)
+        : ContactZone(area, std::move(title))
+    {
+        const Vector2 center = zoneCenter(area);
+        addShape(scene(), Circle{Vector2{}, 40}, Vector2{center.x - 30, center.y});
+        moving = addShape(scene(), Circle{Vector2{}, 26}, center);
+        centerX = center.x;
+        centerY = center.y;
+    }
+
+    void update(float deltaTime) override
+    {
+        stopClock += deltaTime;
+        // Часть периода сцена зоны стоит: ни движения, ни проверок, ни событий.
+        stopped = std::fmod(stopClock, StopPeriod) >= StopWindow;
+        if (stopped) {
+            return;
+        }
+        ContactZone::update(deltaTime);
+    }
+
+    std::string state() const override
+    {
+        if (stopped) {
+            return "SCENE STOPPED  (contact held)";
+        }
+        return contacts().empty() ? "NO CONTACT" : "CONTACT";
+    }
+
+private:
+    void move() override
+    {
+        moving->transform().position = Vector2{centerX + 30 * std::sin(elapsedSeconds()), centerY};
+    }
+
+    static constexpr float StopPeriod = 7.0F;
+    static constexpr float StopWindow = 3.0F;
+
+    GameObject* moving = nullptr;
+    float centerX = 0;
+    float centerY = 0;
+    float stopClock = 0;
+    bool stopped = false;
+};
+
+// Очистка сцены зоны: контакты завершаются, после наполнения начинаются снова.
+class ClearZone final : public ContactZone
+{
+public:
+    ClearZone(Rect area, std::string title)
+        : ContactZone(area, std::move(title))
+    {
+        const Vector2 center = zoneCenter(area);
+        centerX = center.x;
+        centerY = center.y;
+        fill();
+    }
+
+    std::string state() const override
+    {
+        if (cleared) {
+            return "SCENE EMPTY  (contacts ended)";
+        }
+        return contacts().empty() ? "NO CONTACT" : "CONTACT";
+    }
+
+private:
+    void fill()
+    {
+        addShape(scene(), Rect{-46, -24, 92, 48}, Vector2{centerX - 45, centerY});
+        moving = addShape(scene(), Circle{Vector2{}, 26}, Vector2{centerX - 80, centerY});
+    }
+
+    void move() override
+    {
+        const float phase = std::fmod(elapsedSeconds(), Period);
+        if (phase >= EmptyTime) {
+            if (!cleared) {
+                scene().clear();
+                moving = nullptr;
+                cleared = true;
+            }
+            return;
+        }
+        if (cleared) {
+            fill();
+            cleared = false;
+        }
+        moving->transform().position = Vector2{centerX - 80 + 160 * phase / EmptyTime, centerY};
+    }
+
+    static constexpr float Period = 6.0F;
+    static constexpr float EmptyTime = 3.0F;
+
+    GameObject* moving = nullptr;
+    float centerX = 0;
+    float centerY = 0;
+    bool cleared = false;
+};
+
 std::vector<std::unique_ptr<Zone>> buildPairPage()
 {
     const Size2 rectSize{92, 48};
@@ -397,6 +572,15 @@ std::vector<std::unique_ptr<Zone>> buildPairPage()
         Box{Vector2{}, boxSize, 0}, boxRotation, Rect{-46, -24, rectSize.width, rectSize.height}));
     zones.push_back(std::make_unique<PairZone>(cellArea(2, 1), "TURNED BOX / TURNED BOX",
         Box{Vector2{}, boxSize, 0}, boxRotation, Box{Vector2{}, boxSize, 0}, otherRotation));
+    return zones;
+}
+
+std::vector<std::unique_ptr<Zone>> buildLifecyclePage()
+{
+    std::vector<std::unique_ptr<Zone>> zones;
+    zones.push_back(std::make_unique<DeleteZone>(centeredRowCell(0), "DELETE IN CONTACT"));
+    zones.push_back(std::make_unique<StopZone>(centeredRowCell(1), "STOP AND RESUME"));
+    zones.push_back(std::make_unique<ClearZone>(centeredRowCell(2), "CLEAR AND RESTART"));
     return zones;
 }
 
@@ -510,7 +694,7 @@ void ContactZone::drawExtra(Renderer2D& drawing) const
 
 CheckBoard::CheckBoard()
 {
-    pageNames = {"PAIR CONTACTS", "RULES AND QUERIES"};
+    pageNames = {"PAIR CONTACTS", "RULES AND QUERIES", "CONTACT LIFECYCLE"};
     build();
 }
 
@@ -519,6 +703,7 @@ void CheckBoard::build()
     pages.clear();
     pages.push_back(buildPairPage());
     pages.push_back(buildQueryPage());
+    pages.push_back(buildLifecyclePage());
     currentPage = 0;
 }
 

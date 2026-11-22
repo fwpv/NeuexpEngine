@@ -5,6 +5,7 @@
 #include "world.h"
 
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -37,6 +38,20 @@ float trailingNumber(const std::string& text)
     }
     try {
         return std::stof(text.substr(space + 1));
+    } catch (const std::exception&) {
+        return 0;
+    }
+}
+
+// Значение счётчика из подписи вида "BEGIN 3   END 2".
+int counterValue(const std::string& counters, const char* name)
+{
+    const std::size_t found = counters.find(name);
+    if (found == std::string::npos) {
+        return 0;
+    }
+    try {
+        return std::stoi(counters.substr(found + std::strlen(name)));
     } catch (const std::exception&) {
         return 0;
     }
@@ -111,7 +126,7 @@ void requireLabelsFit(const CollisionDemo::CheckBoard& board)
 int main()
 {
     CollisionDemo::CheckBoard board;
-    require(board.pageCount() == 2, "demo must have two pages");
+    require(board.pageCount() == 3, "demo must have three pages");
     require(board.zones().size() == 6, "pair page must contain six zones");
     requireLabelsFit(board);
 
@@ -169,6 +184,53 @@ int main()
     board.toggleMask();
     board.update(1.0F / 60.0F);
     require(containsText(board.zones()[1]->state(), "CONTACT ALLOWED"), "mask did not allow the pair again");
+
+    // Третья страница: жизненный цикл контакта при удалении, остановке и очистке.
+    board.nextPage();
+    require(board.pageIndex() == 2 && board.zones().size() == 3, "lifecycle page must contain three zones");
+    requireLabelsFit(board);
+    struct LifecycleWatch
+    {
+        bool sawContact = false;
+        bool sawRemoved = false;
+        bool sawStopped = false;
+        bool sawEmpty = false;
+        int maximumBegun = 0;
+        int maximumEnded = 0;
+    };
+    std::vector<LifecycleWatch> lifecycleWatch(board.zones().size());
+    for (int frame = 0; frame < 720; ++frame) {
+        board.update(1.0F / 60.0F);
+        for (std::size_t index = 0; index < board.zones().size(); ++index) {
+            const std::string state = board.zones()[index]->state();
+            const std::string counters = board.zones()[index]->counters();
+            LifecycleWatch& watcher = lifecycleWatch[index];
+            watcher.sawContact = watcher.sawContact || containsText(state, "CONTACT");
+            watcher.sawRemoved = watcher.sawRemoved || containsText(state, "REMOVED");
+            watcher.sawStopped = watcher.sawStopped || containsText(state, "STOPPED");
+            watcher.sawEmpty = watcher.sawEmpty || containsText(state, "EMPTY");
+            watcher.maximumBegun = std::max(watcher.maximumBegun, counterValue(counters, "BEGIN"));
+            watcher.maximumEnded = std::max(watcher.maximumEnded, counterValue(counters, "END"));
+        }
+    }
+    for (std::size_t index = 0; index < board.zones().size(); ++index) {
+        std::cout << "lifecycle zone " << board.zones()[index]->title() << "  state: "
+                  << board.zones()[index]->state() << "   " << board.zones()[index]->counters() << '\n';
+    }
+    require(lifecycleWatch[0].sawContact && lifecycleWatch[0].sawRemoved,
+        "delete zone must show a contact and then its removal");
+    require(lifecycleWatch[0].maximumBegun >= 2 && lifecycleWatch[0].maximumEnded >= 1,
+        "delete zone must begin and end contacts repeatedly");
+    require(lifecycleWatch[0].maximumBegun - lifecycleWatch[0].maximumEnded <= 1,
+        "delete zone must not end a contact twice");
+    require(lifecycleWatch[1].sawContact && lifecycleWatch[1].sawStopped,
+        "stop zone must show a held contact and a stopped scene");
+    require(lifecycleWatch[1].maximumBegun == 1 && lifecycleWatch[1].maximumEnded == 0,
+        "stopping the scene must not repeat a begin");
+    require(lifecycleWatch[2].sawContact && lifecycleWatch[2].sawEmpty,
+        "clear zone must show a contact and an empty scene");
+    require(lifecycleWatch[2].maximumBegun >= 2 && lifecycleWatch[2].maximumEnded >= 1,
+        "clear zone must begin and end contacts repeatedly");
 
     // Перезапуск возвращает зоны в исходное состояние.
     board.restart();
