@@ -35,7 +35,7 @@ endif()
 add_test(NAME platform_dpi COMMAND platform_dpi_test)
 set_tests_properties(platform_dpi PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
 
-foreach(group math geometry transform polygon)
+foreach(group math geometry transform polygon collision collision_query)
     add_executable(${group}_test ${group}_test.cpp)
     target_link_libraries(${group}_test PRIVATE neuexpengine project_warnings)
     add_test(NAME ${group} COMMAND ${group}_test)

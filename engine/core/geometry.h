@@ -64,6 +64,26 @@ struct Circle
     float radius = 0;
 };
 
+// Прямоугольник, повёрнутый вокруг собственного центра. Размеры неотрицательные,
+// границы включены. rotation задаётся в радианах: положительный поворот направляет
+// ось +x к +y, поэтому при нулевом повороте форма совпадает с Rect того же центра.
+struct Box
+{
+    constexpr Box() = default;
+    constexpr Box(Vector2 center, Size2 size, float rotation = 0)
+        : center(center)
+        , size(size)
+        , rotation(rotation)
+    {
+    }
+
+    // Обход от локального угла с минимальными x/y: +x, затем +y.
+    Quad corners() const;
+
+    Vector2 center;
+    Size2 size;
+    float rotation = 0;
+};
 
 constexpr bool operator==(const Rect& first, const Rect& second)
 {
@@ -85,8 +105,20 @@ constexpr bool operator!=(const Circle& first, const Circle& second)
     return !(first == second);
 }
 
+constexpr bool operator==(const Box& first, const Box& second)
+{
+    return first.center == second.center && first.size == second.size && first.rotation == second.rotation;
+}
+
+constexpr bool operator!=(const Box& first, const Box& second)
+{
+    return !(first == second);
+}
+
 bool contains(const Rect& rectangle, Vector2 point);
 bool contains(const Circle& circle, Vector2 point);
+// Граница включена; сравнение идёт в осях прямоугольника.
+bool contains(const Box& box, Vector2 point);
 // Граница включена. Пустой полигон не содержит точек; вырожденный содержит
 // только точки своих рёбер. point должен быть конечным.
 bool contains(const Polygon& polygon, Vector2 point);
@@ -94,8 +126,11 @@ bool contains(const Quad& polygon, Vector2 point);
 // Для пустого полигона возвращает Rect{}; для вырожденного размер может быть нулевым.
 Rect bounds(const Polygon& polygon);
 Rect bounds(const Quad& polygon);
+// Охватывающий прямоугольник вдоль осей; для нулевого поворота совпадает с исходным размером.
+Rect bounds(const Box& box);
 // Ближайшая точка замкнутого прямоугольника; внутренняя точка возвращается без изменения.
 Vector2 closestPoint(const Rect& rectangle, Vector2 point);
+Vector2 closestPoint(const Box& box, Vector2 point);
 // Касание считается пересечением, в том числе для вырожденных фигур.
 bool intersects(const Rect& first, const Rect& second);
 bool intersects(const Circle& first, const Circle& second);

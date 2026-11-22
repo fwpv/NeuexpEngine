@@ -1,5 +1,7 @@
 #include "core/geometry.h"
+#include "core/math2d.h"
 
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 
@@ -10,6 +12,12 @@ void require(bool condition, const char* message)
     if (!condition) {
         throw std::runtime_error(message);
     }
+}
+
+// Повороты считаются через sin/cos, поэтому превратить проверку в точное равенство нельзя.
+bool closeTo(NeuexpEngine::Vector2 first, NeuexpEngine::Vector2 second, float tolerance = 1e-4F)
+{
+    return std::fabs(first.x - second.x) <= tolerance && std::fabs(first.y - second.y) <= tolerance;
 }
 }
 
@@ -71,6 +79,30 @@ int main()
         require(contains(Circle{}, {}) && intersects(Circle{}, Circle{}), "Zero circle failed.");
         require(!contains(Circle{}, { 0.01F, 0 }), "Zero circle contains a different point.");
         require(intersects(Rect{}, Circle{}) && !intersects(Rect{}, Circle{ { 1, 0 }, 0 }), "Degenerate mixed contact failed.");
+
+        const Box flat = { { 5, 5 }, { 10, 10 }, 0 };
+        require(flat == Box{ { 5, 5 }, { 10, 10 }, 0 } && flat != Box{ { 5, 5 }, { 10, 10 }, 1 },
+            "Box value comparison failed.");
+        require(flat.corners() == Rect{ 0, 0, 10, 10 }.corners(), "Flat box corners differ from rectangle.");
+        require(bounds(flat) == Rect{ 0, 0, 10, 10 }, "Flat box bounds failed.");
+        require(contains(flat, { 0, 0 }) && contains(flat, { 10, 10 }) && !contains(flat, { 10.01F, 5 }),
+            "Flat box containment failed.");
+        require(closestPoint(flat, { 13, 5 }) == Vector2{ 10, 5 } && closestPoint(flat, { 2, 3 }) == Vector2{ 2, 3 },
+            "Flat box closest point failed.");
+
+        const Box turned = { { 0, 0 }, { 4, 4 }, degreesToRadians(45) };
+        const float diagonal = 2.8284271F;
+        require(closeTo(turned.corners()[0], { 0, -diagonal }) && closeTo(turned.corners()[1], { diagonal, 0 })
+            && closeTo(turned.corners()[2], { 0, diagonal }) && closeTo(turned.corners()[3], { -diagonal, 0 }),
+            "Turned box corners failed.");
+        require(closeTo(bounds(turned).position, { -diagonal, -diagonal })
+            && closeTo(Vector2{ bounds(turned).size.width, bounds(turned).size.height }, { diagonal * 2, diagonal * 2 }),
+            "Turned box bounds failed.");
+        require(contains(turned, {}) && contains(turned, { 2.5F, 0 }) && !contains(turned, { 3, 0 }),
+            "Turned box containment failed.");
+        require(closeTo(closestPoint(turned, { 5, 0 }), { diagonal, 0 })
+            && closeTo(closestPoint(turned, { 0, 0 }), {}), "Turned box closest point failed.");
+        require(contains(Box{}, {}) && bounds(Box{}) == Rect{}, "Zero box failed.");
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

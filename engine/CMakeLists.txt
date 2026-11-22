@@ -25,6 +25,8 @@ add_library(neuexpengine STATIC
     graphics/animation.cpp
     scene/object.cpp
     scene/scene.cpp
+    collision/shape.cpp
+    collision/query.cpp
     gui/events.cpp
     gui/element.cpp
     gui/context.cpp
