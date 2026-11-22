@@ -1,0 +1,42 @@
+#pragma once
+
+#include "core/transform.h"
+#include "shape.h"
+
+#include <cstdint>
+
+namespace NeuexpEngine
+{
+// Слой столкновений: бит в маске.
+using CollisionLayer = std::uint32_t;
+// Маска со всеми слоями.
+constexpr CollisionLayer AllCollisionLayers = 0xFFFFFFFFu;
+
+// Форма столкновений объекта и правила участия в парах. Форма задана в локальных
+// координатах объекта, а положение, поворот и масштаб в мире берутся из его transform.
+// Круг и повёрнутый прямоугольник поддерживают только равномерный масштаб: при
+// неравномерном масштабе форма в мире становится эллипсом или параллелограммом,
+// которые проверки не поддерживают.
+struct Collider
+{
+    // Пустой коллайдер выключен, поэтому объект без формы в столкновениях не участвует.
+    Collider() = default;
+    // Коллайдер с формой сразу включён.
+    explicit Collider(const CollisionShape& value);
+
+    // Форма в мировых координатах с учётом преобразования объекта.
+    CollisionShape worldShape(const Transform2& transform) const;
+
+    CollisionShape shape;
+    CollisionLayer layer = 1U;
+    // Слои, с которыми разрешены пары: объект участвует, если его слой входит в маску
+    // другого коллайдера, а слой другого — в его маску.
+    CollisionLayer mask = AllCollisionLayers;
+    bool enabled = false;
+    // Триггер сообщает о контакте, но не участвует в разрешении движения объектов.
+    bool trigger = false;
+};
+
+// Пара участвует в проверке: оба коллайдера включены и слои входят в маски друг друга.
+bool canCollide(const Collider& first, const Collider& second);
+}
