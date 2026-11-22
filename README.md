@@ -70,6 +70,10 @@ sudo apt install build-essential cmake libx11-dev libgl1-mesa-dev
 зависимости из сети. В Linux для miniaudio нужны системные библиотеки потоков, `dl`
 и `m`. Собранные приложения появляются в каталоге `build/`.
 
+Тесты собираются и запускаются через `./scripts/build_and_run_tests.sh` или
+`.\scripts\build_and_run_tests.bat`: команда собирает движок с тестами и сразу
+прогоняет их.
+
 Для очистки результатов сборки используйте `./scripts/clean.sh` или
 `.\scripts\clean.bat`: скрипты можно запускать из любой папки.
 
