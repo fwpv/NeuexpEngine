@@ -12,17 +12,14 @@ namespace NeuexpEngine
 {
 namespace
 {
-// Пересечение и расстояние считаются в double: разности координат и произведения
-// квадратов во float теряют точность уже на сотнях единиц мира.
+// Счёт в double: во float квадраты расстояний теряют точность на сотнях единиц мира.
 
-// Полуразмеры прямоугольника: используются проверками в его осях.
 Size2 halfSizeOf(const Box& box)
 {
     return {box.size.width / 2, box.size.height / 2};
 }
 
-// Прямоугольник вдоль осей в виде повёрнутого прямоугольника с нулевым поворотом.
-// Вызов требует прямоугольного вида формы.
+// Вызов требует прямоугольного вида формы: круг сюда не передаётся.
 Box boxOf(const CollisionShape& shape)
 {
     if (shape.kind() == CollisionShape::Kind::Box) {
@@ -39,8 +36,7 @@ Vector2 radialNormal(Vector2 offset)
     return normal == Vector2{} ? Vector2{1, 0} : normal;
 }
 
-// Ближайшая грань прямоугольника в его осях: наружная нормаль и расстояние до неё.
-// Точка может лежать внутри прямоугольника.
+// Ближайшая грань в осях прямоугольника: наружная нормаль и расстояние до неё.
 struct FaceHit
 {
     Vector2 normal;
@@ -106,8 +102,7 @@ bool collideCircleRectangle(Vector2 circleCenter, float radius, Size2 halfSize, 
             static_cast<float>(radiusValue - offsetLength)};
         return true;
     }
-    // Центр круга внутри прямоугольника: выталкивание идёт наружу по ближайшей грани,
-    // а нормаль направлена от круга к прямоугольнику, то есть против наружной нормали.
+    // Центр внутри: нормаль против наружной нормали ближайшей грани.
     const FaceHit face = nearestFace(circleCenter, halfSize);
     result = {-face.normal, static_cast<float>(radiusValue + face.distance)};
     return true;
@@ -124,7 +119,6 @@ bool collideCircleBox(const Circle& circle, const Box& box, Manifold& result)
     return true;
 }
 
-// Радиус проекции прямоугольника на ось.
 double boxRadius(const Box& box, Vector2 axisX, Vector2 axisY, Vector2 axis)
 {
     const double projectionX = std::abs(static_cast<double>(dot(axis, axisX)));
@@ -134,9 +128,8 @@ double boxRadius(const Box& box, Vector2 axisX, Vector2 axisY, Vector2 axis)
     return halfWidth * projectionX + halfHeight * projectionY;
 }
 
-// Разделяющие оси: две оси каждого прямоугольника. Глубина вдоль оси — наименьший сдвиг
-// второй формы в одну из сторон, поэтому вложенный прямоугольник выталкивается за
-// ближайшую грань, а не на сумму проекций.
+// Разделяющие оси — по две на прямоугольник. Глубина по оси — наименьший сдвиг второй
+// формы, а не сумма проекций: вложенность выталкивается за ближайшую грань.
 bool collideBoxes(const Box& first, const Box& second, Manifold& result)
 {
     const Vector2 firstAxisX = rotated(Vector2{1, 0}, first.rotation);
@@ -204,7 +197,6 @@ double pointGap(Vector2 point, const Box& box)
     return std::hypot(gapX, gapY);
 }
 
-// Кратчайшее расстояние между двумя отрезками.
 double segmentDistance(Vector2 firstBegin, Vector2 firstEnd, Vector2 secondBegin, Vector2 secondEnd)
 {
     const double firstDirectionX = static_cast<double>(firstEnd.x) - firstBegin.x;
@@ -346,16 +338,15 @@ bool castBox(const Box& box, Vector2 begin, Vector2 end, SegmentHit& result)
         return false;
     }
     if (enter < 0) {
-        // Отрезок начинается внутри прямоугольника: попадание в начале с нормалью
-        // ближайшей грани. Совпадающие концы приходят сюда же, а точку вне
-        // прямоугольника отсекает проверка границ по каждой оси.
+        // Начало внутри (и совпадающие концы): попадание в начале с нормалью ближайшей
+        // грани; точку вне прямоугольника отсекают проверки границ по осям.
         result = {begin, rotated(nearestFace(localBegin, halfSize).normal, box.rotation), 0};
         return true;
     }
     const Vector2 localPoint{
         static_cast<float>(starts[0] + (finishes[0] - starts[0]) * enter),
         static_cast<float>(starts[1] + (finishes[1] - starts[1]) * enter)};
-    // Нормаль грани направлена наружу: при входе через малую границу — против оси.
+    // Вход через малую границу даёт нормаль против оси.
     const float sign = enterFromLow ? -1.0F : 1.0F;
     const Vector2 localNormal = enterAxis == 0 ? Vector2{sign, 0} : Vector2{0, sign};
     result = {box.center + rotated(localPoint, box.rotation), rotated(localNormal, box.rotation),

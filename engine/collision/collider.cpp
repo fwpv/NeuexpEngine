@@ -25,7 +25,7 @@ CollisionShape Collider::worldShape(const Transform2& transform) const
         const Rect& rectangle = shape.rect();
         const Size2 size{rectangle.size.width * scaleX, rectangle.size.height * scaleY};
         const Vector2 center = affine.transformPoint(rectangle.center());
-        // Без поворота прямоугольник вдоль осей остаётся прямоугольником вдоль осей.
+        // Без поворота форма остаётся прямоугольником вдоль осей.
         if (transform.rotation == 0) {
             return Rect{center - Vector2{size.width / 2, size.height / 2}, size};
         }

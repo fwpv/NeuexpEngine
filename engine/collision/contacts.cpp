@@ -8,8 +8,7 @@ namespace NeuexpEngine
 const std::vector<ContactEvent>& ContactTracker::update(const Scene& scene)
 {
     events.clear();
-    // Идентификаторы объектов разных сцен совпадают, поэтому смена сцены завершает
-    // прежние пары, а не продолжает их.
+    // Идентификаторы объектов разных сцен совпадают: смена сцены завершает прежние пары.
     if (&scene != currentScene) {
         currentScene = &scene;
         for (const auto& pair : active) {
@@ -50,8 +49,7 @@ void ContactTracker::collect(const Scene& scene)
 
 void ContactTracker::checkPairs()
 {
-    // Полный перебор проверял бы все пары объектов даже в разреженной сцене. Порядок
-    // по левой границе позволяет прервать проход, как только проекции на x разошлись.
+    // Порядок по левой границе позволяет прервать проход, как только проекции на x разошлись.
     order.resize(entries.size());
     for (std::size_t index = 0; index < order.size(); ++index) {
         order[index] = index;
@@ -76,8 +74,8 @@ void ContactTracker::checkPair(const Entry& first, const Entry& second)
     if (!intersects(first.bounds, second.bounds) || !canCollide(first.collider, second.collider)) {
         return;
     }
-    // Контакт описывается от меньшего идентификатора к большему, поэтому формы
-    // передаются в collide в том же порядке, что и в манифолде.
+    // Формы передаются в collide в порядке идентификаторов: нормаль смотрит
+    // от меньшего к большему.
     const bool firstIsSmaller = first.id < second.id;
     Manifold manifold;
     if (!collide(firstIsSmaller ? first.shape : second.shape, firstIsSmaller ? second.shape : first.shape,

@@ -194,8 +194,7 @@ void testTurnedBoxes()
         "Separated turned boxes must not touch even with overlapping bounds.");
 }
 
-// Поиск пар по x не должен терять контакты: число найденных пар сравнивается
-// с полным перебором, посчитанным в самом тесте.
+// Поиск пар по x не должен терять контакты: число пар сверяется с полным перебором.
 void testPairSweepMatchesFullScan()
 {
     using namespace NeuexpEngine;

@@ -28,7 +28,7 @@ bool closeTo(NeuexpEngine::Vector2 first, NeuexpEngine::Vector2 second, float to
     return closeTo(first.x, second.x, tolerance) && closeTo(first.y, second.y, tolerance);
 }
 
-// Сцену и физику этот модуль пока не знает, поэтому сдвинутая форма собирается заново.
+// Сдвинутая форма собирается заново: сцен и движения у модуля ещё нет.
 NeuexpEngine::CollisionShape moved(const NeuexpEngine::CollisionShape& shape, NeuexpEngine::Vector2 offset)
 {
     using NeuexpEngine::CollisionShape;

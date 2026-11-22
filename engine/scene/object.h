@@ -52,8 +52,8 @@ public:
     const Sprite& visual() const { return appearance; }
     Sprite& visual() { return appearance; }
 
-    // Форма и правила участия в столкновениях. Проверки выполняет приложение или
-    // ContactTracker: сцена о столкновениях не знает.
+    // Форма и правила участия в столкновениях; проверки выполняет приложение
+    // или ContactTracker.
     const Collider& collider() const { return collision; }
     Collider& collider() { return collision; }
 
