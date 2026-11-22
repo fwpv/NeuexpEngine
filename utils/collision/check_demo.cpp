@@ -1,5 +1,9 @@
 // Проверка содержания демо collision без окна: каждая зона должна показать ожидаемое
-// обнаружение, а счётчики переходов — расти. Запуск вручную: target collision_checks.
+// обнаружение, а счётчики переходов — расти. В сборку демо не входит, собирается вручную
+// после ./scripts/build_demos.sh:
+//   g++ -std=c++17 -O2 -Iengine -Idemos/collision utils/collision/check_demo.cpp \
+//       demos/collision/world.cpp build/engine/libneuexpengine.a build/libstb_image.a \
+//       -lGL -lX11 -lm -lpthread -ldl -o build/collision_checks
 #include "graphics/renderer.h"
 #include "world.h"
 
