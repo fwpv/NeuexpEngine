@@ -194,6 +194,46 @@ void testTurnedBoxes()
         "Separated turned boxes must not touch even with overlapping bounds.");
 }
 
+// Поиск пар по x не должен терять контакты: число найденных пар сравнивается
+// с полным перебором, посчитанным в самом тесте.
+void testPairSweepMatchesFullScan()
+{
+    using namespace NeuexpEngine;
+    constexpr int Columns = 7;
+    constexpr int Rows = 6;
+    constexpr float Spacing = 34;
+    constexpr float Radius = 20;
+    Scene scene;
+    ContactTracker tracker;
+    for (int row = 0; row < Rows; ++row) {
+        for (int column = 0; column < Columns; ++column) {
+            addCircle(scene, {static_cast<float>(column) * Spacing, static_cast<float>(row) * Spacing}, Radius);
+        }
+    }
+
+    int expected = 0;
+    const int count = Columns * Rows;
+    for (int first = 0; first < count; ++first) {
+        for (int second = first + 1; second < count; ++second) {
+            const float firstX = static_cast<float>(first % Columns) * Spacing;
+            const float firstY = static_cast<float>(first / Columns) * Spacing;
+            const float secondX = static_cast<float>(second % Columns) * Spacing;
+            const float secondY = static_cast<float>(second / Columns) * Spacing;
+            if (std::hypot(firstX - secondX, firstY - secondY) <= Radius * 2) {
+                ++expected;
+            }
+        }
+    }
+    require(expected == 71, "The test layout must have the expected number of touching circles.");
+
+    const std::vector<ContactEvent> events = tracker.update(scene);
+    require(countPhase(events, ContactPhase::Begin) == expected && events.size() == static_cast<std::size_t>(expected),
+        "Pair search must report every overlapping pair once.");
+    const std::vector<ContactEvent> next = tracker.update(scene);
+    require(countPhase(next, ContactPhase::Persist) == expected && countPhase(next, ContactPhase::Begin) == 0,
+        "Pair search must keep the same pairs without a new begin.");
+}
+
 void testAllPairs()
 {
     using namespace NeuexpEngine;
@@ -221,6 +261,7 @@ int main()
         testTriggers();
         testTurnedBoxes();
         testAllPairs();
+        testPairSweepMatchesFullScan();
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

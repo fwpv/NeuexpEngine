@@ -1,5 +1,6 @@
 #include "contacts.h"
 
+#include <algorithm>
 #include <cstddef>
 
 namespace NeuexpEngine
@@ -18,11 +19,7 @@ const std::vector<ContactEvent>& ContactTracker::update(const Scene& scene)
     }
     collect(scene);
     found.clear();
-    for (std::size_t first = 0; first < entries.size(); ++first) {
-        for (std::size_t second = first + 1; second < entries.size(); ++second) {
-            checkPair(entries[first], entries[second]);
-        }
-    }
+    checkPairs();
     for (const auto& pair : found) {
         const ContactPhase phase = active.find(pair.first) == active.end()
             ? ContactPhase::Begin
@@ -48,6 +45,29 @@ void ContactTracker::collect(const Scene& scene)
         }
         const CollisionShape shape = collider.worldShape(object->transform());
         entries.push_back({object->id(), collider, shape, bounds(shape)});
+    }
+}
+
+void ContactTracker::checkPairs()
+{
+    // Полный перебор проверял бы все пары объектов даже в разреженной сцене. Порядок
+    // по левой границе позволяет прервать проход, как только проекции на x разошлись.
+    order.resize(entries.size());
+    for (std::size_t index = 0; index < order.size(); ++index) {
+        order[index] = index;
+    }
+    std::sort(order.begin(), order.end(), [this](std::size_t first, std::size_t second) {
+        return entries[first].bounds.position.x < entries[second].bounds.position.x;
+    });
+    for (std::size_t first = 0; first < order.size(); ++first) {
+        const Rect& current = entries[order[first]].bounds;
+        const float right = current.position.x + current.size.width;
+        for (std::size_t second = first + 1; second < order.size(); ++second) {
+            if (entries[order[second]].bounds.position.x > right) {
+                break;
+            }
+            checkPair(entries[order[first]], entries[order[second]]);
+        }
     }
 }
 

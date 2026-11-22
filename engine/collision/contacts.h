@@ -63,9 +63,14 @@ private:
     };
 
     void collect(const Scene& scene);
+    // Проход по парам, чьи проекции на ось x пересекаются: порядок по левой границе
+    // охватывающего прямоугольника, затем проверка до первой разделённой пары.
+    void checkPairs();
     void checkPair(const Entry& first, const Entry& second);
 
     std::vector<Entry> entries;
+    // Индексы entries в порядке левой границы: переиспользуется между вызовами.
+    std::vector<std::size_t> order;
     std::map<std::pair<ObjectId, ObjectId>, Contact> active;
     std::map<std::pair<ObjectId, ObjectId>, Contact> found;
     std::vector<ContactEvent> events;
