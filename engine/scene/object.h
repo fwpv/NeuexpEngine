@@ -73,8 +73,7 @@ private:
     Sprite appearance;
     Collider collision;
     bool visible = true;
-    // Удалён из сцены: до освобождения памяти объект не обновляется, не рисуется
-    // и не находится запросами.
+    // Удалён из сцены; память освобождается в конце update() или в clear().
     bool removalPending = false;
 };
 }

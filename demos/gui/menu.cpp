@@ -96,17 +96,13 @@ float Menu::scale() const
 
 void Menu::buildMainMenu()
 {
-    // Экран главного меню
     mainScreen_ = std::make_shared<UI::Screen>();
 
-    // Панель главного меню
     auto mainPanel = panel(mainScreen_, NE::Size2{340, 340});
 
-    // Заголовок меню
     elements_.text.push_back(mainPanel->addLabel(
         UI::Placement::horizontalCenter(NE::Size2{310, 34}), u8"ОРБИТА / МЕНЮ"));
 
-    // Кнопка «Начать»
     auto start = mainPanel->addButton(
         UI::Placement::horizontalCenter(buttonSize(resources_, 230)), u8"Начать");
     elements_.buttons.push_back(start);
@@ -115,7 +111,6 @@ void Menu::buildMainMenu()
         callbacks_.startGame();
     }));
 
-    // Кнопка «Настройки»
     auto options = mainPanel->addButton(
         UI::Placement::horizontalCenter(buttonSize(resources_, 230)), u8"Настройки");
     elements_.buttons.push_back(options);
@@ -124,7 +119,6 @@ void Menu::buildMainMenu()
         openSettings();
     }));
 
-    // Кнопка «Выход»
     auto exit = mainPanel->addButton(
         UI::Placement::horizontalCenter(buttonSize(resources_, 230)), u8"Выход");
     elements_.buttons.push_back(exit);
@@ -136,22 +130,17 @@ void Menu::buildMainMenu()
 
 void Menu::buildSettingsPage()
 {
-    // Экран настроек
     settingsScreen_ = std::make_shared<UI::Screen>();
 
-    // Панель настроек
     auto settingsPanel = panel(settingsScreen_, NE::Size2{360, 560});
 
-    // Заголовок настроек
     elements_.text.push_back(settingsPanel->addLabel(
         UI::Placement::horizontalCenter(NE::Size2{320, 32}), u8"НАСТРОЙКИ"));
 
-    // Строка масштаба
     auto scaleRow = settingsPanel->addContainer(
         UI::Placement::horizontalCenter(NE::Size2{320, 41}));
     scaleRow->layout() = UI::Layout{UI::Flow::Row, 0, 8, UI::Align::Center};
 
-    // Кнопка «-»
     auto less = scaleRow->addButton(
         UI::Placement::horizontalCenter(buttonSize(resources_, 96)), "-");
     elements_.buttons.push_back(less);
@@ -160,12 +149,10 @@ void Menu::buildSettingsPage()
         changeScale(-0.25F);
     }));
 
-    // Индикатор масштаба
     scaleValue_ = scaleRow->addNumericIndicator(
         UI::Placement::horizontalCenter(NE::Size2{96, 41}));
     elements_.text.push_back(scaleValue_);
 
-    // Кнопка «+»
     auto more = scaleRow->addButton(
         UI::Placement::horizontalCenter(buttonSize(resources_, 96)), "+");
     elements_.buttons.push_back(more);
@@ -174,11 +161,9 @@ void Menu::buildSettingsPage()
         changeScale(0.25F);
     }));
 
-    // Подпись «Масштаб интерфейса»
     elements_.text.push_back(settingsPanel->addLabel(
         UI::Placement::horizontalCenter(NE::Size2{320, 24}), u8"Масштаб интерфейса"));
 
-    // Флажок VSync
     vsync_ = settingsPanel->addCheckbox(
         UI::Placement::horizontalCenter(NE::Size2{310, 30}), "VSync");
     elements_.checkboxes.push_back(vsync_);
@@ -188,7 +173,6 @@ void Menu::buildSettingsPage()
         draft_.vsync = event.checked;
     }));
 
-    // Флажок «Изображения кнопок»
     images_ = settingsPanel->addCheckbox(
         UI::Placement::horizontalCenter(NE::Size2{310, 30}), u8"Изображения кнопок");
     elements_.checkboxes.push_back(images_);
@@ -199,7 +183,6 @@ void Menu::buildSettingsPage()
         applyStyle();
     }));
 
-    // Флажок «Растровый шрифт»
     font_ = settingsPanel->addCheckbox(
         UI::Placement::horizontalCenter(NE::Size2{310, 30}), u8"Растровый шрифт");
     elements_.checkboxes.push_back(font_);
@@ -210,7 +193,6 @@ void Menu::buildSettingsPage()
         applyStyle();
     }));
 
-    // Флажок «Фильтрация текста»
     textFiltering_ = settingsPanel->addCheckbox(
         UI::Placement::horizontalCenter(NE::Size2{310, 30}), u8"Фильтрация текста");
     elements_.checkboxes.push_back(textFiltering_);
@@ -221,7 +203,6 @@ void Menu::buildSettingsPage()
             applyStyle();
         }));
 
-    // Кнопка «Применить»
     auto apply = settingsPanel->addButton(
         UI::Placement::horizontalCenter(buttonSize(resources_, 250)), u8"Применить");
     elements_.buttons.push_back(apply);
@@ -230,7 +211,6 @@ void Menu::buildSettingsPage()
         applySettings();
     }));
 
-    // Кнопка «Отмена»
     auto cancel = settingsPanel->addButton(
         UI::Placement::horizontalCenter(buttonSize(resources_, 250)), u8"Отмена");
     elements_.buttons.push_back(cancel);
@@ -239,7 +219,6 @@ void Menu::buildSettingsPage()
         closeSettings();
     }));
 
-    // Подпись о сохранении настроек
     const std::string hintText = u8"Настройки сохраняются\nрядом с демо";
     auto hint = settingsPanel->addLabel(
         UI::Placement::horizontalCenter(NE::Size2{320, 56}), hintText);
@@ -249,17 +228,13 @@ void Menu::buildSettingsPage()
 
 void Menu::buildPausePage()
 {
-    // Экран паузы
     pauseScreen_ = std::make_shared<UI::Screen>();
 
-    // Панель паузы
     auto pausePanel = panel(pauseScreen_, NE::Size2{340, 320});
 
-    // Заголовок паузы
     elements_.text.push_back(pausePanel->addLabel(
         UI::Placement::horizontalCenter(NE::Size2{310, 30}), u8"ПАУЗА"));
 
-    // Кнопка «Продолжить»
     auto resume = pausePanel->addButton(
         UI::Placement::horizontalCenter(buttonSize(resources_, 230)), u8"Продолжить");
     elements_.buttons.push_back(resume);
@@ -268,7 +243,6 @@ void Menu::buildPausePage()
         callbacks_.resumeGame();
     }));
 
-    // Кнопка «Настройки»
     auto options = pausePanel->addButton(
         UI::Placement::horizontalCenter(buttonSize(resources_, 230)), u8"Настройки");
     elements_.buttons.push_back(options);
@@ -277,7 +251,6 @@ void Menu::buildPausePage()
         openSettings();
     }));
 
-    // Кнопка «Главное меню»
     auto home = pausePanel->addButton(
         UI::Placement::horizontalCenter(buttonSize(resources_, 230)), u8"Главное меню");
     elements_.buttons.push_back(home);
@@ -346,7 +319,6 @@ void Menu::changeScale(float delta)
 std::shared_ptr<UI::Container> Menu::panel(const std::shared_ptr<UI::Screen>& page,
     NE::Size2 designSize)
 {
-    // Контейнер панели
     auto result = page->addContainer(UI::Placement::horizontalCenter(designSize));
     UI::Placement placement = result->placement();
     placement.vertical = UI::Align::Center;

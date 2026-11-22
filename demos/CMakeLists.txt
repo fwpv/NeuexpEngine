@@ -1,6 +1,6 @@
-# Демонстрационные приложения и игры на движке. Любая новая игра собирается так же:
-# add_executable, линковка neuexpengine плюс neuexpengine_entry_point, вывод в каталог
-# сборки и копия ресурсов из assets. Правила одинаковы для демо и будущих игр.
+# Демонстрационные приложения и игры на движке: add_executable, линковка neuexpengine
+# вместе с neuexpengine_entry_point и вывод в каталог сборки. Ресурсы из assets копирует
+# цель demo_assets, её подключают только те демо, которые читают эти ресурсы.
 add_executable(circle
     circle/game.cpp
     circle/entities.cpp

@@ -26,29 +26,23 @@ GameScene::GameScene(const UiResources& resources, std::function<void()> pauseRe
 
 void GameScene::build()
 {
-    // Экран сцены
     screen_ = std::make_shared<UI::Screen>();
 
-    // Панель HUD
     auto hud = screen_->addContainer(UI::Placement::horizontalCenter(NE::Size2{320, 170}));
     hud->layout() = UI::Layout{UI::Flow::Column, HudPadding, HudSpacing, UI::Align::Start};
     hud->setBackgroundVisible(true);
     hud->setPointerPolicy(UI::PointerPolicy::Block);
 
-    // Подпись «Время полёта»
     elements_.text.push_back(hud->addLabel(
         UI::Placement::horizontalCenter(NE::Size2{280, 24}), u8"ВРЕМЯ ПОЛЁТА"));
 
-    // Индикатор времени
     counter_ = hud->addNumericIndicator(
         UI::Placement::horizontalCenter(NE::Size2{280, 26}));
     elements_.text.push_back(counter_);
 
-    // Индикатор прогресса
     progress_ = hud->addProgressBar(
         UI::Placement::horizontalCenter(NE::Size2{280, 18}));
 
-    // Кнопка «Пауза»
     auto pauseButton = hud->addButton(
         UI::Placement::horizontalCenter(buttonSize(resources_, 180)), u8"Пауза");
     elements_.buttons.push_back(pauseButton);
@@ -57,7 +51,6 @@ void GameScene::build()
         pauseRequested_();
     }));
 
-    // Панель управления
     auto controls = screen_->addContainer(
         UI::Placement::horizontalCenter(NE::Size2{352, 60}));
     UI::Placement placement = controls->placement();
@@ -66,7 +59,6 @@ void GameScene::build()
     controls->setPlacement(placement);
     controls->layout() = UI::Layout{UI::Flow::Row, 8, 8, UI::Align::Center};
 
-    // Кнопка «Сброс»
     auto restart = controls->addButton(
         UI::Placement::horizontalCenter(buttonSize(resources_, 64)));
     elements_.buttons.push_back(restart);
@@ -76,11 +68,9 @@ void GameScene::build()
         elapsed_ = 0;
     }));
 
-    // Подпись «Сброс»
     elements_.text.push_back(controls->addLabel(
         UI::Placement::horizontalCenter(NE::Size2{110, 32}), u8"Сброс"));
 
-    // Флажок «Орбита»
     auto orbit = controls->addCheckbox(
         UI::Placement::horizontalCenter(NE::Size2{24, 32}));
     elements_.checkboxes.push_back(orbit);
@@ -90,7 +80,6 @@ void GameScene::build()
         showOrbit_ = event.checked;
     }));
 
-    // Подпись «Орбита»
     elements_.text.push_back(controls->addLabel(
         UI::Placement::horizontalCenter(NE::Size2{100, 32}), u8"Орбита"));
 
