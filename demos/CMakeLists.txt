@@ -102,6 +102,12 @@ endif()
 target_link_libraries(collision_demo PRIVATE neuexpengine_entry_point neuexpengine project_warnings)
 set_target_properties(collision_demo PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 
+# Инструмент проверки демо: гоняет зоны без окна и печатает, что обнаружено.
+add_executable(collision_checks ../utils/collision/check_demo.cpp collision/world.cpp)
+target_include_directories(collision_checks PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/collision")
+target_link_libraries(collision_checks PRIVATE neuexpengine project_warnings)
+set_target_properties(collision_checks PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
+
 add_executable(nehopio
     nehopio/main.cpp
     nehopio/game.cpp
