@@ -29,6 +29,9 @@ add_library(neuexpengine STATIC
     collision/query.cpp
     collision/collider.cpp
     collision/contacts.cpp
+    physics/manifold.cpp
+    physics/body.cpp
+    physics/world.cpp
     gui/events.cpp
     gui/element.cpp
     gui/context.cpp

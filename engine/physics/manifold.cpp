@@ -1,0 +1,281 @@
+#include "manifold.h"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <limits>
+
+namespace NeuexpEngine
+{
+namespace
+{
+// Параллельные грани после поворотов дают малую положительную щель; такие точки
+// остаются контактом покоя, чтобы стопки не проседали на каждом шаге.
+constexpr float ContactTolerance = 0.05F;
+
+Size2 halfSizeOf(Size2 size)
+{
+    return {size.width / 2, size.height / 2};
+}
+
+// Прямоугольник вдоль осей для расчётов представляется повёрнутым прямоугольником.
+Box boxOf(const CollisionShape& shape)
+{
+    if (shape.kind() == CollisionShape::Kind::Box) {
+        return shape.box();
+    }
+    const Rect rectangle = shape.rect();
+    return {rectangle.center(), rectangle.size, 0};
+}
+
+struct BoxGeometry
+{
+    Quad corners;
+    Vector2 axisX;
+    Vector2 axisY;
+    Size2 half;
+};
+
+BoxGeometry geometryOf(const Box& box)
+{
+    BoxGeometry geometry;
+    geometry.corners = box.corners();
+    geometry.axisX = rotated(Vector2{1, 0}, box.rotation);
+    geometry.axisY = rotated(Vector2{0, 1}, box.rotation);
+    geometry.half = halfSizeOf(box.size);
+    return geometry;
+}
+
+float radiusAlong(const BoxGeometry& geometry, Vector2 axis)
+{
+    return geometry.half.width * std::fabs(dot(axis, geometry.axisX))
+        + geometry.half.height * std::fabs(dot(axis, geometry.axisY));
+}
+
+// Наружная нормаль грани corners[first] -> corners[second]; обход вершин даёт её
+// поворотом ребра на -90 градусов.
+Vector2 faceNormal(Vector2 begin, Vector2 end)
+{
+    const Vector2 edge = end - begin;
+    return normalized(Vector2{edge.y, -edge.x});
+}
+
+// Ближайшая грань точки внутри прямоугольника: наружная нормаль и расстояние до неё.
+struct FaceHit
+{
+    Vector2 normal;
+    float distance = 0;
+};
+
+FaceHit nearestFace(Vector2 localPoint, Size2 half)
+{
+    FaceHit result{Vector2{-1, 0}, half.width + localPoint.x};
+    const float right = half.width - localPoint.x;
+    if (right < result.distance) {
+        result = {Vector2{1, 0}, right};
+    }
+    const float top = half.height + localPoint.y;
+    if (top < result.distance) {
+        result = {Vector2{0, -1}, top};
+    }
+    const float bottom = half.height - localPoint.y;
+    if (bottom < result.distance) {
+        result = {Vector2{0, 1}, bottom};
+    }
+    return result;
+}
+
+bool circles(const Circle& first, const Circle& second, ContactManifold& result)
+{
+    const Vector2 offset = second.center - first.center;
+    const float radii = first.radius + second.radius;
+    const float offsetSquared = lengthSquared(offset);
+    if (offsetSquared > radii * radii) {
+        return false;
+    }
+    result.normal = offsetSquared == 0 ? Vector2{1, 0} : normalized(offset);
+    result.depth = offsetSquared == 0 ? radii : radii - std::sqrt(offsetSquared);
+    const Vector2 surfaceFirst = first.center + result.normal * first.radius;
+    const Vector2 surfaceSecond = second.center - result.normal * second.radius;
+    result.points[0] = {(surfaceFirst + surfaceSecond) * 0.5F, result.depth};
+    result.count = 1;
+    return true;
+}
+
+bool circleBox(const Circle& circle, const Box& box, ContactManifold& result)
+{
+    const Vector2 localCenter = rotated(circle.center - box.center, -box.rotation);
+    const Size2 half = halfSizeOf(box.size);
+    const Vector2 closest{std::clamp(localCenter.x, -half.width, half.width),
+        std::clamp(localCenter.y, -half.height, half.height)};
+    const Vector2 offset = localCenter - closest;
+    const float offsetSquared = lengthSquared(offset);
+    if (offsetSquared > circle.radius * circle.radius) {
+        return false;
+    }
+    result.count = 1;
+    if (offsetSquared > 0) {
+        result.normal = rotated(normalized(-offset), box.rotation);
+        result.depth = circle.radius - std::sqrt(offsetSquared);
+        result.points[0] = {box.center + rotated(closest, box.rotation), result.depth};
+        return true;
+    }
+    // Центр круга внутри: выталкивает ближайшая грань.
+    const FaceHit face = nearestFace(localCenter, half);
+    result.normal = rotated(-face.normal, box.rotation);
+    result.depth = circle.radius + face.distance;
+    const Vector2 facePoint = localCenter + face.normal * face.distance;
+    result.points[0] = {box.center + rotated(facePoint, box.rotation), result.depth};
+    return true;
+}
+
+// Отсечение отрезка плоскостью: keepGreater оставляет точки normal * x >= offset.
+int clipSegment(const std::array<Vector2, 2>& points, Vector2 normal, float offset, bool keepGreater,
+    std::array<Vector2, 2>& result)
+{
+    const float first = dot(normal, points[0]) - offset;
+    const float second = dot(normal, points[1]) - offset;
+    const bool firstInside = keepGreater ? first >= 0 : first <= 0;
+    const bool secondInside = keepGreater ? second >= 0 : second <= 0;
+    int count = 0;
+    if (firstInside) {
+        result[static_cast<std::size_t>(count)] = points[0];
+        ++count;
+    }
+    if (firstInside != secondInside) {
+        const float fraction = first / (first - second);
+        result[static_cast<std::size_t>(count)] = points[0] + (points[1] - points[0]) * fraction;
+        ++count;
+    }
+    if (secondInside && count < 2) {
+        result[static_cast<std::size_t>(count)] = points[1];
+        ++count;
+    }
+    return count;
+}
+
+bool boxes(const Box& first, const Box& second, ContactManifold& result)
+{
+    const BoxGeometry a = geometryOf(first);
+    const BoxGeometry b = geometryOf(second);
+    const std::array<Vector2, 4> axes = {a.axisX, a.axisY, b.axisX, b.axisY};
+    float bestDepth = 0;
+    std::size_t bestAxis = 0;
+    for (std::size_t index = 0; index < axes.size(); ++index) {
+        const Vector2 axis = axes[index];
+        const float centers = dot(axis, second.center - first.center);
+        const float overlap = radiusAlong(a, axis) + radiusAlong(b, axis) - std::fabs(centers);
+        if (overlap < 0) {
+            return false;
+        }
+        if (index == 0 || overlap < bestDepth) {
+            bestDepth = overlap;
+            bestAxis = index;
+        }
+    }
+    const Vector2 axis = axes[bestAxis];
+    result.normal = dot(axis, second.center - first.center) >= 0 ? axis : -axis;
+    result.depth = bestDepth;
+
+    // Опорная грань принадлежит телу, ось которого дала наименьшее перекрытие.
+    const bool firstIsReference = bestAxis < 2;
+    const BoxGeometry& reference = firstIsReference ? a : b;
+    const BoxGeometry& incident = firstIsReference ? b : a;
+    const Vector2 referenceDirection = firstIsReference ? result.normal : -result.normal;
+
+    std::size_t referenceFace = 0;
+    float bestAlignment = -2;
+    for (std::size_t index = 0; index < 4; ++index) {
+        const Vector2 normal = faceNormal(reference.corners[index], reference.corners[(index + 1) % 4]);
+        const float alignment = dot(normal, referenceDirection);
+        if (alignment > bestAlignment) {
+            bestAlignment = alignment;
+            referenceFace = index;
+        }
+    }
+    const Vector2 referenceBegin = reference.corners[referenceFace];
+    const Vector2 referenceEnd = reference.corners[(referenceFace + 1) % 4];
+    const Vector2 referenceNormal = faceNormal(referenceBegin, referenceEnd);
+
+    std::size_t incidentFace = 0;
+    float bestOpposite = 2;
+    for (std::size_t index = 0; index < 4; ++index) {
+        const Vector2 normal = faceNormal(incident.corners[index], incident.corners[(index + 1) % 4]);
+        const float alignment = dot(normal, referenceDirection);
+        if (alignment < bestOpposite) {
+            bestOpposite = alignment;
+            incidentFace = index;
+        }
+    }
+    const std::array<Vector2, 2> incidentFacePoints = {
+        incident.corners[incidentFace], incident.corners[(incidentFace + 1) % 4]};
+
+    // Вершины грани второго тела отсекаются боковыми плоскостями опорной грани:
+    // начало отрезка опорной грани и его конец.
+    const Vector2 tangent = normalized(referenceEnd - referenceBegin);
+    std::array<Vector2, 2> clipped;
+    const int clippedCount = clipSegment(
+        incidentFacePoints, tangent, dot(tangent, referenceBegin), true, clipped);
+    std::array<Vector2, 2> facePoints = {};
+    int faceCount = 0;
+    const float endProjection = dot(tangent, referenceEnd);
+    for (int index = 0; index < clippedCount; ++index) {
+        const std::size_t position = static_cast<std::size_t>(index);
+        if (dot(tangent, clipped[position]) <= endProjection + ContactTolerance) {
+            facePoints[static_cast<std::size_t>(faceCount)] = clipped[position];
+            ++faceCount;
+        }
+    }
+
+    result.count = 0;
+    for (int index = 0; index < faceCount; ++index) {
+        const std::size_t position = static_cast<std::size_t>(index);
+        const float separation = dot(referenceNormal, facePoints[position] - referenceBegin);
+        if (separation > ContactTolerance) {
+            continue;
+        }
+        result.points[static_cast<std::size_t>(result.count)] = {
+            facePoints[position], std::max(0.0F, -separation)};
+        ++result.count;
+    }
+    if (result.count == 0) {
+        // Глубочайшая вершина второго тела: контакт углом или глубокое перекрытие,
+        // когда отсечённые точки не попали на опорную грань.
+        float bestSeparation = std::numeric_limits<float>::max();
+        Vector2 bestPoint = incidentFacePoints[0];
+        for (Vector2 corner : incident.corners) {
+            const float separation = dot(referenceNormal, corner - referenceBegin);
+            if (separation < bestSeparation) {
+                bestSeparation = separation;
+                bestPoint = corner;
+            }
+        }
+        result.points[0] = {bestPoint, std::max(0.0F, -bestSeparation)};
+        result.count = 1;
+    }
+    return true;
+}
+}
+
+bool detectContact(const CollisionShape& first, const CollisionShape& second, ContactManifold& result)
+{
+    const bool firstIsCircle = first.kind() == CollisionShape::Kind::Circle;
+    const bool secondIsCircle = second.kind() == CollisionShape::Kind::Circle;
+    if (firstIsCircle && secondIsCircle) {
+        return circles(first.circle(), second.circle(), result);
+    }
+    if (firstIsCircle) {
+        return circleBox(first.circle(), boxOf(second), result);
+    }
+    if (secondIsCircle) {
+        ContactManifold reversed;
+        if (!circleBox(second.circle(), boxOf(first), reversed)) {
+            return false;
+        }
+        result = reversed;
+        result.normal = -reversed.normal;
+        return true;
+    }
+    return boxes(boxOf(first), boxOf(second), result);
+}
+}
