@@ -43,8 +43,8 @@ endforeach()
 
 add_executable(physics_test physics_test.cpp)
 target_link_libraries(physics_test PRIVATE neuexpengine project_warnings)
-foreach(mode manifold properties integration forces collisions restitution friction stack rotation
-    sensors events deferred sync layers fast fixedstep)
+foreach(mode manifold properties integration forces collisions restitution friction stack tallstack
+    rotation sensors events deferred sync layers fast sleep fixedstep)
     add_test(NAME physics_${mode} COMMAND physics_test ${mode})
 endforeach()
 

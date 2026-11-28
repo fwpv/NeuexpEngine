@@ -290,6 +290,38 @@ void testRestitution()
     }
     require(rebound > -3, "Inelastic ball bounced.");
     require(std::fabs(dull.body(quietId)->velocity.y) < 1, "Inelastic ball did not settle.");
+
+    // Упругость не накачивает энергию: скорость отскока равна скорости удара,
+    // а шар с e=1 не поднимается выше начальной высоты за много отскоков.
+    PhysicsWorld elastic;
+    elastic.gravity = {0, 900};
+    addFloor(elastic, 0);
+    RigidBody bouncer = circleBody({0, -200}, 20);
+    bouncer.restitution = 1;
+    bouncer.friction = 0.1F;
+    const BodyId bouncerId = elastic.addBody(bouncer);
+    bool elasticLanded = false;
+    float elasticPeak = 0;
+    float impact = 0;
+    float reboundSpeed = 0;
+    float previousSpeed = 0;
+    for (int step = 0; step < 600; ++step) {
+        elastic.step(StepTime);
+        const RigidBody* body = elastic.body(bouncerId);
+        if (previousSpeed > 100 && body->velocity.y < 0 && reboundSpeed == 0) {
+            impact = previousSpeed;
+            reboundSpeed = -body->velocity.y;
+        }
+        previousSpeed = body->velocity.y;
+        elasticLanded = elasticLanded || body->position.y > -21;
+        if (elasticLanded) {
+            elasticPeak = std::min(elasticPeak, body->position.y);
+        }
+    }
+    require(impact > 0 && closeTo(reboundSpeed, impact, impact * 0.01F),
+        "Restitution must preserve the impact speed.");
+    require(elasticPeak > -208 && elasticPeak < -196,
+        "Elastic ball must neither gain nor lose height.");
 }
 
 void testFriction()
@@ -620,6 +652,148 @@ void testFastMovement()
     }
     require(deepest < 0.5F, "Fast impact must not push the body into the floor.");
     require(deepest > -1.0F, "Fast impact must reach the floor.");
+
+    // Быстрый шар не проходит сквозь динамический ящик.
+    PhysicsWorld dynamic;
+    dynamic.gravity = {};
+    RigidBody crate = boxBody({0, 0}, {40, 40});
+    crate.friction = 0;
+    const BodyId crateId = dynamic.addBody(crate);
+    RigidBody bulletBall = circleBody({-300, 0}, 10);
+    bulletBall.velocity = {4000, 0};
+    bulletBall.friction = 0;
+    const BodyId bulletBallId = dynamic.addBody(bulletBall);
+    for (int step = 0; step < 60; ++step) {
+        dynamic.step(StepTime);
+    }
+    require(dynamic.body(bulletBallId)->position.x < dynamic.body(crateId)->position.x - 20,
+        "Fast body must not pass through a dynamic body.");
+
+    // Тонкая динамическая стена тоже останавливает быстрый шар.
+    PhysicsWorld thinDynamic;
+    thinDynamic.gravity = {};
+    thinDynamic.addBody(boxBody({0, 0}, {8, 400}));
+    RigidBody pellet = circleBody({-300, 0}, 10);
+    pellet.velocity = {5000, 0};
+    const BodyId pelletId = thinDynamic.addBody(pellet);
+    for (int step = 0; step < 60; ++step) {
+        thinDynamic.step(StepTime);
+    }
+    require(thinDynamic.body(pelletId)->position.x
+            <= thinDynamic.body(1)->position.x - 4 - 10 + 1,
+        "Swept body tunneled through a thin dynamic wall.");
+
+    // Быстрое кинематическое тело толкает динамическое, а не проходит сквозь него.
+    PhysicsWorld carrier;
+    carrier.gravity = {};
+    const BodyId targetId = carrier.addBody(circleBody({0, 0}, 10));
+    RigidBody pusher = boxBody({-400, 0}, {40, 40}, BodyType::Kinematic);
+    pusher.velocity = {3000, 0};
+    carrier.addBody(pusher);
+    for (int step = 0; step < 30; ++step) {
+        carrier.step(StepTime);
+    }
+    require(carrier.body(targetId)->position.x > 20,
+        "Kinematic body must push instead of passing through a dynamic body.");
+}
+
+void testTallStack()
+{
+    PhysicsWorld world;
+    world.gravity = {0, 900};
+    RigidBody floorBody = boxBody({0, 20}, {500, 40}, BodyType::Static);
+    floorBody.friction = 1;
+    world.addBody(floorBody);
+    std::vector<BodyId> ids;
+    for (int level = 0; level < 8; ++level) {
+        RigidBody crate = boxBody({0, -15 - 30 * static_cast<float>(level)}, {30, 30});
+        crate.friction = 0.8F;
+        ids.push_back(world.addBody(crate));
+    }
+    for (int step = 0; step < 600; ++step) {
+        world.step(StepTime);
+    }
+    for (int level = 0; level < 8; ++level) {
+        const RigidBody* body = world.body(ids[static_cast<std::size_t>(level)]);
+        require(std::isfinite(body->position.x) && std::isfinite(body->position.y),
+            "Tall stack produced a non-finite state.");
+        require(std::fabs(body->position.x) < 1, "Tall stack must not drift sideways.");
+        require(closeTo(body->position.y, -15 - 30 * static_cast<float>(level), 5),
+            "Tall stack level " + std::to_string(level) + " sank or floated.");
+        require(std::fabs(body->angle) < 0.05F,
+            "Tall stack level " + std::to_string(level) + " tilted.");
+    }
+}
+
+void testSleeping()
+{
+    PhysicsWorld world;
+    world.gravity = {0, 900};
+    RigidBody floorBody = boxBody({0, 20}, {400, 40}, BodyType::Static);
+    floorBody.friction = 1;
+    world.addBody(floorBody);
+    std::vector<BodyId> ids;
+    for (int level = 0; level < 4; ++level) {
+        RigidBody crate = boxBody({0, -15 - 30 * static_cast<float>(level)}, {30, 30});
+        crate.friction = 0.8F;
+        ids.push_back(world.addBody(crate));
+    }
+    for (int step = 0; step < 120; ++step) {
+        world.step(StepTime);
+    }
+    for (const BodyId id : ids) {
+        require(world.body(id)->sleeping, "Settled stack must fall asleep.");
+        require(world.body(id)->velocity == Vector2{}, "Sleeping body must keep zero velocity.");
+    }
+    std::vector<Vector2> frozen;
+    for (const BodyId id : ids) {
+        frozen.push_back(world.body(id)->position);
+    }
+    for (int step = 0; step < 120; ++step) {
+        world.step(StepTime);
+    }
+    for (std::size_t index = 0; index < ids.size(); ++index) {
+        require(world.body(ids[index])->position == frozen[index], "Sleeping body must not move.");
+    }
+    // Удар будит спящую стопку.
+    RigidBody ball = circleBody({0, -160}, 12);
+    ball.velocity = {0, 600};
+    world.addBody(ball);
+    for (int step = 0; step < 30; ++step) {
+        world.step(StepTime);
+    }
+    bool woken = false;
+    for (const BodyId id : ids) {
+        woken = woken || !world.body(id)->sleeping;
+    }
+    require(woken, "Impact must wake the sleeping stack.");
+
+    // Тело на движущейся кинематической платформе не засыпает.
+    PhysicsWorld carrier;
+    carrier.gravity = {0, 900};
+    RigidBody platform = boxBody({0, 0}, {120, 20}, BodyType::Kinematic);
+    platform.velocity = {40, 0};
+    carrier.addBody(platform);
+    RigidBody carried = boxBody({0, -25}, {30, 30});
+    carried.friction = 0.9F;
+    const BodyId carriedId = carrier.addBody(carried);
+    for (int step = 0; step < 120; ++step) {
+        carrier.step(StepTime);
+    }
+    require(!carrier.body(carriedId)->sleeping, "Body on a moving platform must stay awake.");
+
+    // Внешняя сила не даёт телу уснуть.
+    PhysicsWorld pushed;
+    pushed.gravity = {0, 900};
+    addFloor(pushed, 0);
+    RigidBody pressed = boxBody({0, -20}, {30, 30});
+    pressed.friction = 0.5F;
+    const BodyId pressedId = pushed.addBody(pressed);
+    for (int step = 0; step < 120; ++step) {
+        pushed.body(pressedId)->applyForce({20000, 0});
+        pushed.step(StepTime);
+    }
+    require(!pushed.body(pressedId)->sleeping, "Applied force must keep the body awake.");
 }
 
 void testFixedStepReproducibility()
@@ -695,6 +869,10 @@ int main(int argumentCount, char** arguments)
             testLayers();
         } else if (group == "fast") {
             testFastMovement();
+        } else if (group == "tallstack") {
+            testTallStack();
+        } else if (group == "sleep") {
+            testSleeping();
         } else if (group == "fixedstep") {
             testFixedStepReproducibility();
         } else {
