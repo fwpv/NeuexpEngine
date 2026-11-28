@@ -78,8 +78,8 @@ ObjectId createBody(Scene& scene, const CollisionShape& shape, BodyType type, Ve
 
 ObjectId addZoneFloor(Scene& scene, const Rect& area, float friction = 0.6F, float bottomMargin = 55)
 {
-    const ObjectId id = createBody(scene, Box{{0, 0}, {area.size.width - 120, 20}, 0},
-        BodyType::Static, {area.center().x, floorTop(area, bottomMargin) + 10});
+    const ObjectId id = createBody(scene, Box{Vector2{0, 0}, Size2{area.size.width - 120, 20}, 0},
+        BodyType::Static, Vector2{area.center().x, floorTop(area, bottomMargin) + 10});
     scene.find(id)->collider().friction = friction;
     return id;
 }
@@ -87,9 +87,9 @@ ObjectId addZoneFloor(Scene& scene, const Rect& area, float friction = 0.6F, flo
 // Пиксельная область зоны: края расширяются наружу, чтобы содержимое у границы не пропадало.
 Viewport screenViewport(const Rect& worldArea, const CameraView& view)
 {
-    const Vector2 first = view.worldToScreen({worldArea.position.x, worldArea.position.y});
+    const Vector2 first = view.worldToScreen(Vector2{worldArea.position.x, worldArea.position.y});
     const Vector2 second = view.worldToScreen(
-        {worldArea.position.x + worldArea.size.width, worldArea.position.y + worldArea.size.height});
+        Vector2{worldArea.position.x + worldArea.size.width, worldArea.position.y + worldArea.size.height});
     const float left = std::floor(std::min(first.x, second.x));
     const float top = std::floor(std::min(first.y, second.y));
     const float right = std::ceil(std::max(first.x, second.x));
@@ -138,7 +138,7 @@ public:
         world().gravity = {0, 900};
         addZoneFloor(scene(), area);
         start = {zoneCenter(area).x, area.position.y + 80};
-        id = createBody(scene(), Circle{{0, 0}, 14}, BodyType::Dynamic, start);
+        id = createBody(scene(), Circle{Vector2{0, 0}, 14}, BodyType::Dynamic, start);
         GameObject& object = *scene().find(id);
         object.collider().restitution = restitution;
         object.collider().friction = 0.2F;
@@ -203,7 +203,7 @@ public:
         world().gravity = {0, 900};
         addZoneFloor(scene(), area, friction);
         start = {area.position.x + 55, floorTop(area) - 12};
-        id = createBody(scene(), Box{{0, 0}, {40, 24}, 0}, BodyType::Dynamic, start);
+        id = createBody(scene(), Box{Vector2{0, 0}, Size2{40, 24}, 0}, BodyType::Dynamic, start);
         GameObject& object = *scene().find(id);
         object.collider().friction = friction;
         object.body().velocity = {StartSpeed, 0};
@@ -259,15 +259,16 @@ public:
         , drop(dropHeight)
     {
         world().gravity = {0, 900};
-        const ObjectId floorId = createBody(scene(), Box{{0, 0}, {240, 20}, 0}, BodyType::Static,
-            {area.center().x, floorTop(area, bottomMargin) + 10});
+        const ObjectId floorId = createBody(scene(), Box{Vector2{0, 0}, Size2{240, 20}, 0}, BodyType::Static,
+            Vector2{area.center().x, floorTop(area, bottomMargin) + 10});
         scene().find(floorId)->collider().friction = 1;
         const float firstY = floorTop(area, bottomMargin) - boxSize / 2;
         for (int level = 0; level < count; ++level) {
             const float restY = firstY - boxSize * static_cast<float>(level);
             // До падения ящики разделены зазором: они падают по очереди и укладываются вплотную.
-            const ObjectId id = createBody(scene(), Box{{0, 0}, {boxSize, boxSize}, 0},
-                BodyType::Dynamic, {area.center().x, restY - drop - SpawnGap * static_cast<float>(level)});
+            const ObjectId id = createBody(scene(), Box{Vector2{0, 0}, Size2{boxSize, boxSize}, 0},
+                BodyType::Dynamic,
+                Vector2{area.center().x, restY - drop - SpawnGap * static_cast<float>(level)});
             scene().find(id)->collider().friction = 0.8F;
             ids.push_back(id);
             expected.push_back(restY);
@@ -347,12 +348,12 @@ public:
     {
         world().gravity = {0, 900};
         const Vector2 center = zoneCenter(area);
-        platformId = createBody(scene(), Box{{0, 0}, {150, 18}, 0}, BodyType::Kinematic,
-            {center.x, center.y + 10});
+        platformId = createBody(scene(), Box{Vector2{0, 0}, Size2{150, 18}, 0}, BodyType::Kinematic,
+            Vector2{center.x, center.y + 10});
         scene().find(platformId)->body().velocity = {Speed, 0};
         scene().find(platformId)->collider().friction = 0.9F;
         crateStart = {center.x, center.y - 14};
-        crateId = createBody(scene(), Box{{0, 0}, {30, 30}, 0}, BodyType::Dynamic, crateStart);
+        crateId = createBody(scene(), Box{Vector2{0, 0}, Size2{30, 30}, 0}, BodyType::Dynamic, crateStart);
         scene().find(crateId)->collider().friction = 0.9F;
     }
 
@@ -393,7 +394,7 @@ public:
     {
         world().gravity = {};
         start = zoneCenter(area);
-        id = createBody(scene(), Box{{0, 0}, {64, 20}, 0}, BodyType::Dynamic, start);
+        id = createBody(scene(), Box{Vector2{0, 0}, Size2{64, 20}, 0}, BodyType::Dynamic, start);
     }
 
     std::string state() const override
@@ -432,10 +433,10 @@ public:
     {
         world().gravity = {};
         const Vector2 center = zoneCenter(area);
-        sensorId = createBody(scene(), Circle{{0, 0}, 65}, BodyType::Static, center);
+        sensorId = createBody(scene(), Circle{Vector2{0, 0}, 65}, BodyType::Static, center);
         scene().find(sensorId)->collider().trigger = true;
         start = {area.position.x + 40, center.y};
-        ballId = createBody(scene(), Circle{{0, 0}, 16}, BodyType::Dynamic, start);
+        ballId = createBody(scene(), Circle{Vector2{0, 0}, 16}, BodyType::Dynamic, start);
         scene().find(ballId)->body().velocity = {Speed, 0};
     }
 
@@ -495,13 +496,13 @@ public:
     {
         world().gravity = {};
         const Vector2 center = zoneCenter(area);
-        sensorId = createBody(scene(), Circle{{0, 0}, 65}, BodyType::Static, center);
+        sensorId = createBody(scene(), Circle{Vector2{0, 0}, 65}, BodyType::Static, center);
         GameObject& sensor = *scene().find(sensorId);
         sensor.collider().trigger = true;
         sensor.collider().layer = 2U;
         sensor.collider().mask = 1U;
         start = {area.position.x + 40, center.y};
-        ballId = createBody(scene(), Circle{{0, 0}, 16}, BodyType::Dynamic, start);
+        ballId = createBody(scene(), Circle{Vector2{0, 0}, 16}, BodyType::Dynamic, start);
         scene().find(ballId)->body().velocity = {Speed, 0};
     }
 
@@ -574,7 +575,7 @@ public:
     {
         world().gravity = {};
         start = {area.position.x + 20, zoneCenter(area).y};
-        sensorId = createBody(scene(), Box{{0, 0}, {120, 60}, 0}, BodyType::Static, zoneCenter(area));
+        sensorId = createBody(scene(), Box{Vector2{0, 0}, Size2{120, 60}, 0}, BodyType::Static, zoneCenter(area));
         scene().find(sensorId)->collider().trigger = true;
         spawnBall();
     }
@@ -593,7 +594,7 @@ public:
 private:
     void spawnBall()
     {
-        ballId = createBody(scene(), Circle{{0, 0}, 14}, BodyType::Dynamic, start);
+        ballId = createBody(scene(), Circle{Vector2{0, 0}, 14}, BodyType::Dynamic, start);
         scene().find(ballId)->body().velocity = {Speed, 0};
     }
 
@@ -650,7 +651,7 @@ public:
         world().gravity = {0, 900};
         addZoneFloor(scene(), area);
         start = {zoneCenter(area).x, area.position.y + 80};
-        id = createBody(scene(), Circle{{0, 0}, 14}, BodyType::Dynamic, start);
+        id = createBody(scene(), Circle{Vector2{0, 0}, 14}, BodyType::Dynamic, start);
         scene().find(id)->collider().restitution = 0.85F;
     }
 
@@ -704,8 +705,8 @@ public:
     {
         world().gravity = {0, 900};
         addZoneFloor(scene(), area);
-        const ObjectId id = createBody(scene(), Box{{0, 0}, {60, 26}, 0}, BodyType::Dynamic,
-            {zoneCenter(area).x, floorTop(area) - 13});
+        const ObjectId id = createBody(scene(), Box{Vector2{0, 0}, Size2{60, 26}, 0}, BodyType::Dynamic,
+            Vector2{zoneCenter(area).x, floorTop(area) - 13});
         scene().find(id)->collider().friction = 0.8F;
     }
 
@@ -757,10 +758,10 @@ public:
     {
         world().gravity = {};
         const Vector2 center = zoneCenter(area);
-        const ObjectId sensorId = createBody(scene(), Circle{{0, 0}, 55}, BodyType::Static, center);
+        const ObjectId sensorId = createBody(scene(), Circle{Vector2{0, 0}, 55}, BodyType::Static, center);
         scene().find(sensorId)->collider().trigger = true;
         start = {area.position.x + 50, center.y};
-        ballId = createBody(scene(), Circle{{0, 0}, 14}, BodyType::Dynamic, start);
+        ballId = createBody(scene(), Circle{Vector2{0, 0}, 14}, BodyType::Dynamic, start);
         scene().find(ballId)->body().velocity = {Speed, 0};
     }
 
@@ -827,9 +828,9 @@ public:
     {
         world().gravity = {};
         center = zoneCenter(area);
-        wallId = createBody(scene(), Box{{0, 0}, {8, 240}, 0}, BodyType::Static, center);
+        wallId = createBody(scene(), Box{Vector2{0, 0}, Size2{8, 240}, 0}, BodyType::Static, center);
         start = {area.position.x + 40, center.y};
-        ballId = createBody(scene(), Circle{{0, 0}, 10}, BodyType::Dynamic, start);
+        ballId = createBody(scene(), Circle{Vector2{0, 0}, 10}, BodyType::Dynamic, start);
         scene().find(ballId)->body().velocity = {Speed, 0};
     }
 
@@ -886,11 +887,11 @@ public:
     {
         world().gravity = {};
         center = zoneCenter(area);
-        wallId = createBody(scene(), Box{{0, 0}, {8, 240}, 0}, BodyType::Dynamic, center);
+        wallId = createBody(scene(), Box{Vector2{0, 0}, Size2{8, 240}, 0}, BodyType::Dynamic, center);
         scene().find(wallId)->collider().friction = 0.2F;
         scene().find(wallId)->body().density = 40;
         start = {area.position.x + 40, center.y};
-        ballId = createBody(scene(), Circle{{0, 0}, 10}, BodyType::Dynamic, start);
+        ballId = createBody(scene(), Circle{Vector2{0, 0}, 10}, BodyType::Dynamic, start);
         scene().find(ballId)->body().velocity = {Speed, 0};
     }
 
@@ -957,10 +958,10 @@ public:
     {
         world().gravity = {};
         pusherStart = {area.position.x + 40, zoneCenter(area).y};
-        pusherId = createBody(scene(), Box{{0, 0}, {40, 40}, 0}, BodyType::Kinematic, pusherStart);
+        pusherId = createBody(scene(), Box{Vector2{0, 0}, Size2{40, 40}, 0}, BodyType::Kinematic, pusherStart);
         scene().find(pusherId)->body().velocity = {Speed, 0};
         targetStart = {area.position.x + 170, zoneCenter(area).y};
-        targetId = createBody(scene(), Circle{{0, 0}, 12}, BodyType::Dynamic, targetStart);
+        targetId = createBody(scene(), Circle{Vector2{0, 0}, 12}, BodyType::Dynamic, targetStart);
     }
 
     std::string state() const override
@@ -1003,7 +1004,7 @@ public:
         world().gravity = {0, 900};
         addZoneFloor(scene(), area);
         start = {zoneCenter(area).x, area.position.y + 80};
-        id = createBody(scene(), Circle{{0, 0}, 14}, BodyType::Dynamic, start);
+        id = createBody(scene(), Circle{Vector2{0, 0}, 14}, BodyType::Dynamic, start);
         scene().find(id)->collider().restitution = 1;
         scene().find(id)->collider().friction = 0.05F;
     }
@@ -1058,14 +1059,14 @@ public:
         : Zone(area, "SLEEPING ISLANDS")
     {
         world().gravity = {0, 900};
-        const ObjectId floorId = createBody(scene(), Box{{0, 0}, {240, 20}, 0}, BodyType::Static,
-            {area.center().x, floorTop(area) + 10});
+        const ObjectId floorId = createBody(scene(), Box{Vector2{0, 0}, Size2{240, 20}, 0}, BodyType::Static,
+            Vector2{area.center().x, floorTop(area) + 10});
         scene().find(floorId)->collider().friction = 1;
-        crateId = createBody(scene(), Box{{0, 0}, {CrateWidth, CrateHeight}, 0}, BodyType::Dynamic,
-            {area.center().x, floorTop(area) - CrateHeight / 2});
+        crateId = createBody(scene(), Box{Vector2{0, 0}, Size2{CrateWidth, CrateHeight}, 0}, BodyType::Dynamic,
+            Vector2{area.center().x, floorTop(area) - CrateHeight / 2});
         scene().find(crateId)->collider().friction = 0.8F;
         const Vector2 ballRest{area.center().x, floorTop(area) - CrateHeight - BallRadius};
-        ballId = createBody(scene(), Circle{{0, 0}, BallRadius}, BodyType::Dynamic, ballRest);
+        ballId = createBody(scene(), Circle{Vector2{0, 0}, BallRadius}, BodyType::Dynamic, ballRest);
         scene().find(ballId)->collider().friction = 0.4F;
         scene().find(ballId)->collider().restitution = 0.3F;
     }
@@ -1095,7 +1096,8 @@ private:
             launchClock += deltaTime;
             if (launchClock >= LaunchDelay) {
                 launchClock = 0;
-                placeObject(*scene().find(ballId), {area().center().x, area().position.y + 70});
+                placeObject(*scene().find(ballId),
+                    Vector2{area().center().x, area().position.y + 70});
             }
         } else {
             launchClock = 0;
