@@ -1,5 +1,5 @@
 #include "body.h"
-#include "core/transform.h"
+#include "scene/object.h"
 
 #include <cassert>
 #include <cmath>
@@ -8,150 +8,118 @@ namespace NeuexpEngine
 {
 namespace
 {
-Vector2 centerOf(const CollisionShape& shape)
-{
-    if (shape.kind() == CollisionShape::Kind::Circle) {
-        return shape.circle().center;
-    }
-    if (shape.kind() == CollisionShape::Kind::Rect) {
-        return shape.rect().center();
-    }
-    return shape.box().center;
-}
-
-Size2 sizeOf(const CollisionShape& shape)
-{
-    if (shape.kind() == CollisionShape::Kind::Rect) {
-        return shape.rect().size;
-    }
-    return shape.box().size;
-}
-}
-
-RigidBody::RigidBody(const CollisionShape& shape, BodyType type, Vector2 position, float angle)
-    : shape(shape)
-    , type(type)
-    , position(position)
-    , angle(angle)
-{
-}
-
-void RigidBody::setPose(Vector2 newPosition, float newAngle)
-{
-    assert(std::isfinite(newPosition.x) && std::isfinite(newPosition.y)
-        && std::isfinite(newAngle));
-    position = newPosition;
-    angle = newAngle;
-    sleeping = false;
-    sleepTime = 0;
-}
-
-CollisionShape RigidBody::worldShape() const
-{
-    // Масштаб и origin объекта сцены к телу не применяются: размер задаёт форма.
-    return transformedShape(shape, Transform2{position, angle, Vector2{1, 1}, Vector2{}});
-}
-
-Rect RigidBody::worldBounds() const
-{
-    return bounds(worldShape());
-}
-
-float RigidBody::area() const
+float areaOf(const CollisionShape& shape)
 {
     if (shape.kind() == CollisionShape::Kind::Circle) {
         const float radius = shape.circle().radius;
         return Pi * radius * radius;
     }
-    const Size2 size = sizeOf(shape);
+    const Size2 size = shape.kind() == CollisionShape::Kind::Rect ? shape.rect().size : shape.box().size;
     return size.width * size.height;
 }
 
-float RigidBody::mass() const
+// Обратные масса и инерция; у статического и кинематического тела они нулевые.
+float inverseMassOf(const GameObject& object)
 {
-    return density * area();
+    if (object.body().type != BodyType::Dynamic) {
+        return 0;
+    }
+    const float mass = bodyMass(object);
+    return mass > 0 ? 1 / mass : 0;
 }
 
-float RigidBody::inertia() const
+float inverseInertiaOf(const GameObject& object)
 {
-    const float bodyMass = mass();
-    const float centerDistance = lengthSquared(centerOf(shape));
+    if (object.body().type != BodyType::Dynamic) {
+        return 0;
+    }
+    const float inertia = bodyInertia(object);
+    return inertia > 0 ? 1 / inertia : 0;
+}
+}
+
+BodyMass bodyMassData(const CollisionShape& shape, Vector2 pivot, float density)
+{
+    const float mass = density * areaOf(shape);
+    float inertia = 0;
     if (shape.kind() == CollisionShape::Kind::Circle) {
         const float radius = shape.circle().radius;
-        return bodyMass * (radius * radius / 2 + centerDistance);
+        const float offset = lengthSquared(shape.circle().center - pivot);
+        inertia = mass * (radius * radius / 2 + offset);
+    } else {
+        const Size2 size = shape.kind() == CollisionShape::Kind::Rect ? shape.rect().size : shape.box().size;
+        const Vector2 center = shape.kind() == CollisionShape::Kind::Rect ? shape.rect().center() : shape.box().center;
+        const float offset = lengthSquared(center - pivot);
+        inertia = mass * ((size.width * size.width + size.height * size.height) / 12 + offset);
     }
-    const Size2 size = sizeOf(shape);
-    return bodyMass * ((size.width * size.width + size.height * size.height) / 12 + centerDistance);
+    return {mass, inertia};
 }
 
-float RigidBody::inverseMass() const
+float bodyMass(const GameObject& object)
 {
-    const float bodyMass = mass();
-    if (type != BodyType::Dynamic || bodyMass <= 0) {
-        return 0;
-    }
-    return 1 / bodyMass;
+    assert(object.physicsEnabled());
+    const CollisionShape shape = object.collider().worldShape(object.transform());
+    return bodyMassData(shape, object.transform().position, object.body().density).mass;
 }
 
-float RigidBody::inverseInertia() const
+float bodyInertia(const GameObject& object)
 {
-    const float bodyInertia = inertia();
-    if (type != BodyType::Dynamic || bodyInertia <= 0) {
-        return 0;
-    }
-    return 1 / bodyInertia;
+    assert(object.physicsEnabled());
+    const CollisionShape shape = object.collider().worldShape(object.transform());
+    return bodyMassData(shape, object.transform().position, object.body().density).inertia;
 }
 
-void RigidBody::applyImpulse(Vector2 impulse)
+void applyImpulse(GameObject& object, Vector2 impulse)
 {
-    const float inverse = inverseMass();
+    const float inverse = inverseMassOf(object);
     if (inverse == 0) {
         return;
     }
-    velocity += impulse * inverse;
+    object.body().velocity += impulse * inverse;
 }
 
-void RigidBody::applyImpulseAtPoint(Vector2 impulse, Vector2 worldPoint)
+void applyImpulseAtPoint(GameObject& object, Vector2 impulse, Vector2 worldPoint)
 {
-    const float inverse = inverseMass();
+    const float inverse = inverseMassOf(object);
     if (inverse == 0) {
         return;
     }
-    velocity += impulse * inverse;
-    angularVelocity += cross(worldPoint - position, impulse) * inverseInertia();
+    object.body().velocity += impulse * inverse;
+    object.body().angularVelocity += cross(worldPoint - object.transform().position, impulse)
+        * inverseInertiaOf(object);
 }
 
-void RigidBody::applyAngularImpulse(float impulse)
+void applyAngularImpulse(GameObject& object, float impulse)
 {
-    const float inverse = inverseInertia();
+    const float inverse = inverseInertiaOf(object);
     if (inverse == 0) {
         return;
     }
-    angularVelocity += impulse * inverse;
+    object.body().angularVelocity += impulse * inverse;
 }
 
-void RigidBody::applyForce(Vector2 value)
+void applyForce(GameObject& object, Vector2 force)
 {
-    if (type != BodyType::Dynamic) {
+    if (object.body().type != BodyType::Dynamic) {
         return;
     }
-    force += value;
+    object.body().force += force;
 }
 
-void RigidBody::applyForceAtPoint(Vector2 value, Vector2 worldPoint)
+void applyForceAtPoint(GameObject& object, Vector2 force, Vector2 worldPoint)
 {
-    if (type != BodyType::Dynamic) {
+    if (object.body().type != BodyType::Dynamic) {
         return;
     }
-    force += value;
-    torque += cross(worldPoint - position, value);
+    object.body().force += force;
+    object.body().torque += cross(worldPoint - object.transform().position, force);
 }
 
-void RigidBody::applyTorque(float value)
+void applyTorque(GameObject& object, float torque)
 {
-    if (type != BodyType::Dynamic) {
+    if (object.body().type != BodyType::Dynamic) {
         return;
     }
-    torque += value;
+    object.body().torque += torque;
 }
 }

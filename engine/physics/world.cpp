@@ -1,4 +1,6 @@
 #include "world.h"
+#include "body.h"
+#include "scene/object.h"
 #include "scene/scene.h"
 
 #include <algorithm>
@@ -33,54 +35,19 @@ constexpr float WarmStartTolerance = 4.0F;
 // решателя, а на экране такая глубина незаметна.
 constexpr float ImpactMargin = 0.2F;
 
-// Тело участвует в решателе и непрерывной проверке: динамическое и не спящее
-// или кинематическое в движении.
-bool bodyIsActive(const RigidBody& body)
-{
-    if (body.type == BodyType::Dynamic) {
-        return !body.sleeping;
-    }
-    if (body.type == BodyType::Kinematic) {
-        return body.velocity.x != 0 || body.velocity.y != 0 || body.angularVelocity != 0;
-    }
-    return false;
-}
-
-Vector2 velocityAt(Vector2 linearVelocity, float angularVelocity, Vector2 arm)
+Vector2 velocityAtPoint(Vector2 linearVelocity, float angularVelocity, Vector2 arm)
 {
     return linearVelocity + Vector2{-angularVelocity * arm.y, angularVelocity * arm.x};
 }
 
-Vector2 velocityAt(const RigidBody& body, Vector2 arm)
+// Мировая форма объекта в заданной позе: масштаб и origin берутся из трансформации,
+// меняются только положение и угол. Используется для поиска времени удара.
+CollisionShape shapeAtPose(const GameObject& object, Vector2 position, float angle)
 {
-    return velocityAt(body.velocity, body.angularVelocity, arm);
-}
-
-void applyPairImpulse(RigidBody& first, RigidBody& second, Vector2 impulse, Vector2 armFirst, Vector2 armSecond)
-{
-    first.velocity -= impulse * first.inverseMass();
-    first.angularVelocity -= cross(armFirst, impulse) * first.inverseInertia();
-    second.velocity += impulse * second.inverseMass();
-    second.angularVelocity += cross(armSecond, impulse) * second.inverseInertia();
-}
-
-// Ненулевая эффективная масса нормальной связи; ноль означает, что оба тела неподвижны
-// или кинематичны в этой паре.
-float normalMass(const RigidBody& first, const RigidBody& second, Vector2 armFirst, Vector2 armSecond, Vector2 normal)
-{
-    const float armFirstCross = cross(armFirst, normal);
-    const float armSecondCross = cross(armSecond, normal);
-    return first.inverseMass() + second.inverseMass() + first.inverseInertia() * armFirstCross * armFirstCross
-        + second.inverseInertia() * armSecondCross * armSecondCross;
-}
-
-// Мировая форма тела в заданной позе: используется для поиска времени удара.
-CollisionShape shapeAtPose(const RigidBody& body, Vector2 position, float angle)
-{
-    RigidBody probe = body;
-    probe.position = position;
-    probe.angle = angle;
-    return probe.worldShape();
+    Transform2 pose = object.transform();
+    pose.position = position;
+    pose.rotation = angle;
+    return object.collider().worldShape(pose);
 }
 
 // Охватывающий прямоугольник всего пути перемещения формы.
@@ -110,96 +77,50 @@ float minimalWidth(const CollisionShape& shape)
 }
 }
 
-BodyId PhysicsWorld::addBody(const RigidBody& description)
+bool PhysicsWorld::bodyIsActive(const Body& body)
 {
-    // Параметры физики должны быть конечными и в допустимых диапазонах: иначе
-    // отрицательное трение даёт NaN в пределе, а упругость вне [0, 1] накачивает энергию.
-    assert(std::isfinite(description.position.x) && std::isfinite(description.position.y)
-        && std::isfinite(description.angle));
-    assert(std::isfinite(description.velocity.x) && std::isfinite(description.velocity.y)
-        && std::isfinite(description.angularVelocity));
-    assert(std::isfinite(description.density) && description.density > 0);
-    assert(std::isfinite(description.friction) && description.friction >= 0 && description.friction <= 1);
-    assert(std::isfinite(description.restitution) && description.restitution >= 0
-        && description.restitution <= 1);
-    assert(std::isfinite(description.linearDamping) && description.linearDamping >= 0);
-    assert(std::isfinite(description.angularDamping) && description.angularDamping >= 0);
-    assert(std::isfinite(description.gravityScale));
-    Slot slot;
-    slot.id = nextBodyId;
-    ++nextBodyId;
-    slot.body = description;
-    slots.push_back(slot);
-    return slot.id;
-}
-
-void PhysicsWorld::destroyBody(BodyId id)
-{
-    for (Slot& slot : slots) {
-        if (slot.id == id) {
-            slot.removalPending = true;
-            return;
-        }
+    const PhysicsBody& state = body.object->body();
+    if (state.type == BodyType::Dynamic) {
+        return !state.sleeping;
     }
-}
-
-RigidBody* PhysicsWorld::body(BodyId id)
-{
-    return findBody(id);
-}
-
-const RigidBody* PhysicsWorld::body(BodyId id) const
-{
-    for (const Slot& slot : slots) {
-        if (slot.id == id && !slot.removalPending) {
-            return &slot.body;
-        }
+    if (state.type == BodyType::Kinematic) {
+        return state.velocity.x != 0 || state.velocity.y != 0 || state.angularVelocity != 0
+            || body.transformMoved;
     }
-    return nullptr;
+    return false;
 }
 
-RigidBody* PhysicsWorld::findBody(BodyId id)
+Vector2 PhysicsWorld::velocityAt(const Body& body, Vector2 arm)
 {
-    for (Slot& slot : slots) {
-        if (slot.id == id && !slot.removalPending) {
-            return &slot.body;
-        }
-    }
-    return nullptr;
+    return velocityAtPoint(body.object->body().velocity,
+        body.object->body().angularVelocity, arm);
 }
 
-std::vector<RigidBody*> PhysicsWorld::bodies()
+void PhysicsWorld::applyPairImpulse(Body& first, Body& second, Vector2 impulse, Vector2 armFirst,
+    Vector2 armSecond)
 {
-    std::vector<RigidBody*> result;
-    for (Slot& slot : slots) {
-        if (!slot.removalPending) {
-            result.push_back(&slot.body);
-        }
-    }
-    return result;
+    PhysicsBody& firstState = first.object->body();
+    firstState.velocity -= impulse * first.inverseMass;
+    firstState.angularVelocity -= cross(armFirst, impulse) * first.inverseInertia;
+    PhysicsBody& secondState = second.object->body();
+    secondState.velocity += impulse * second.inverseMass;
+    secondState.angularVelocity += cross(armSecond, impulse) * second.inverseInertia;
 }
 
-std::vector<const RigidBody*> PhysicsWorld::bodies() const
+void PhysicsWorld::clear()
 {
-    std::vector<const RigidBody*> result;
-    for (const Slot& slot : slots) {
-        if (!slot.removalPending) {
-            result.push_back(&slot.body);
-        }
-    }
-    return result;
+    contacts.clear();
+    active.clear();
+    warmContacts.clear();
+    previousPoses.clear();
+    events.clear();
 }
 
-std::size_t PhysicsWorld::bodyCount() const
-{
-    return static_cast<std::size_t>(
-        std::count_if(slots.begin(), slots.end(), [](const Slot& slot) { return !slot.removalPending; }));
-}
-
-void PhysicsWorld::step(float deltaTime)
+void PhysicsWorld::step(Scene& scene, float deltaTime)
 {
     assert(deltaTime > 0 && std::isfinite(deltaTime));
     events.clear();
+    collectBodies(scene);
     integrateVelocities(deltaTime);
     collectContacts();
     wakeBodies();
@@ -210,34 +131,56 @@ void PhysicsWorld::step(float deltaTime)
     storeWarmStart();
     resetForces();
     emitEvents();
-    eraseRemoved();
 }
 
-void PhysicsWorld::sync(Scene& scene) const
+void PhysicsWorld::collectBodies(Scene& scene)
 {
-    for (const Slot& slot : slots) {
-        if (slot.removalPending || slot.body.object == 0) {
+    bodies.clear();
+    for (GameObject* object : scene.findAll()) {
+        // Тело участвует, только если его включили явно и у объекта есть форма.
+        if (!object->physicsEnabled() || !object->collider().enabled) {
             continue;
         }
-        GameObject* object = scene.find(slot.body.object);
-        if (object == nullptr) {
-            continue;
+        Body entry;
+        entry.object = object;
+        entry.id = object->id();
+        const Transform2 pose = object->transform();
+        const auto previousPose = previousPoses.find(entry.id);
+        // Нет прошлой позы — новое тело: считаем его перенесённым, чтобы оно сразу
+        // участвовало в пробуждении, как и тело, чью позу изменили между шагами.
+        entry.transformMoved = object->body().type == BodyType::Kinematic
+            && (previousPose == previousPoses.end() || previousPose->second.position != pose.position
+                || previousPose->second.rotation != pose.rotation);
+        previousPoses[entry.id] = pose;
+        entry.shape = object->collider().worldShape(pose);
+        entry.bounds = bounds(entry.shape);
+        entry.previousVelocity = object->body().velocity;
+        entry.previousAngularVelocity = object->body().angularVelocity;
+        const BodyMass mass = bodyMassData(entry.shape, object->transform().position,
+            object->body().density);
+        entry.inverseMass = object->body().type == BodyType::Dynamic && mass.mass > 0
+            ? 1 / mass.mass : 0;
+        entry.inverseInertia = object->body().type == BodyType::Dynamic && mass.inertia > 0
+            ? 1 / mass.inertia : 0;
+        bodies.push_back(entry);
+    }
+    // Позы ушедших объектов забываются, чтобы карта не росла бесконечно.
+    for (auto pose = previousPoses.begin(); pose != previousPoses.end();) {
+        const bool alive = std::any_of(bodies.begin(), bodies.end(),
+            [&pose](const Body& entry) { return entry.id == pose->first; });
+        if (alive) {
+            ++pose;
+        } else {
+            pose = previousPoses.erase(pose);
         }
-        Transform2& transform = object->transform();
-        transform.position = slot.body.position;
-        transform.rotation = slot.body.angle;
     }
 }
 
 void PhysicsWorld::integrateVelocities(float deltaTime)
 {
-    for (Slot& slot : slots) {
-        if (slot.removalPending) {
-            continue;
-        }
-        RigidBody& body = slot.body;
-        slot.previousVelocity = body.velocity;
-        slot.previousAngularVelocity = body.angularVelocity;
+    for (Body& entry : bodies) {
+        GameObject& object = *entry.object;
+        PhysicsBody& body = object.body();
         if (body.type != BodyType::Dynamic) {
             continue;
         }
@@ -250,8 +193,8 @@ void PhysicsWorld::integrateVelocities(float deltaTime)
         if (body.sleeping) {
             continue;
         }
-        body.velocity += (gravity * body.gravityScale + body.force * body.inverseMass()) * deltaTime;
-        body.angularVelocity += body.torque * body.inverseInertia() * deltaTime;
+        body.velocity += (gravity * body.gravityScale + body.force * entry.inverseMass) * deltaTime;
+        body.angularVelocity += body.torque * entry.inverseInertia * deltaTime;
         body.velocity *= 1 / (1 + body.linearDamping * deltaTime);
         body.angularVelocity /= 1 + body.angularDamping * deltaTime;
     }
@@ -260,97 +203,89 @@ void PhysicsWorld::integrateVelocities(float deltaTime)
 void PhysicsWorld::collectContacts()
 {
     contacts.clear();
-    entries.clear();
-    for (Slot& slot : slots) {
-        if (slot.removalPending) {
-            continue;
-        }
-        BroadEntry entry;
-        entry.id = slot.id;
-        entry.body = &slot.body;
-        entry.shape = slot.body.worldShape();
-        entry.bounds = bounds(entry.shape);
-        entry.previousVelocity = slot.previousVelocity;
-        entry.previousAngularVelocity = slot.previousAngularVelocity;
-        entries.push_back(entry);
-    }
-    order.resize(entries.size());
+    order.resize(bodies.size());
     for (std::size_t index = 0; index < order.size(); ++index) {
         order[index] = index;
     }
     std::sort(order.begin(), order.end(), [this](std::size_t first, std::size_t second) {
-        const BroadEntry& firstEntry = entries[first];
-        const BroadEntry& secondEntry = entries[second];
+        const Body& firstEntry = bodies[first];
+        const Body& secondEntry = bodies[second];
         if (firstEntry.bounds.position.x != secondEntry.bounds.position.x) {
             return firstEntry.bounds.position.x < secondEntry.bounds.position.x;
         }
         return firstEntry.id < secondEntry.id;
     });
     for (std::size_t first = 0; first < order.size(); ++first) {
-        const BroadEntry& entry = entries[order[first]];
+        const Body& entry = bodies[order[first]];
         const float right = entry.bounds.position.x + entry.bounds.size.width;
         for (std::size_t second = first + 1; second < order.size(); ++second) {
-            const BroadEntry& other = entries[order[second]];
+            const Body& other = bodies[order[second]];
             if (other.bounds.position.x > right) {
                 break;
             }
             if (!intersects(entry.bounds, other.bounds)) {
                 continue;
             }
-            checkPair(entry, other);
+            checkPair(order[first], order[second]);
         }
     }
 }
 
-void PhysicsWorld::checkPair(const BroadEntry& a, const BroadEntry& b)
+void PhysicsWorld::checkPair(std::size_t firstIndex, std::size_t secondIndex)
 {
-    RigidBody& bodyA = *a.body;
-    RigidBody& bodyB = *b.body;
+    Body& entryA = bodies[firstIndex];
+    Body& entryB = bodies[secondIndex];
+    GameObject& objectA = *entryA.object;
+    GameObject& objectB = *entryB.object;
     // Неподвижные и кинематические тела не отталкиваются друг от друга.
-    if (bodyA.type != BodyType::Dynamic && bodyB.type != BodyType::Dynamic) {
+    if (objectA.body().type != BodyType::Dynamic && objectB.body().type != BodyType::Dynamic) {
         return;
     }
-    if (!layersMatch(bodyA.layer, bodyA.mask, bodyB.layer, bodyB.mask)) {
+    if (!layersMatch(objectA.collider().layer, objectA.collider().mask,
+            objectB.collider().layer, objectB.collider().mask)) {
         return;
     }
-    const bool firstIsSmaller = a.id < b.id;
-    const CollisionShape& firstShape = firstIsSmaller ? a.shape : b.shape;
-    const CollisionShape& secondShape = firstIsSmaller ? b.shape : a.shape;
+    const bool firstIsSmaller = entryA.id < entryB.id;
+    const CollisionShape& firstShape = firstIsSmaller ? entryA.shape : entryB.shape;
+    const CollisionShape& secondShape = firstIsSmaller ? entryB.shape : entryA.shape;
     ContactManifold manifold;
     if (!detectContact(firstShape, secondShape, manifold)) {
         return;
     }
     SolveContact contact;
-    contact.first = firstIsSmaller ? a.id : b.id;
-    contact.second = firstIsSmaller ? b.id : a.id;
-    contact.firstBody = firstIsSmaller ? &bodyA : &bodyB;
-    contact.secondBody = firstIsSmaller ? &bodyB : &bodyA;
+    contact.first = firstIsSmaller ? entryA.id : entryB.id;
+    contact.second = firstIsSmaller ? entryB.id : entryA.id;
+    contact.firstBody = firstIsSmaller ? &entryA : &entryB;
+    contact.secondBody = firstIsSmaller ? &entryB : &entryA;
     contact.manifold = manifold;
-    contact.sensor = bodyA.sensor || bodyB.sensor;
-    contact.friction = std::sqrt(bodyA.friction * bodyB.friction);
-    const float restitution = std::max(bodyA.restitution, bodyB.restitution);
+    contact.sensor = objectA.collider().trigger || objectB.collider().trigger;
+    contact.friction = std::sqrt(objectA.body().friction * objectB.body().friction);
+    const float restitution = std::max(objectA.body().restitution, objectB.body().restitution);
     contact.count = manifold.count;
-    const Vector2 firstPreviousVelocity = firstIsSmaller ? a.previousVelocity : b.previousVelocity;
-    const float firstPreviousAngular = firstIsSmaller ? a.previousAngularVelocity : b.previousAngularVelocity;
-    const Vector2 secondPreviousVelocity = firstIsSmaller ? b.previousVelocity : a.previousVelocity;
-    const float secondPreviousAngular = firstIsSmaller ? b.previousAngularVelocity : a.previousAngularVelocity;
+    const Vector2 firstPreviousVelocity = firstIsSmaller ? entryA.previousVelocity : entryB.previousVelocity;
+    const float firstPreviousAngular = firstIsSmaller
+        ? entryA.previousAngularVelocity : entryB.previousAngularVelocity;
+    const Vector2 secondPreviousVelocity = firstIsSmaller
+        ? entryB.previousVelocity : entryA.previousVelocity;
+    const float secondPreviousAngular = firstIsSmaller
+        ? entryB.previousAngularVelocity : entryA.previousAngularVelocity;
     for (int index = 0; index < manifold.count; ++index) {
         SolvePoint& point = contact.points[static_cast<std::size_t>(index)];
         const ContactPoint& contactPoint = manifold.points[static_cast<std::size_t>(index)];
         point.separation = -contactPoint.depth;
-        point.armFirst = contactPoint.position - contact.firstBody->position;
-        point.armSecond = contactPoint.position - contact.secondBody->position;
-        point.localFirst = rotated(point.armFirst, -contact.firstBody->angle);
-        point.localSecond = rotated(point.armSecond, -contact.secondBody->angle);
+        point.armFirst = contactPoint.position - contact.firstBody->object->transform().position;
+        point.armSecond = contactPoint.position - contact.secondBody->object->transform().position;
+        point.localFirst = rotated(point.armFirst, -contact.firstBody->object->transform().rotation);
+        point.localSecond = rotated(point.armSecond, -contact.secondBody->object->transform().rotation);
         point.id = contactPoint.id;
         // Упругость считается по скорости до шага: иначе к удару добавляется g * dT
         // и тело с упругостью 1 постепенно набирает высоту.
-        const Vector2 relative = velocityAt(secondPreviousVelocity, secondPreviousAngular, point.armSecond)
-            - velocityAt(firstPreviousVelocity, firstPreviousAngular, point.armFirst);
+        const Vector2 relative = velocityAtPoint(secondPreviousVelocity, secondPreviousAngular, point.armSecond)
+            - velocityAtPoint(firstPreviousVelocity, firstPreviousAngular, point.armFirst);
         const float normalVelocity = dot(relative, manifold.normal);
         point.targetVelocity = normalVelocity < -RestitutionThreshold ? -restitution * normalVelocity : 0;
     }
-    const std::pair<BodyId, BodyId> key{contact.first, contact.second};
+    const std::pair<ObjectId, ObjectId> key{contact.first, contact.second};
     if (active.find(key) != active.end()) {
         warmStartContact(contact);
     }
@@ -361,7 +296,7 @@ void PhysicsWorld::warmStartContact(SolveContact& contact)
 {
     // Импульсы прошлого шага переносятся только точкам с той же особенностью форм:
     // новая грань или вершина начинает с нуля, а устойчивый контакт сохраняет импульсы.
-    const std::pair<BodyId, BodyId> key{contact.first, contact.second};
+    const std::pair<ObjectId, ObjectId> key{contact.first, contact.second};
     const auto previous = warmContacts.find(key);
     if (previous == warmContacts.end()) {
         return;
@@ -415,13 +350,12 @@ void PhysicsWorld::applyWarmStart()
             || (!bodyIsActive(*contact.firstBody) && !bodyIsActive(*contact.secondBody))) {
             continue;
         }
-        RigidBody& first = *contact.firstBody;
-        RigidBody& second = *contact.secondBody;
         const Vector2 normal = contact.manifold.normal;
         const Vector2 tangent{-normal.y, normal.x};
         for (int index = 0; index < contact.count; ++index) {
             const SolvePoint& point = contact.points[static_cast<std::size_t>(index)];
-            applyPairImpulse(first, second, normal * point.normalImpulse + tangent * point.tangentImpulse,
+            applyPairImpulse(*contact.firstBody, *contact.secondBody,
+                normal * point.normalImpulse + tangent * point.tangentImpulse,
                 point.armFirst, point.armSecond);
         }
     }
@@ -462,14 +396,14 @@ void PhysicsWorld::wakeBodies()
             if (contact.sensor) {
                 continue;
             }
-            RigidBody& first = *contact.firstBody;
-            RigidBody& second = *contact.secondBody;
-            if (bodyIsActive(first) && second.sleeping) {
+            PhysicsBody& first = contact.firstBody->object->body();
+            PhysicsBody& second = contact.secondBody->object->body();
+            if (bodyIsActive(*contact.firstBody) && second.sleeping) {
                 second.sleeping = false;
                 second.sleepTime = 0;
                 changed = true;
             }
-            if (bodyIsActive(second) && first.sleeping) {
+            if (bodyIsActive(*contact.secondBody) && first.sleeping) {
                 first.sleeping = false;
                 first.sleepTime = 0;
                 changed = true;
@@ -480,11 +414,8 @@ void PhysicsWorld::wakeBodies()
 
 void PhysicsWorld::updateSleeping(float deltaTime)
 {
-    for (Slot& slot : slots) {
-        if (slot.removalPending) {
-            continue;
-        }
-        RigidBody& body = slot.body;
+    for (Body& entry : bodies) {
+        PhysicsBody& body = entry.object->body();
         if (body.type != BodyType::Dynamic || body.sleeping) {
             continue;
         }
@@ -500,7 +431,7 @@ void PhysicsWorld::updateSleeping(float deltaTime)
     }
     // Связные по контактам динамические тела образуют остров и засыпают целиком:
     // иначе одно проснувшееся тело будило бы соседей и стопка никогда не успокаивалась.
-    const std::size_t count = slots.size();
+    const std::size_t count = bodies.size();
     std::vector<std::size_t> parent(count);
     for (std::size_t index = 0; index < count; ++index) {
         parent[index] = index;
@@ -519,32 +450,22 @@ void PhysicsWorld::updateSleeping(float deltaTime)
             parent[secondRoot] = firstRoot;
         }
     };
-    const auto slotIndexOf = [this](const RigidBody* body) -> std::size_t {
-        for (std::size_t index = 0; index < slots.size(); ++index) {
-            if (&slots[index].body == body) {
-                return index;
-            }
-        }
-        return slots.size();
-    };
     for (const auto& entry : contacts) {
         const SolveContact& contact = entry.second;
-        if (contact.sensor || contact.firstBody->type != BodyType::Dynamic
-            || contact.secondBody->type != BodyType::Dynamic) {
+        if (contact.sensor || contact.firstBody->object->body().type != BodyType::Dynamic
+            || contact.secondBody->object->body().type != BodyType::Dynamic) {
             continue;
         }
-        const std::size_t firstIndex = slotIndexOf(contact.firstBody);
-        const std::size_t secondIndex = slotIndexOf(contact.secondBody);
+        const std::size_t firstIndex = static_cast<std::size_t>(contact.firstBody - bodies.data());
+        const std::size_t secondIndex = static_cast<std::size_t>(contact.secondBody - bodies.data());
         if (firstIndex < count && secondIndex < count) {
             unite(firstIndex, secondIndex);
         }
     }
     std::vector<bool> ready(count, false);
     for (std::size_t index = 0; index < count; ++index) {
-        const Slot& slot = slots[index];
-        const RigidBody& body = slot.body;
-        if (slot.removalPending || body.type != BodyType::Dynamic || body.sleeping
-            || body.sleepTime < SleepTime) {
+        const PhysicsBody& body = bodies[index].object->body();
+        if (body.type != BodyType::Dynamic || body.sleeping || body.sleepTime < SleepTime) {
             continue;
         }
         ready[index] = true;
@@ -559,12 +480,8 @@ void PhysicsWorld::updateSleeping(float deltaTime)
             if (root(other) != root(index)) {
                 continue;
             }
-            const Slot& slot = slots[other];
-            const RigidBody& body = slot.body;
-            if (slot.removalPending || body.type != BodyType::Dynamic) {
-                continue;
-            }
-            if (body.sleeping) {
+            const PhysicsBody& body = bodies[other].object->body();
+            if (body.type != BodyType::Dynamic || body.sleeping) {
                 continue;
             }
             if (!ready[other]) {
@@ -579,8 +496,8 @@ void PhysicsWorld::updateSleeping(float deltaTime)
             if (root(other) != root(index)) {
                 continue;
             }
-            RigidBody& body = slots[other].body;
-            if (slots[other].removalPending || body.type != BodyType::Dynamic || body.sleeping) {
+            PhysicsBody& body = bodies[other].object->body();
+            if (body.type != BodyType::Dynamic || body.sleeping) {
                 continue;
             }
             body.sleeping = true;
@@ -597,12 +514,12 @@ bool PhysicsWorld::solveNormalBlock(SolveContact& contact)
     // учитывается взаимное влияние точек, и стопки тел не расходятся.
     SolvePoint& firstPoint = contact.points[0];
     SolvePoint& secondPoint = contact.points[1];
-    RigidBody& first = *contact.firstBody;
-    RigidBody& second = *contact.secondBody;
+    Body& first = *contact.firstBody;
+    Body& second = *contact.secondBody;
     const Vector2 normal = contact.manifold.normal;
-    const float inverseMass = first.inverseMass() + second.inverseMass();
-    const float inverseInertiaFirst = first.inverseInertia();
-    const float inverseInertiaSecond = second.inverseInertia();
+    const float inverseMass = first.inverseMass + second.inverseMass;
+    const float inverseInertiaFirst = first.inverseInertia;
+    const float inverseInertiaSecond = second.inverseInertia;
     const float firstArmFirst = cross(firstPoint.armFirst, normal);
     const float firstArmSecond = cross(firstPoint.armSecond, normal);
     const float secondArmFirst = cross(secondPoint.armFirst, normal);
@@ -685,25 +602,28 @@ void PhysicsWorld::solveVelocities()
     for (int iteration = 0; iteration < VelocityIterations; ++iteration) {
         for (auto& entry : contacts) {
             SolveContact& contact = entry.second;
-            if (contact.sensor || (!bodyIsActive(*contact.firstBody) && !bodyIsActive(*contact.secondBody))) {
+            if (contact.sensor
+                || (!bodyIsActive(*contact.firstBody) && !bodyIsActive(*contact.secondBody))) {
                 continue;
             }
-            RigidBody& first = *contact.firstBody;
-            RigidBody& second = *contact.secondBody;
+            Body& first = *contact.firstBody;
+            Body& second = *contact.secondBody;
             const Vector2 normal = contact.manifold.normal;
             if (!(contact.count == 2 && solveNormalBlock(contact))) {
                 for (int index = 0; index < contact.count; ++index) {
                     SolvePoint& point = contact.points[static_cast<std::size_t>(index)];
                     const float normalVelocity = dot(
                         velocityAt(second, point.armSecond) - velocityAt(first, point.armFirst), normal);
-                    const float normalEffectiveMass = normalMass(first, second, point.armFirst, point.armSecond, normal);
+                    const float normalEffectiveMass = first.inverseMass + second.inverseMass
+                        + first.inverseInertia * cross(point.armFirst, normal) * cross(point.armFirst, normal)
+                        + second.inverseInertia * cross(point.armSecond, normal) * cross(point.armSecond, normal);
                     if (normalEffectiveMass > 0) {
                         const float lambda = (point.targetVelocity - normalVelocity) / normalEffectiveMass;
                         const float previous = point.normalImpulse;
                         const float next = std::max(previous + lambda, 0.0F);
                         point.normalImpulse = next;
-                        applyPairImpulse(
-                            first, second, normal * (next - previous), point.armFirst, point.armSecond);
+                        applyPairImpulse(first, second, normal * (next - previous),
+                            point.armFirst, point.armSecond);
                     }
                 }
             }
@@ -714,15 +634,17 @@ void PhysicsWorld::solveVelocities()
                 SolvePoint& point = contact.points[static_cast<std::size_t>(index)];
                 const float tangentVelocity = dot(
                     velocityAt(second, point.armSecond) - velocityAt(first, point.armFirst), tangent);
-                const float tangentEffectiveMass = normalMass(first, second, point.armFirst, point.armSecond, tangent);
+                const float tangentEffectiveMass = first.inverseMass + second.inverseMass
+                    + first.inverseInertia * cross(point.armFirst, tangent) * cross(point.armFirst, tangent)
+                    + second.inverseInertia * cross(point.armSecond, tangent) * cross(point.armSecond, tangent);
                 if (tangentEffectiveMass > 0) {
                     const float limit = contact.friction * point.normalImpulse;
                     const float previous = point.tangentImpulse;
                     const float next = std::clamp(
                         previous - tangentVelocity / tangentEffectiveMass, -limit, limit);
                     point.tangentImpulse = next;
-                    applyPairImpulse(
-                        first, second, tangent * (next - previous), point.armFirst, point.armSecond);
+                    applyPairImpulse(first, second, tangent * (next - previous),
+                        point.armFirst, point.armSecond);
                 }
             }
         }
@@ -731,7 +653,7 @@ void PhysicsWorld::solveVelocities()
 
 void PhysicsWorld::integratePositions(float deltaTime)
 {
-    const std::size_t count = slots.size();
+    const std::size_t count = bodies.size();
     std::vector<Vector2> startPosition(count);
     std::vector<float> startAngle(count);
     std::vector<Vector2> endPosition(count);
@@ -740,21 +662,20 @@ void PhysicsWorld::integratePositions(float deltaTime)
     std::vector<CollisionShape> startShape(count);
     std::vector<Rect> path(count);
     for (std::size_t index = 0; index < count; ++index) {
-        Slot& slot = slots[index];
-        startPosition[index] = slot.body.position;
-        startAngle[index] = slot.body.angle;
-        endPosition[index] = slot.body.position;
-        endAngle[index] = slot.body.angle;
-        if (slot.removalPending) {
-            continue;
-        }
-        if (slot.body.type != BodyType::Static) {
-            endPosition[index] = slot.body.position + slot.body.velocity * deltaTime;
-            endAngle[index] = slot.body.angle + slot.body.angularVelocity * deltaTime;
+        Body& entry = bodies[index];
+        GameObject& object = *entry.object;
+        startPosition[index] = object.transform().position;
+        startAngle[index] = object.transform().rotation;
+        endPosition[index] = startPosition[index];
+        endAngle[index] = startAngle[index];
+        if (object.body().type != BodyType::Static && !object.body().sleeping) {
+            endPosition[index] = startPosition[index] + object.body().velocity * deltaTime;
+            endAngle[index] = startAngle[index] + object.body().angularVelocity * deltaTime;
         }
         // Формы и пути нужны и у статических тел: они цели непрерывной проверки.
-        startShape[index] = shapeAtPose(slot.body, startPosition[index], startAngle[index]);
-        path[index] = pathBounds(startShape[index], shapeAtPose(slot.body, endPosition[index], endAngle[index]));
+        startShape[index] = shapeAtPose(object, startPosition[index], startAngle[index]);
+        path[index] = pathBounds(startShape[index],
+            shapeAtPose(object, endPosition[index], endAngle[index]));
     }
     // Поза тела на долю шага: остановленное в точке удара тело стоит на месте.
     const auto poseAt = [&](std::size_t index, float fraction) -> std::pair<Vector2, float> {
@@ -773,8 +694,8 @@ void PhysicsWorld::integratePositions(float deltaTime)
         }
         const float travel = length((endPosition[first] - startPosition[first])
             - (endPosition[second] - startPosition[second]));
-        const float extent = std::max(2.0F, 0.5F * (minimalWidth(slots[first].body.shape)
-            + minimalWidth(slots[second].body.shape)));
+        const float extent = std::max(2.0F, 0.5F * (minimalWidth(bodies[first].shape)
+            + minimalWidth(bodies[second].shape)));
         const int samples = static_cast<int>(std::min(96.0F, std::max(1.0F, std::ceil(travel / extent))));
         float previous = 0;
         float found = 1;
@@ -783,8 +704,8 @@ void PhysicsWorld::integratePositions(float deltaTime)
             const float stepFraction = static_cast<float>(step) / static_cast<float>(samples);
             const auto firstPose = poseAt(first, stepFraction);
             const auto secondPose = poseAt(second, stepFraction);
-            if (detectContact(shapeAtPose(slots[first].body, firstPose.first, firstPose.second),
-                    shapeAtPose(slots[second].body, secondPose.first, secondPose.second), manifold)) {
+            if (detectContact(shapeAtPose(*bodies[first].object, firstPose.first, firstPose.second),
+                    shapeAtPose(*bodies[second].object, secondPose.first, secondPose.second), manifold)) {
                 previous = static_cast<float>(step - 1) / static_cast<float>(samples);
                 found = stepFraction;
                 hit = true;
@@ -800,8 +721,8 @@ void PhysicsWorld::integratePositions(float deltaTime)
             const float middle = (low + high) / 2;
             const auto firstPose = poseAt(first, middle);
             const auto secondPose = poseAt(second, middle);
-            if (detectContact(shapeAtPose(slots[first].body, firstPose.first, firstPose.second),
-                    shapeAtPose(slots[second].body, secondPose.first, secondPose.second), manifold)) {
+            if (detectContact(shapeAtPose(*bodies[first].object, firstPose.first, firstPose.second),
+                    shapeAtPose(*bodies[second].object, secondPose.first, secondPose.second), manifold)) {
                 high = middle;
             } else {
                 low = middle;
@@ -810,8 +731,8 @@ void PhysicsWorld::integratePositions(float deltaTime)
         fraction = high;
         const auto firstPose = poseAt(first, high);
         const auto secondPose = poseAt(second, high);
-        if (detectContact(shapeAtPose(slots[first].body, firstPose.first, firstPose.second),
-                shapeAtPose(slots[second].body, secondPose.first, secondPose.second), manifold)) {
+        if (detectContact(shapeAtPose(*bodies[first].object, firstPose.first, firstPose.second),
+                shapeAtPose(*bodies[second].object, secondPose.first, secondPose.second), manifold)) {
             normal = -manifold.normal;
         } else {
             normal = Vector2{1, 0};
@@ -827,20 +748,21 @@ void PhysicsWorld::integratePositions(float deltaTime)
         std::size_t bestSecond = 0;
         Vector2 bestNormal;
         for (std::size_t first = 0; first < count; ++first) {
-            RigidBody& firstBody = slots[first].body;
-            if (firstBody.type != BodyType::Dynamic || firstBody.sleeping || stopped[first]
-                || firstBody.sensor || slots[first].removalPending) {
+            GameObject& firstObject = *bodies[first].object;
+            if (firstObject.body().type != BodyType::Dynamic || firstObject.body().sleeping
+                || stopped[first] || firstObject.collider().trigger) {
                 continue;
             }
             for (std::size_t second = 0; second < count; ++second) {
                 if (second == first) {
                     continue;
                 }
-                const RigidBody& secondBody = slots[second].body;
-                if (secondBody.sensor || slots[second].removalPending) {
+                GameObject& secondObject = *bodies[second].object;
+                if (secondObject.collider().trigger) {
                     continue;
                 }
-                if (!layersMatch(firstBody.layer, firstBody.mask, secondBody.layer, secondBody.mask)) {
+                if (!layersMatch(firstObject.collider().layer, firstObject.collider().mask,
+                        secondObject.collider().layer, secondObject.collider().mask)) {
                     continue;
                 }
                 const std::pair<std::size_t, std::size_t> key{
@@ -866,7 +788,8 @@ void PhysicsWorld::integratePositions(float deltaTime)
             std::max(bestFirst, bestSecond)});
         // Небольшая маржа внутрь препятствия: контакт получается устойчивым решателю,
         // а на экране такая глубина незаметна.
-        const Vector2 relative = slots[bestFirst].body.velocity - slots[bestSecond].body.velocity;
+        const Vector2 relative = bodies[bestFirst].object->body().velocity
+            - bodies[bestSecond].object->body().velocity;
         const float approach = -dot(relative, bestNormal);
         float fraction = bestFraction;
         if (approach > 1) {
@@ -877,8 +800,9 @@ void PhysicsWorld::integratePositions(float deltaTime)
                 continue;
             }
             // Задетое спящее тело просыпается: удар его разбудил.
-            slots[index].body.sleeping = false;
-            slots[index].body.sleepTime = 0;
+            PhysicsBody& body = bodies[index].object->body();
+            body.sleeping = false;
+            body.sleepTime = 0;
             const auto pose = poseAt(index, fraction);
             startPosition[index] = pose.first;
             startAngle[index] = pose.second;
@@ -888,12 +812,12 @@ void PhysicsWorld::integratePositions(float deltaTime)
         }
     }
     for (std::size_t index = 0; index < count; ++index) {
-        if (slots[index].removalPending || slots[index].body.type == BodyType::Static
-            || slots[index].body.sleeping) {
+        GameObject& object = *bodies[index].object;
+        if (object.body().type == BodyType::Static || object.body().sleeping) {
             continue;
         }
-        slots[index].body.position = endPosition[index];
-        slots[index].body.angle = endAngle[index];
+        object.transform().position = endPosition[index];
+        object.transform().rotation = endAngle[index];
     }
 }
 
@@ -903,18 +827,22 @@ void PhysicsWorld::solvePositions()
         bool corrected = false;
         for (auto& entry : contacts) {
             SolveContact& contact = entry.second;
-            if (contact.sensor || (!bodyIsActive(*contact.firstBody) && !bodyIsActive(*contact.secondBody))) {
+            if (contact.sensor
+                || (!bodyIsActive(*contact.firstBody) && !bodyIsActive(*contact.secondBody))) {
                 continue;
             }
-            RigidBody& first = *contact.firstBody;
-            RigidBody& second = *contact.secondBody;
-            const float firstInverseInertia = first.inverseInertia();
-            const float secondInverseInertia = second.inverseInertia();
+            Body& first = *contact.firstBody;
+            Body& second = *contact.secondBody;
+            GameObject& firstObject = *first.object;
+            GameObject& secondObject = *second.object;
+            const Vector2 normal = contact.manifold.normal;
             for (int index = 0; index < contact.count; ++index) {
                 const SolvePoint& point = contact.points[static_cast<std::size_t>(index)];
-                const Vector2 armFirst = rotated(point.localFirst, first.angle);
-                const Vector2 armSecond = rotated(point.localSecond, second.angle);
-                const float effectiveMass = normalMass(first, second, armFirst, armSecond, contact.manifold.normal);
+                const Vector2 armFirst = rotated(point.localFirst, firstObject.transform().rotation);
+                const Vector2 armSecond = rotated(point.localSecond, secondObject.transform().rotation);
+                const float effectiveMass = first.inverseMass + second.inverseMass
+                    + first.inverseInertia * cross(armFirst, normal) * cross(armFirst, normal)
+                    + second.inverseInertia * cross(armSecond, normal) * cross(armSecond, normal);
                 if (effectiveMass <= 0) {
                     continue;
                 }
@@ -923,11 +851,11 @@ void PhysicsWorld::solvePositions()
                 if (impulse <= 0) {
                     continue;
                 }
-                const Vector2 push = contact.manifold.normal * impulse;
-                first.position -= push * first.inverseMass();
-                first.angle -= cross(armFirst, push) * firstInverseInertia;
-                second.position += push * second.inverseMass();
-                second.angle += cross(armSecond, push) * secondInverseInertia;
+                const Vector2 push = normal * impulse;
+                firstObject.transform().position -= push * first.inverseMass;
+                firstObject.transform().rotation -= cross(armFirst, push) * first.inverseInertia;
+                secondObject.transform().position += push * second.inverseMass;
+                secondObject.transform().rotation += cross(armSecond, push) * second.inverseInertia;
                 corrected = true;
             }
         }
@@ -939,15 +867,15 @@ void PhysicsWorld::solvePositions()
 
 void PhysicsWorld::resetForces()
 {
-    for (Slot& slot : slots) {
-        slot.body.force = {};
-        slot.body.torque = 0;
+    for (Body& entry : bodies) {
+        entry.object->body().force = {};
+        entry.object->body().torque = 0;
     }
 }
 
 void PhysicsWorld::emitEvents()
 {
-    std::map<std::pair<BodyId, BodyId>, PhysicsContact> current;
+    std::map<std::pair<ObjectId, ObjectId>, PhysicsContact> current;
     for (const auto& entry : contacts) {
         const PhysicsContact contact = makeContact(entry.second);
         const ContactPhase phase = active.find(entry.first) == active.end()
@@ -962,13 +890,6 @@ void PhysicsWorld::emitEvents()
         }
     }
     active.swap(current);
-}
-
-void PhysicsWorld::eraseRemoved()
-{
-    const auto removed = std::remove_if(
-        slots.begin(), slots.end(), [](const Slot& slot) { return slot.removalPending; });
-    slots.erase(removed, slots.end());
 }
 
 PhysicsContact PhysicsWorld::makeContact(const SolveContact& contact) const

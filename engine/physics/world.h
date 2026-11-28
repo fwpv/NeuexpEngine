@@ -1,9 +1,12 @@
 #pragma once
 
-#include "body.h"
 #include "collision/contact_phase.h"
 #include "collision/manifold.h"
+#include "collision/shape.h"
+#include "core/transform.h"
+#include "core/geometry.h"
 #include "core/math2d.h"
+#include "scene/object_id.h"
 
 #include <array>
 #include <cstddef>
@@ -14,17 +17,15 @@
 
 namespace NeuexpEngine
 {
+class GameObject;
 class Scene;
-
-// Идентификатор тела внутри мира; не переиспользуется.
-using BodyId = std::uint64_t;
 
 // Контакт тел с данными на момент обнаружения, до разрешения, и импульсами решателя
 // после него. first < second, normal направлена от first ко second; точки мировые.
 struct PhysicsContact
 {
-    BodyId first = 0;
-    BodyId second = 0;
+    ObjectId first = 0;
+    ObjectId second = 0;
     Vector2 normal = {1, 0};
     float depth = 0;
     std::array<Vector2, 2> points = {};
@@ -41,16 +42,18 @@ struct PhysicsContactEvent
     PhysicsContact contact;
 };
 
-// Мир тел с гравитацией, силами, трением и упругостью. Один шаг step() — постоянная
-// длительность симуляции: при одинаковом dT результат воспроизводим. Пары тел
-// отсекаются охватывающими прямоугольниками, слоями и масками; пары без динамического
-// тела не проверяются, поэтому сенсор на движущемся теле не видит статические тела.
-// Контакты разрешаются последовательными импульсами: тёплый старт по особенностям форм,
-// двухточечные контакты решаются блочно. Упругость считается по скорости до шага,
-// поэтому отскок не накачивает энергию. Динамические тела в покое засыпают целыми
-// островами и просыпаются от удара, силы или заданной скорости. Позиции интегрируются
-// с непрерывной проверкой удара для всех пар тел. Удаление отложено и безопасно
-// вместе с обработкой событий. Параметры тел проверяются assert в отладочной сборке.
+// Физический мир сцены: тела — объекты с включённым PhysicsBody и включённым
+// коллайдером. Форму, слои, маску и сенсор даёт коллайдер, позу — трансформация
+// объекта: шаг читает её и записывает обратно, поэтому геометрия объектов после
+// шага актуальна для отрисовки и запросов. Один шаг step() — постоянная длительность
+// симуляции: при одинаковом dT результат воспроизводим. Пары тел отсекаются
+// охватывающими прямоугольниками, слоями и масками; пары без динамического тела
+// не проверяются. Контакты разрешаются последовательными импульсами: тёплый старт
+// по особенностям форм, двухточечные контакты решаются блочно. Упругость считается
+// по скорости до шага, поэтому отскок не накачивает энергию. Динамические тела в покое
+// засыпают целыми островами и просыпаются от удара, силы или заданной скорости.
+// Позиции интегрируются с непрерывной проверкой удара для всех пар тел. Параметры тел
+// проверяются assert в отладочной сборке.
 class PhysicsWorld
 {
 public:
@@ -58,49 +61,34 @@ public:
     PhysicsWorld(const PhysicsWorld&) = delete;
     PhysicsWorld& operator=(const PhysicsWorld&) = delete;
 
-    // Тело копируется в мир и получает идентификатор. Позиция, скорость, плотность,
-    // трение и упругость проверяются assert при добавлении; слои и маска — свободные
-    // битовые поля, а неизвестное значение вида тела действует как неподвижное.
-    BodyId addBody(const RigidBody& description);
-    // Тело сразу перестаёт участвовать в шагах и запросах мира, его контакты
-    // завершаются на ближайшем step(), а память освобождается в конце этого шага.
-    // Неизвестный и уже удалённый идентификатор игнорируются.
-    void destroyBody(BodyId id);
-    RigidBody* body(BodyId id);
-    const RigidBody* body(BodyId id) const;
-    // Живые тела в порядке добавления; ожидающие удаления не входят. Указатели
-    // действуют до следующих addBody() и destroyBody().
-    std::vector<RigidBody*> bodies();
-    std::vector<const RigidBody*> bodies() const;
-    std::size_t bodyCount() const;
-
-    // Один шаг симуляции; dT конечен и положителен. Порядок: интегрирование скоростей,
-    // поиск контактов, пробуждение от движущихся тел, разрешение скоростей, интегрирование
-    // положений с непрерывной проверкой удара по пути, устранение проникновения, подсчёт
-    // времени сна, сброс сил и формирование событий.
-    void step(float deltaTime);
+    // Один шаг симуляции; dT конечен и положителен. Тела читаются из объектов сцены,
+    // позы тел записываются в их трансформации.
+    void step(Scene& scene, float deltaTime);
     // Переходы контактов за последний шаг: пары текущего шага в порядке идентификаторов,
     // затем завершившиеся. Вектор живёт до следующего step().
     const std::vector<PhysicsContactEvent>& contactEvents() const { return events; }
-
-    // Записывает положение и угол тел в трансформации объектов сцены по body.object;
-    // объекты, которых уже нет в сцене, пропускаются.
-    void sync(Scene& scene) const;
+    // Немедленно забывает контакты без событий: сцена очищается целиком.
+    void clear();
 
     // Ускорение свободного падения: единицы мира в секунду за секунду. Поле публично,
     // как параметры камеры: это настройка мира без проверок, применяется следующим шагом.
     Vector2 gravity = {0, 900};
 
 private:
-    struct Slot
+    // Тело на время шага: объект, его форма на начало шага и производные массы.
+    struct Body
     {
-        BodyId id = 0;
-        RigidBody body;
-        bool removalPending = false;
-        // Скорость на начало шага, до гравитации и сил: по ней считается упругость,
-        // иначе удар добавлял бы к скорости один шаг ускорения.
+        GameObject* object = nullptr;
+        ObjectId id = 0;
+        CollisionShape shape;
+        Rect bounds;
         Vector2 previousVelocity;
         float previousAngularVelocity = 0;
+        float inverseMass = 0;
+        float inverseInertia = 0;
+        // Кинематическое тело, которое приложение перенесло трансформацией с прошлого шага:
+        // такой перенос тоже будит лежащие на пути тела.
+        bool transformMoved = false;
     };
 
     // Контактная точка решателя: якоря в осях обоих тел, плечи на момент обнаружения,
@@ -121,10 +109,10 @@ private:
 
     struct SolveContact
     {
-        BodyId first = 0;
-        BodyId second = 0;
-        RigidBody* firstBody = nullptr;
-        RigidBody* secondBody = nullptr;
+        ObjectId first = 0;
+        ObjectId second = 0;
+        Body* firstBody = nullptr;
+        Body* secondBody = nullptr;
         ContactManifold manifold;
         bool sensor = false;
         float friction = 0;
@@ -151,18 +139,13 @@ private:
         int count = 0;
     };
 
-    // Тело с формой в мире для поиска пар по левой границе.
-    struct BroadEntry
-    {
-        BodyId id = 0;
-        RigidBody* body = nullptr;
-        CollisionShape shape;
-        Rect bounds;
-        Vector2 previousVelocity;
-        float previousAngularVelocity = 0;
-    };
+    // Скорость точки тела и проверка его участия в решателе.
+    static bool bodyIsActive(const Body& body);
+    static Vector2 velocityAt(const Body& body, Vector2 arm);
+    static void applyPairImpulse(Body& first, Body& second, Vector2 impulse, Vector2 armFirst,
+        Vector2 armSecond);
 
-    RigidBody* findBody(BodyId id);
+    void collectBodies(Scene& scene);
     void integrateVelocities(float deltaTime);
     void collectContacts();
     // Будит тела, которых касаются движущиеся тела, и распространяет пробуждение
@@ -170,7 +153,7 @@ private:
     void wakeBodies();
     // Подсчитывает время неподвижности и усыпляет тела с малой скоростью.
     void updateSleeping(float deltaTime);
-    void checkPair(const BroadEntry& first, const BroadEntry& second);
+    void checkPair(std::size_t firstIndex, std::size_t secondIndex);
     // Переносит импульсы прошлого шага в совпавшие точки контакта.
     void warmStartContact(SolveContact& contact);
     void applyWarmStart();
@@ -179,21 +162,21 @@ private:
     bool solveNormalBlock(SolveContact& contact);
     void solveVelocities();
     // Интегрирование положений с непрерывной проверкой: быстрые тела останавливаются
-    // в точке первого касания с любым телом мира, а не только со статикой.
+    // в точке первого касания с любым телом мира, а не только со статикой; позы тел
+    // записываются в трансформации объектов.
     void integratePositions(float deltaTime);
     void solvePositions();
     void resetForces();
     void emitEvents();
-    void eraseRemoved();
     PhysicsContact makeContact(const SolveContact& contact) const;
 
-    std::vector<Slot> slots;
-    BodyId nextBodyId = 1;
-    std::vector<BroadEntry> entries;
+    std::vector<Body> bodies;
     std::vector<std::size_t> order;
-    std::map<std::pair<BodyId, BodyId>, SolveContact> contacts;
-    std::map<std::pair<BodyId, BodyId>, PhysicsContact> active;
-    std::map<std::pair<BodyId, BodyId>, WarmContact> warmContacts;
+    // Поза кинематических тел на начало прошлого шага: по ней видно перенос приложением.
+    std::map<ObjectId, Transform2> previousPoses;
+    std::map<std::pair<ObjectId, ObjectId>, SolveContact> contacts;
+    std::map<std::pair<ObjectId, ObjectId>, PhysicsContact> active;
+    std::map<std::pair<ObjectId, ObjectId>, WarmContact> warmContacts;
     std::vector<PhysicsContactEvent> events;
 };
 }

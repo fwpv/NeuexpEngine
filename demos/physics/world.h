@@ -5,6 +5,7 @@
 #include "graphics/renderer.h"
 #include "physics/body.h"
 #include "physics/world.h"
+#include "scene/object.h"
 #include "scene/scene.h"
 
 #include <cstddef>
@@ -53,8 +54,8 @@ public:
 protected:
     NeuexpEngine::Scene& scene() { return ownedScene; }
     const NeuexpEngine::Scene& scene() const { return ownedScene; }
-    NeuexpEngine::PhysicsWorld& world() { return simulation; }
-    const NeuexpEngine::PhysicsWorld& world() const { return simulation; }
+    NeuexpEngine::PhysicsWorld& world() { return ownedScene.physics(); }
+    const NeuexpEngine::PhysicsWorld& world() const { return ownedScene.physics(); }
     float elapsedSeconds() const { return elapsed; }
     void markHighlighted(bool value) { highlight = value; }
 
@@ -62,14 +63,13 @@ protected:
     virtual void beforeStep(float deltaTime);
     virtual void afterStep();
     virtual void drawExtra(NeuexpEngine::Renderer2D& drawing) const;
-    virtual NeuexpEngine::Color fillOf(const NeuexpEngine::RigidBody& body) const;
-    virtual NeuexpEngine::Color outlineOf(const NeuexpEngine::RigidBody& body) const;
+    virtual NeuexpEngine::Color fillOf(const NeuexpEngine::GameObject& object) const;
+    virtual NeuexpEngine::Color outlineOf(const NeuexpEngine::GameObject& object) const;
 
 private:
     NeuexpEngine::Rect zoneArea;
     std::string zoneTitle;
     NeuexpEngine::Scene ownedScene;
-    NeuexpEngine::PhysicsWorld simulation;
     float elapsed = 0;
     bool highlight = false;
 };

@@ -97,7 +97,7 @@ void testIdentityAndQueries()
     require(scene.findByGroup("neutral").size() == 1, "Second group query failed.");
     require(scene.findByGroup("missing").empty(), "Empty group query must be empty.");
 
-    const std::vector<const GameObject*> all = scene.findAll();
+    const std::vector<GameObject*> all = scene.findAll();
     require(all.size() == 3 && all[0] == firstPointer && all[1] == secondPointer && all[2] == thirdPointer,
         "Full query must return objects in add order.");
 

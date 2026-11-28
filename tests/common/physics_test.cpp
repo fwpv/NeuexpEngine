@@ -36,21 +36,71 @@ bool closeTo(float first, float second, float tolerance)
 
 constexpr float StepTime = 1.0F / 60;
 
-RigidBody circleBody(Vector2 position, float radius, BodyType type = BodyType::Dynamic)
+PhysicsBody dynamicBody()
 {
-    return RigidBody{Circle{{0, 0}, radius}, type, position};
+    PhysicsBody body;
+    body.type = BodyType::Dynamic;
+    return body;
 }
 
-RigidBody boxBody(Vector2 position, Size2 size, BodyType type = BodyType::Dynamic, float angle = 0)
+// Сцена с физикой: объект получает коллайдер как форму и тело как динамику.
+class TestWorld
 {
-    return RigidBody{Box{{0, 0}, size, 0}, type, position, angle};
-}
+public:
+    Scene& scene() { return owned; }
+    PhysicsWorld& physics() { return owned.physics(); }
+    const std::vector<PhysicsContactEvent>& events() const { return owned.physics().contactEvents(); }
 
-// Неподвижный пол шириной width с верхней гранью на y = top.
-BodyId addFloor(PhysicsWorld& world, float top, float width = 600)
-{
-    return world.addBody(boxBody({0, top + 20}, {width, 40}, BodyType::Static));
-}
+    GameObject& body(ObjectId id)
+    {
+        GameObject* object = owned.find(id);
+        require(object != nullptr, "Body object is missing.");
+        return *object;
+    }
+
+    ObjectId addCircle(Vector2 position, float radius, BodyType type = BodyType::Dynamic)
+    {
+        return addShape(Circle{{0, 0}, radius}, position, 0, type);
+    }
+
+    ObjectId addBox(Vector2 position, Size2 size, BodyType type = BodyType::Dynamic, float angle = 0)
+    {
+        return addShape(Box{{0, 0}, size, 0}, position, angle, type);
+    }
+
+    // Неподвижный пол шириной width с верхней гранью на y = top.
+    ObjectId addFloor(float top, float width = 600)
+    {
+        const ObjectId id = addBox({0, top + 20}, {width, 40}, BodyType::Static);
+        body(id).body().friction = 1;
+        return id;
+    }
+
+    ObjectId addShape(const CollisionShape& shape, Vector2 position, float angle, BodyType type)
+    {
+        auto object = std::make_unique<GameObject>();
+        object->collider() = Collider{shape};
+        object->transform().position = position;
+        object->transform().rotation = angle;
+        PhysicsBody settings;
+        settings.type = type;
+        object->enablePhysics(settings);
+        return addObject(std::move(object));
+    }
+
+    ObjectId addObject(std::unique_ptr<GameObject> object) { return owned.add(std::move(object)); }
+
+    void step() { owned.update(StepTime); }
+    void steps(int count)
+    {
+        for (int index = 0; index < count; ++index) {
+            owned.update(StepTime);
+        }
+    }
+
+private:
+    Scene owned;
+};
 
 int countPhase(const std::vector<PhysicsContactEvent>& events, ContactPhase phase)
 {
@@ -109,240 +159,237 @@ void testManifold()
 
 void testProperties()
 {
-    RigidBody circle = circleBody({100, 200}, 10);
-    circle.density = 2;
+    TestWorld world;
+    const ObjectId circleId = world.addCircle({100, 200}, 10);
+    world.body(circleId).body().density = 2;
     const float circleMass = 2 * Pi * 100;
-    require(closeTo(circle.mass(), circleMass, 1e-3F), "Circle mass failed.");
-    require(closeTo(circle.inertia(), circleMass * 50, 1e-2F), "Circle inertia failed.");
-    require(closeTo(circle.inverseMass(), 1 / circleMass, 1e-5F), "Circle inverse mass failed.");
+    require(closeTo(bodyMass(world.body(circleId)), circleMass, 1e-3F), "Circle mass failed.");
+    require(closeTo(bodyInertia(world.body(circleId)), circleMass * 50, 1e-2F), "Circle inertia failed.");
 
-    RigidBody box = boxBody({}, {20, 40});
-    box.density = 1;
-    require(closeTo(box.mass(), 800, 1e-3F), "Box mass failed.");
-    require(closeTo(box.inertia(), 800 * (400 + 1600) / 12.0F, 1e-1F), "Box inertia failed.");
+    const ObjectId boxId = world.addBox({}, {20, 40});
+    require(closeTo(bodyMass(world.body(boxId)), 800, 1e-3F), "Box mass failed.");
+    require(closeTo(bodyInertia(world.body(boxId)), 800 * (400 + 1600) / 12.0F, 1e-1F),
+        "Box inertia failed.");
 
     // Смещение формы учитывается параллельным переносом.
-    RigidBody offset{Rect{{10, 0}, {20, 20}}, BodyType::Dynamic, {}};
-    offset.density = 1;
+    auto offset = std::make_unique<GameObject>();
+    offset->collider() = Collider{Rect{{10, 0}, {20, 20}}};
+    offset->enablePhysics(dynamicBody());
+    const ObjectId offsetId = world.addObject(std::move(offset));
     const float offsetInertia = 400 * (400 + 400) / 12.0F + 400 * 500;
-    require(closeTo(offset.inertia(), offsetInertia, 1e-1F), "Offset inertia failed.");
-    const CollisionShape world = offset.worldShape();
-    require(world.kind() == CollisionShape::Kind::Rect && closeTo(world.rect().position.x, 10, 1e-5F),
+    require(closeTo(bodyInertia(world.body(offsetId)), offsetInertia, 1e-1F), "Offset inertia failed.");
+    const CollisionShape offsetWorld = world.body(offsetId).collider().worldShape(world.body(offsetId).transform());
+    require(offsetWorld.kind() == CollisionShape::Kind::Rect
+            && closeTo(offsetWorld.rect().position.x, 10, 1e-5F),
         "Offset world shape failed.");
 
+    // Масштаб объекта учитывается геометрией и массой: сторона 20 при масштабе 2.
+    auto scaled = std::make_unique<GameObject>();
+    scaled->collider() = Collider{Box{{0, 0}, {20, 20}, 0}};
+    scaled->transform().scale = {2, 2};
+    scaled->enablePhysics(dynamicBody());
+    const ObjectId scaledId = world.addObject(std::move(scaled));
+    require(closeTo(bodyMass(world.body(scaledId)), 1600, 1e-2F), "Scaled mass failed.");
+
     // Форма повёрнутого тела в мире.
-    RigidBody turned{Box{{0, 0}, {20, 10}, 0}, BodyType::Dynamic, {100, 100}, Pi / 2};
-    const CollisionShape turnedWorld = turned.worldShape();
-    require(turnedWorld.kind() == CollisionShape::Kind::Box && closeTo(turnedWorld.box().rotation, Pi / 2, 1e-5F),
+    auto turned = std::make_unique<GameObject>();
+    turned->collider() = Collider{Box{{0, 0}, {20, 10}, 0}};
+    turned->transform().position = {100, 100};
+    turned->transform().rotation = Pi / 2;
+    turned->enablePhysics(dynamicBody());
+    const ObjectId turnedId = world.addObject(std::move(turned));
+    const CollisionShape turnedWorld = world.body(turnedId).collider().worldShape(world.body(turnedId).transform());
+    require(turnedWorld.kind() == CollisionShape::Kind::Box
+            && closeTo(turnedWorld.box().rotation, Pi / 2, 1e-5F),
         "Turned world shape failed.");
 
-    RigidBody fixedBody = boxBody({}, {10, 10}, BodyType::Static);
-    fixedBody.applyImpulse({100, 0});
-    fixedBody.applyForce({100, 0});
-    require(fixedBody.velocity == Vector2{} && fixedBody.force == Vector2{} && fixedBody.inverseMass() == 0,
+    // Статическое и кинематическое тело игнорируют силы и импульсы.
+    const ObjectId fixedId = world.addBox({}, {10, 10}, BodyType::Static);
+    applyImpulse(world.body(fixedId), {100, 0});
+    applyForce(world.body(fixedId), {100, 0});
+    require(world.body(fixedId).body().velocity == Vector2{} && world.body(fixedId).body().force == Vector2{},
         "Static body must ignore forces and impulses.");
-    RigidBody kinematicBody = boxBody({}, {10, 10}, BodyType::Kinematic);
-    kinematicBody.applyForce({100, 0});
-    kinematicBody.applyImpulse({100, 0});
-    require(kinematicBody.force == Vector2{} && kinematicBody.velocity == Vector2{},
+    const ObjectId kinematicId = world.addBox({}, {10, 10}, BodyType::Kinematic);
+    applyForce(world.body(kinematicId), {100, 0});
+    applyImpulse(world.body(kinematicId), {100, 0});
+    require(world.body(kinematicId).body().force == Vector2{}
+            && world.body(kinematicId).body().velocity == Vector2{},
         "Kinematic body must ignore forces and impulses.");
 }
 
 void testIntegration()
 {
-    PhysicsWorld world;
-    world.gravity = {0, 1000};
-    const BodyId id = world.addBody(circleBody({0, 0}, 5));
-    for (int step = 0; step < 60; ++step) {
-        world.step(StepTime);
-    }
-    RigidBody* body = world.body(id);
-    require(body != nullptr, "Body disappeared during free fall.");
-    require(closeTo(body->velocity.y, 1000, 0.5F), "Gravity integration failed.");
-    require(body->velocity.x == 0, "Free fall produced horizontal velocity.");
+    TestWorld world;
+    world.physics().gravity = {0, 1000};
+    const ObjectId id = world.addCircle({0, 0}, 5);
+    world.steps(60);
+    GameObject& body = world.body(id);
+    require(closeTo(body.body().velocity.y, 1000, 0.5F), "Gravity integration failed.");
+    require(body.body().velocity.x == 0, "Free fall produced horizontal velocity.");
     // Дискретное интегрирование: скорость на шаге k равна k * g * dt.
     const float expectedFall = 1000 * StepTime * StepTime * (60 * 61 / 2);
-    require(closeTo(body->position.y, expectedFall, 1), "Fall distance failed.");
+    require(closeTo(body.transform().position.y, expectedFall, 1), "Fall distance failed.");
 
-    PhysicsWorld damped;
-    damped.gravity = {0, 1000};
-    RigidBody slow = circleBody({0, 0}, 5);
-    slow.linearDamping = 1;
-    const BodyId slowId = damped.addBody(slow);
-    damped.step(StepTime);
-    require(closeTo(damped.body(slowId)->velocity.y, 1000 * StepTime / (1 + StepTime), 1e-3F),
+    TestWorld damping;
+    damping.physics().gravity = {0, 1000};
+    const ObjectId slowId = damping.addCircle({0, 0}, 5);
+    damping.body(slowId).body().linearDamping = 1;
+    damping.step();
+    require(closeTo(damping.body(slowId).body().velocity.y, 1000 * StepTime / (1 + StepTime), 1e-3F),
         "Linear damping failed.");
 
-    PhysicsWorld kinematic;
-    kinematic.gravity = {0, 1000};
-    RigidBody mover = boxBody({0, 0}, {10, 10}, BodyType::Kinematic);
-    mover.velocity = {50, 0};
-    const BodyId moverId = kinematic.addBody(mover);
-    for (int step = 0; step < 10; ++step) {
-        kinematic.step(StepTime);
-    }
-    require(closeTo(kinematic.body(moverId)->position.x, 50 * StepTime * 10, 1e-3F)
-            && kinematic.body(moverId)->position.y == 0,
+    TestWorld kinematic;
+    kinematic.physics().gravity = {0, 1000};
+    const ObjectId moverId = kinematic.addBox({0, 0}, {10, 10}, BodyType::Kinematic);
+    kinematic.body(moverId).body().velocity = {50, 0};
+    kinematic.steps(10);
+    require(closeTo(kinematic.body(moverId).transform().position.x, 50 * StepTime * 10, 1e-3F)
+            && kinematic.body(moverId).transform().position.y == 0,
         "Kinematic body must move by its velocity only.");
 
-    PhysicsWorld fixedWorld;
-    fixedWorld.gravity = {0, 1000};
-    const BodyId fixedId = fixedWorld.addBody(boxBody({0, 0}, {10, 10}, BodyType::Static));
-    fixedWorld.step(StepTime);
-    require(fixedWorld.body(fixedId)->position == Vector2{}, "Static body moved.");
+    TestWorld fixed;
+    fixed.physics().gravity = {0, 1000};
+    const ObjectId fixedId = fixed.addBox({0, 0}, {10, 10}, BodyType::Static);
+    fixed.step();
+    require(fixed.body(fixedId).transform().position == Vector2{}, "Static body moved.");
 }
 
 void testForces()
 {
-    PhysicsWorld world;
-    world.gravity = {};
-    const BodyId id = world.addBody(boxBody({0, 0}, {10, 10}));
-    RigidBody& body = *world.body(id);
-    body.applyForce({1000, 0});
-    world.step(StepTime);
+    TestWorld world;
+    world.physics().gravity = {};
+    const ObjectId id = world.addBox({0, 0}, {10, 10});
+    applyForce(world.body(id), {1000, 0});
+    world.step();
     const float expected = 1000 * (1.0F / 100) * StepTime;
-    require(closeTo(body.velocity.x, expected, 1e-4F), "Force did not change velocity.");
-    world.step(StepTime);
-    require(closeTo(body.velocity.x, expected, 1e-4F), "Force was not cleared after the step.");
+    require(closeTo(world.body(id).body().velocity.x, expected, 1e-4F), "Force did not change velocity.");
+    world.step();
+    require(closeTo(world.body(id).body().velocity.x, expected, 1e-4F), "Force was not cleared after the step.");
 
-    const BodyId offsetId = world.addBody(boxBody({0, -100}, {100, 20}));
-    RigidBody& offset = *world.body(offsetId);
-    offset.applyForceAtPoint({0, 100}, {40, -100});
-    world.step(StepTime);
-    require(offset.angularVelocity > 0, "Force at a point must add angular velocity.");
+    const ObjectId offsetId = world.addBox({0, -100}, {100, 20});
+    applyForceAtPoint(world.body(offsetId), {0, 100}, {40, -100});
+    world.step();
+    require(world.body(offsetId).body().angularVelocity > 0, "Force at a point must add angular velocity.");
 
-    const BodyId impulseId = world.addBody(boxBody({0, 100}, {10, 10}));
-    RigidBody& impulse = *world.body(impulseId);
-    impulse.applyImpulse({200, 0});
-    require(closeTo(impulse.velocity.x, 2, 1e-5F), "Impulse did not change velocity.");
-    impulse.applyImpulseAtPoint({200, 0}, {0, 100 - 5});
-    require(impulse.angularVelocity > 0, "Impulse at a point must add angular velocity.");
+    const ObjectId impulseId = world.addBox({0, 100}, {10, 10});
+    applyImpulse(world.body(impulseId), {200, 0});
+    require(closeTo(world.body(impulseId).body().velocity.x, 2, 1e-5F), "Impulse did not change velocity.");
+    applyImpulseAtPoint(world.body(impulseId), {200, 0}, {0, 100 - 5});
+    require(world.body(impulseId).body().angularVelocity > 0, "Impulse at a point must add angular velocity.");
 
-    const BodyId torqueId = world.addBody(circleBody({0, 200}, 5));
-    RigidBody& torque = *world.body(torqueId);
-    torque.applyTorque(50);
-    world.step(StepTime);
-    require(torque.angularVelocity > 0, "Torque did not change angular velocity.");
+    const ObjectId torqueId = world.addCircle({0, 200}, 5);
+    applyTorque(world.body(torqueId), 50);
+    world.step();
+    require(world.body(torqueId).body().angularVelocity > 0, "Torque did not change angular velocity.");
 
     // Угловой импульс, равный моменту инерции, даёт один радиан в секунду.
-    const BodyId spinId = world.addBody(circleBody({0, 300}, 5));
-    RigidBody& spin = *world.body(spinId);
-    spin.applyAngularImpulse(spin.inertia());
-    require(closeTo(spin.angularVelocity, 1, 1e-5F), "Angular impulse did not change angular velocity.");
-    const BodyId fixedId = world.addBody(boxBody({0, 400}, {10, 10}, BodyType::Static));
-    world.body(fixedId)->applyAngularImpulse(5);
-    require(world.body(fixedId)->angularVelocity == 0, "Angular impulse must not move a static body.");
+    const ObjectId spinId = world.addCircle({0, 300}, 5);
+    applyAngularImpulse(world.body(spinId), bodyInertia(world.body(spinId)));
+    require(closeTo(world.body(spinId).body().angularVelocity, 1, 1e-5F),
+        "Angular impulse did not change angular velocity.");
+    const ObjectId fixedId = world.addBox({0, 400}, {10, 10}, BodyType::Static);
+    applyAngularImpulse(world.body(fixedId), 5);
+    require(world.body(fixedId).body().angularVelocity == 0, "Angular impulse must not move a static body.");
 }
 
 void testCollisions()
 {
-    PhysicsWorld world;
-    world.gravity = {0, 900};
-    addFloor(world, 0);
-    const BodyId ball = world.addBody(circleBody({0, -100}, 10));
-    for (int step = 0; step < 240; ++step) {
-        world.step(StepTime);
-    }
-    const RigidBody* resting = world.body(ball);
-    require(resting != nullptr && closeTo(resting->position.y, -10, 1), "Ball did not rest on the floor.");
-    require(std::fabs(resting->velocity.y) < 1, "Resting ball keeps falling.");
+    TestWorld world;
+    world.physics().gravity = {0, 900};
+    world.addFloor(0);
+    const ObjectId ball = world.addCircle({0, -100}, 10);
+    world.steps(240);
+    require(closeTo(world.body(ball).transform().position.y, -10, 1), "Ball did not rest on the floor.");
+    require(std::fabs(world.body(ball).body().velocity.y) < 1, "Resting ball keeps falling.");
 
-    PhysicsWorld headOn;
-    headOn.gravity = {};
-    RigidBody first = circleBody({-30, 0}, 10);
-    first.velocity = {200, 0};
-    first.restitution = 1;
-    RigidBody second = circleBody({30, 0}, 10);
-    second.velocity = {-200, 0};
-    second.restitution = 1;
-    const BodyId firstId = headOn.addBody(first);
-    const BodyId secondId = headOn.addBody(second);
-    for (int step = 0; step < 120; ++step) {
-        headOn.step(StepTime);
-    }
-    const RigidBody* left = headOn.body(firstId);
-    const RigidBody* right = headOn.body(secondId);
-    require(left->position.x < right->position.x, "Elastic pair passed through itself.");
-    require(distance(left->position, right->position) > 19.5F, "Elastic pair remained overlapped.");
-    require(closeTo(left->velocity.x, -200, 1) && closeTo(right->velocity.x, 200, 1),
+    TestWorld headOn;
+    headOn.physics().gravity = {};
+    const ObjectId firstId = headOn.addCircle({-30, 0}, 10);
+    headOn.body(firstId).body().velocity = {200, 0};
+    headOn.body(firstId).body().restitution = 1;
+    const ObjectId secondId = headOn.addCircle({30, 0}, 10);
+    headOn.body(secondId).body().velocity = {-200, 0};
+    headOn.body(secondId).body().restitution = 1;
+    headOn.steps(120);
+    const Vector2 left = headOn.body(firstId).transform().position;
+    const Vector2 right = headOn.body(secondId).transform().position;
+    require(left.x < right.x, "Elastic pair passed through itself.");
+    require(distance(left, right) > 19.5F, "Elastic pair remained overlapped.");
+    require(closeTo(headOn.body(firstId).body().velocity.x, -200, 1)
+            && closeTo(headOn.body(secondId).body().velocity.x, 200, 1),
         "Elastic impact must swap velocities.");
 
-    PhysicsWorld boxPair;
-    boxPair.gravity = {0, 900};
-    addFloor(boxPair, 0);
-    const BodyId crate = boxPair.addBody(boxBody({0, -100}, {40, 20}));
-    for (int step = 0; step < 180; ++step) {
-        boxPair.step(StepTime);
-    }
-    const RigidBody* crateBody = boxPair.body(crate);
-    require(closeTo(crateBody->position.y, -10, 1), "Box did not rest on the floor.");
-    require(std::fabs(crateBody->angle) < 0.01F, "Resting box drifted in rotation.");
+    TestWorld boxPair;
+    boxPair.physics().gravity = {0, 900};
+    boxPair.addFloor(0);
+    const ObjectId crate = boxPair.addBox({0, -100}, {40, 20});
+    boxPair.steps(180);
+    require(closeTo(boxPair.body(crate).transform().position.y, -10, 1), "Box did not rest on the floor.");
+    require(std::fabs(boxPair.body(crate).transform().rotation) < 0.01F, "Resting box drifted in rotation.");
 }
 
 void testRestitution()
 {
-    PhysicsWorld world;
-    world.gravity = {0, 1000};
-    addFloor(world, 0);
-    RigidBody ball = circleBody({0, -100}, 8);
-    ball.restitution = 1;
-    const BodyId id = world.addBody(ball);
+    TestWorld world;
+    world.physics().gravity = {0, 1000};
+    world.addFloor(0);
+    const ObjectId id = world.addCircle({0, -100}, 8);
+    world.body(id).body().restitution = 1;
     bool landed = false;
     float peak = 0;
     for (int step = 0; step < 600; ++step) {
-        world.step(StepTime);
-        const RigidBody* falling = world.body(id);
-        landed = landed || falling->position.y > -9;
+        world.step();
+        const float y = world.body(id).transform().position.y;
+        landed = landed || y > -9;
         if (landed) {
-            peak = std::min(peak, falling->position.y);
+            peak = std::min(peak, y);
         }
     }
     require(landed, "Bouncing ball never reached the floor.");
     require(peak < -70, "Bouncing ball lost too much energy.");
 
-    PhysicsWorld dull;
-    dull.gravity = {0, 1000};
-    addFloor(dull, 0);
-    RigidBody quiet = circleBody({0, -100}, 8);
-    const BodyId quietId = dull.addBody(quiet);
+    TestWorld dull;
+    dull.physics().gravity = {0, 1000};
+    dull.addFloor(0);
+    const ObjectId quietId = dull.addCircle({0, -100}, 8);
     bool quietLanded = false;
     float rebound = 0;
     for (int step = 0; step < 600; ++step) {
-        dull.step(StepTime);
-        const RigidBody* settled = dull.body(quietId);
-        quietLanded = quietLanded || settled->position.y > -9;
+        dull.step();
+        const float y = dull.body(quietId).transform().position.y;
+        quietLanded = quietLanded || y > -9;
         if (quietLanded) {
-            rebound = std::min(rebound, settled->position.y + 8);
+            rebound = std::min(rebound, y + 8);
         }
     }
     require(rebound > -3, "Inelastic ball bounced.");
-    require(std::fabs(dull.body(quietId)->velocity.y) < 1, "Inelastic ball did not settle.");
+    require(std::fabs(dull.body(quietId).body().velocity.y) < 1, "Inelastic ball did not settle.");
 
     // Упругость не накачивает энергию: скорость отскока равна скорости удара,
     // а шар с e=1 не поднимается выше начальной высоты за много отскоков.
-    PhysicsWorld elastic;
-    elastic.gravity = {0, 900};
-    addFloor(elastic, 0);
-    RigidBody bouncer = circleBody({0, -200}, 20);
-    bouncer.restitution = 1;
-    bouncer.friction = 0.1F;
-    const BodyId bouncerId = elastic.addBody(bouncer);
+    TestWorld elastic;
+    elastic.physics().gravity = {0, 900};
+    elastic.addFloor(0);
+    const ObjectId bouncerId = elastic.addCircle({0, -200}, 20);
+    elastic.body(bouncerId).body().restitution = 1;
+    elastic.body(bouncerId).body().friction = 0.1F;
     bool elasticLanded = false;
     float elasticPeak = 0;
     float impact = 0;
     float reboundSpeed = 0;
     float previousSpeed = 0;
     for (int step = 0; step < 600; ++step) {
-        elastic.step(StepTime);
-        const RigidBody* body = elastic.body(bouncerId);
-        if (previousSpeed > 100 && body->velocity.y < 0 && reboundSpeed == 0) {
+        elastic.step();
+        const PhysicsBody& body = elastic.body(bouncerId).body();
+        if (previousSpeed > 100 && body.velocity.y < 0 && reboundSpeed == 0) {
             impact = previousSpeed;
-            reboundSpeed = -body->velocity.y;
+            reboundSpeed = -body.velocity.y;
         }
-        previousSpeed = body->velocity.y;
-        elasticLanded = elasticLanded || body->position.y > -21;
+        previousSpeed = body.velocity.y;
+        const float y = elastic.body(bouncerId).transform().position.y;
+        elasticLanded = elasticLanded || y > -21;
         if (elasticLanded) {
-            elasticPeak = std::min(elasticPeak, body->position.y);
+            elasticPeak = std::min(elasticPeak, y);
         }
     }
     require(impact > 0 && closeTo(reboundSpeed, impact, impact * 0.01F),
@@ -353,111 +400,96 @@ void testRestitution()
 
 void testFriction()
 {
-    PhysicsWorld world;
-    world.gravity = {0, 1000};
-    addFloor(world, 0);
-    RigidBody crate = boxBody({0, -20}, {40, 40});
-    crate.friction = 1;
-    crate.velocity = {300, 0};
-    const BodyId id = world.addBody(crate);
-    for (int step = 0; step < 120; ++step) {
-        world.step(StepTime);
-    }
-    require(std::fabs(world.body(id)->velocity.x) < 5, "Friction did not stop the sliding box.");
+    TestWorld world;
+    world.physics().gravity = {0, 1000};
+    world.addFloor(0);
+    const ObjectId id = world.addBox({0, -20}, {40, 40});
+    world.body(id).body().friction = 1;
+    world.body(id).body().velocity = {300, 0};
+    world.steps(120);
+    require(std::fabs(world.body(id).body().velocity.x) < 5, "Friction did not stop the sliding box.");
 
-    PhysicsWorld slippery;
-    slippery.gravity = {0, 1000};
-    addFloor(slippery, 0);
-    RigidBody slider = boxBody({0, -20}, {40, 40});
-    slider.friction = 0;
-    slider.velocity = {300, 0};
-    const BodyId sliderId = slippery.addBody(slider);
-    for (int step = 0; step < 120; ++step) {
-        slippery.step(StepTime);
-    }
-    require(closeTo(slippery.body(sliderId)->velocity.x, 300, 1), "Frictionless box lost speed.");
+    TestWorld slippery;
+    slippery.physics().gravity = {0, 1000};
+    slippery.addFloor(0);
+    const ObjectId sliderId = slippery.addBox({0, -20}, {40, 40});
+    slippery.body(sliderId).body().friction = 0;
+    slippery.body(sliderId).body().velocity = {300, 0};
+    slippery.steps(120);
+    require(closeTo(slippery.body(sliderId).body().velocity.x, 300, 1), "Frictionless box lost speed.");
 }
 
 void testStack()
 {
-    PhysicsWorld world;
-    world.gravity = {0, 1000};
-    RigidBody floorBody = boxBody({0, 20}, {400, 40}, BodyType::Static);
-    floorBody.friction = 1;
-    world.addBody(floorBody);
-    std::vector<BodyId> ids;
+    TestWorld world;
+    world.physics().gravity = {0, 1000};
+    const ObjectId floorId = world.addFloor(0, 400);
+    world.body(floorId).body().friction = 1;
+    std::vector<ObjectId> ids;
     for (int level = 0; level < 4; ++level) {
-        RigidBody crate = boxBody({0, -20 - 40 * static_cast<float>(level)}, {40, 40});
-        crate.friction = 0.8F;
-        ids.push_back(world.addBody(crate));
+        const ObjectId id = world.addBox({0, -20 - 40 * static_cast<float>(level)}, {40, 40});
+        world.body(id).body().friction = 0.8F;
+        ids.push_back(id);
     }
-    for (int step = 0; step < 600; ++step) {
-        world.step(StepTime);
-    }
+    world.steps(600);
     for (std::size_t level = 0; level < ids.size(); ++level) {
-        const RigidBody* body = world.body(ids[level]);
-        require(body != nullptr, "Stack body disappeared.");
-        require(std::isfinite(body->position.x) && std::isfinite(body->position.y), "Stack produced non-finite state.");
-        require(std::fabs(body->position.x) < 2, "Stack slid sideways.");
-        require(closeTo(body->position.y, -20 - 40 * static_cast<float>(level), 4),
+        const GameObject& body = world.body(ids[level]);
+        const Vector2 position = body.transform().position;
+        require(std::isfinite(position.x) && std::isfinite(position.y), "Stack produced non-finite state.");
+        require(std::fabs(position.x) < 2, "Stack slid sideways.");
+        require(closeTo(position.y, -20 - 40 * static_cast<float>(level), 4),
             "Stack level " + std::to_string(level) + " sank or floated.");
-        require(std::fabs(body->angle) < 0.05F, "Stack level " + std::to_string(level) + " tilted.");
+        require(std::fabs(body.transform().rotation) < 0.05F,
+            "Stack level " + std::to_string(level) + " tilted.");
     }
-    require(world.body(ids[0])->position.y > -21, "Bottom box sank into the floor.");
+    require(world.body(ids[0]).transform().position.y > -21, "Bottom box sank into the floor.");
 }
 
 void testRotation()
 {
-    PhysicsWorld world;
-    world.gravity = {};
-    RigidBody spinner = boxBody({0, 0}, {100, 20});
-    const BodyId id = world.addBody(spinner);
-    world.body(id)->applyImpulseAtPoint({0, 5000}, {40, 0});
-    const float startAngle = world.body(id)->angle;
-    for (int step = 0; step < 60; ++step) {
-        world.step(StepTime);
-    }
-    require(std::fabs(world.body(id)->angle - startAngle) > 0.05F, "Impulse did not rotate the body.");
+    TestWorld world;
+    world.physics().gravity = {};
+    const ObjectId id = world.addBox({0, 0}, {100, 20});
+    applyImpulseAtPoint(world.body(id), {0, 5000}, {40, 0});
+    const float startAngle = world.body(id).transform().rotation;
+    world.steps(60);
+    require(std::fabs(world.body(id).transform().rotation - startAngle) > 0.05F,
+        "Impulse did not rotate the body.");
 
-    PhysicsWorld damped;
-    damped.gravity = {};
-    RigidBody slow = boxBody({0, 0}, {100, 20});
-    slow.angularDamping = 2;
-    slow.angularVelocity = 6;
-    const BodyId slowId = damped.addBody(slow);
-    for (int step = 0; step < 60; ++step) {
-        damped.step(StepTime);
-    }
-    require(std::fabs(damped.body(slowId)->angularVelocity) < 1, "Angular damping failed.");
+    TestWorld damped;
+    damped.physics().gravity = {};
+    const ObjectId slowId = damped.addBox({0, 0}, {100, 20});
+    damped.body(slowId).body().angularDamping = 2;
+    damped.body(slowId).body().angularVelocity = 6;
+    damped.steps(60);
+    require(std::fabs(damped.body(slowId).body().angularVelocity) < 1, "Angular damping failed.");
 
-    PhysicsWorld landing;
-    landing.gravity = {0, 1000};
-    landing.addBody(boxBody({0, 20}, {400, 40}, BodyType::Static));
-    RigidBody landingBody = boxBody({0, -100}, {40, 40}, BodyType::Dynamic, 0.6F);
-    landingBody.angularVelocity = 4;
-    const BodyId landingId = landing.addBody(landingBody);
-    for (int step = 0; step < 600; ++step) {
-        landing.step(StepTime);
-    }
-    const RigidBody* landed = landing.body(landingId);
-    require(landed->position.y < -10 && landed->position.y > -60, "Spinning box did not land.");
-    require(std::fabs(landed->angularVelocity) < 0.5F, "Spinning box did not settle its rotation.");
+    TestWorld landing;
+    landing.physics().gravity = {0, 1000};
+    landing.addFloor(0);
+    const ObjectId landingId = landing.addBox({0, -100}, {40, 40}, BodyType::Dynamic, 0.6F);
+    landing.body(landingId).body().angularVelocity = 4;
+    landing.steps(600);
+    require(landing.body(landingId).transform().position.y < -10
+            && landing.body(landingId).transform().position.y > -60,
+        "Spinning box did not land.");
+    require(std::fabs(landing.body(landingId).body().angularVelocity) < 0.5F,
+        "Spinning box did not settle its rotation.");
 }
 
 void testSensors()
 {
-    PhysicsWorld world;
-    world.gravity = {0, 600};
-    RigidBody gate = boxBody({0, 100}, {200, 40}, BodyType::Static);
-    gate.sensor = true;
-    const BodyId gateId = world.addBody(gate);
-    const BodyId ballId = world.addBody(circleBody({0, 0}, 10));
+    TestWorld world;
+    world.physics().gravity = {0, 600};
+    const ObjectId gateId = world.addBox({0, 100}, {200, 40}, BodyType::Static);
+    world.body(gateId).collider().trigger = true;
+    const ObjectId ballId = world.addCircle({0, 0}, 10);
     int begun = 0;
     int ended = 0;
     bool sensorData = true;
     for (int step = 0; step < 120; ++step) {
-        world.step(StepTime);
-        for (const PhysicsContactEvent& event : world.contactEvents()) {
+        world.step();
+        for (const PhysicsContactEvent& event : world.events()) {
             if (!event.contact.sensor) {
                 continue;
             }
@@ -473,39 +505,37 @@ void testSensors()
     }
     require(begun == 1 && ended == 1, "Sensor must begin and end exactly once.");
     require(sensorData, "Sensor contact must carry points.");
-    require(world.body(ballId)->position.y > 160, "Sensor must not stop the body.");
+    require(world.body(ballId).transform().position.y > 160, "Sensor must not stop the body.");
 
-    PhysicsWorld masked;
-    masked.gravity = {0, 600};
-    RigidBody maskedGate = boxBody({0, 100}, {200, 40}, BodyType::Static);
-    maskedGate.sensor = true;
-    maskedGate.mask = 2U;
-    masked.addBody(maskedGate);
-    RigidBody passing = circleBody({0, 0}, 10);
-    passing.layer = 1U;
-    masked.addBody(passing);
+    TestWorld masked;
+    masked.physics().gravity = {0, 600};
+    const ObjectId maskedGateId = masked.addBox({0, 100}, {200, 40}, BodyType::Static);
+    masked.body(maskedGateId).collider().trigger = true;
+    masked.body(maskedGateId).collider().mask = 2U;
+    const ObjectId passingId = masked.addCircle({0, 0}, 10);
+    masked.body(passingId).collider().layer = 1U;
     bool reported = false;
     for (int step = 0; step < 120; ++step) {
-        masked.step(StepTime);
-        reported = reported || !masked.contactEvents().empty();
+        masked.step();
+        reported = reported || !masked.events().empty();
     }
     require(!reported, "Mask must exclude the sensor pair.");
 }
 
 void testEvents()
 {
-    PhysicsWorld world;
-    world.gravity = {0, 900};
-    const BodyId floorId = addFloor(world, 0);
-    const BodyId ballId = world.addBody(circleBody({0, -60}, 10));
+    TestWorld world;
+    world.physics().gravity = {0, 900};
+    const ObjectId floorId = world.addFloor(0);
+    const ObjectId ballId = world.addCircle({0, -60}, 10);
     int begun = 0;
     int persisted = 0;
     int ended = 0;
     bool impulse = false;
     bool normalUp = false;
     for (int step = 0; step < 120; ++step) {
-        world.step(StepTime);
-        for (const PhysicsContactEvent& event : world.contactEvents()) {
+        world.step();
+        for (const PhysicsContactEvent& event : world.events()) {
             require(event.contact.first == std::min(floorId, ballId)
                     && event.contact.second == std::max(floorId, ballId),
                 "Contact must name both bodies in identifier order.");
@@ -524,378 +554,376 @@ void testEvents()
     require(impulse, "Begin contact must report the impact impulse.");
     require(normalUp, "Contact normal must point from the floor to the ball.");
 
-    world.destroyBody(ballId);
-    require(world.body(ballId) == nullptr, "Destroyed body must disappear immediately.");
-    world.step(StepTime);
-    require(countPhase(world.contactEvents(), ContactPhase::End) == 1, "Removal must end the contact once.");
-    world.step(StepTime);
-    require(world.contactEvents().empty(), "Removal must not repeat the end.");
+    world.scene().destroy(ballId);
+    require(world.scene().find(ballId) == nullptr, "Destroyed body must disappear immediately.");
+    world.step();
+    require(countPhase(world.events(), ContactPhase::End) == 1, "Removal must end the contact once.");
+    world.step();
+    require(world.events().empty(), "Removal must not repeat the end.");
 }
 
 void testDeferred()
 {
-    PhysicsWorld world;
-    world.gravity = {0, 900};
-    addFloor(world, 0);
-    const BodyId ballId = world.addBody(circleBody({0, -40}, 10));
+    TestWorld world;
+    world.physics().gravity = {0, 900};
+    world.addFloor(0);
+    const ObjectId ballId = world.addCircle({0, -40}, 10);
     // Во время обработки событий тело удаляется и вместо него добавляется новое.
     bool handled = false;
     int endedAfterRemoval = 0;
     for (int step = 0; step < 60; ++step) {
-        world.step(StepTime);
+        world.step();
         const bool wasHandled = handled;
-        for (const PhysicsContactEvent& event : world.contactEvents()) {
+        for (const PhysicsContactEvent& event : world.events()) {
             if (event.phase != ContactPhase::Begin || handled) {
                 continue;
             }
-            world.destroyBody(ballId);
-            const BodyId replacement = world.addBody(circleBody({40, -40}, 10));
-            world.body(replacement)->velocity = {10, 0};
-            require(world.body(replacement) != nullptr && world.body(ballId) == nullptr,
+            world.scene().destroy(ballId);
+            const ObjectId replacement = world.addCircle({40, -40}, 10);
+            world.body(replacement).body().velocity = {10, 0};
+            require(world.scene().find(replacement) != nullptr && world.scene().find(ballId) == nullptr,
                 "Deferred removal or immediate addition failed.");
             handled = true;
         }
         if (wasHandled) {
-            endedAfterRemoval += countPhase(world.contactEvents(), ContactPhase::End);
+            endedAfterRemoval += countPhase(world.events(), ContactPhase::End);
         }
     }
     require(handled, "Contact handling did not run.");
     require(endedAfterRemoval == 1, "Removed body must end its contact once.");
-    const std::size_t count = world.bodyCount();
-    world.step(StepTime);
-    require(world.bodyCount() == count, "Removed body was not released after the step.");
+    const std::size_t count = world.scene().count();
+    world.step();
+    require(world.scene().count() == count, "Removed body was not released after the step.");
 
     // Повторное удаление и неизвестный идентификатор безопасны.
-    world.destroyBody(ballId);
-    world.destroyBody(9999);
-    world.step(StepTime);
-    require(world.bodyCount() == count, "Repeated removal changed the body count.");
+    world.scene().destroy(ballId);
+    world.scene().destroy(9999);
+    world.step();
+    require(world.scene().count() == count, "Repeated removal changed the body count.");
 }
 
 void testSync()
 {
+    // Поза физического тела — трансформация объекта: после шага объект получает
+    // актуальную геометрию, с которой работают отрисовка и запросы.
     Scene scene;
+    scene.physics().gravity = {};
     auto object = std::make_unique<GameObject>();
-    object->transform().position = {0, 0};
-    const ObjectId objectId = scene.add(std::move(object));
-    auto loose = std::make_unique<GameObject>();
-    const ObjectId looseId = scene.add(std::move(loose));
+    object->collider() = Collider{Box{{0, 0}, {10, 10}, 0}};
+    object->transform().position = {50, 60};
+    object->transform().rotation = 0.3F;
+    PhysicsBody settings;
+    settings.type = BodyType::Dynamic;
+    settings.velocity = {20, -10};
+    settings.angularVelocity = 0.5F;
+    object->enablePhysics(settings);
+    const ObjectId id = scene.add(std::move(object));
 
-    PhysicsWorld world;
-    world.gravity = {};
-    RigidBody body = boxBody({50, 60}, {10, 10});
-    body.angle = 0.3F;
-    body.velocity = {20, -10};
-    body.angularVelocity = 0.5F;
-    body.object = objectId;
-    const BodyId bodyId = world.addBody(body);
-    const BodyId looseBody = world.addBody(boxBody({-100, -100}, {10, 10}));
-
-    world.step(StepTime);
-    world.sync(scene);
-    const RigidBody* simulation = world.body(bodyId);
-    GameObject* moved = scene.find(objectId);
+    scene.update(StepTime);
+    GameObject* moved = scene.find(id);
     require(moved != nullptr, "Linked object disappeared.");
-    require(closeTo(moved->transform().position.x, simulation->position.x, 1e-5F)
-            && closeTo(moved->transform().position.y, simulation->position.y, 1e-5F),
-        "Sync must copy the body position.");
-    require(closeTo(moved->transform().rotation, simulation->angle, 1e-5F), "Sync must copy the body angle.");
-    require(scene.find(looseId)->transform().position == Vector2{}, "Sync touched an unlinked object.");
-    // Тело без объекта синхронизацией не затрагивается.
-    require(world.body(looseBody)->position != moved->transform().position,
-        "Unlinked body must not be written anywhere.");
+    require(closeTo(moved->transform().position.x, 50 + 20 * StepTime, 1e-5F)
+            && closeTo(moved->transform().position.y, 60 - 10 * StepTime, 1e-5F),
+        "Physics must write the body position into the object transform.");
+    require(closeTo(moved->transform().rotation, 0.3F + 0.5F * StepTime, 1e-5F),
+        "Physics must write the body angle into the object transform.");
+    const CollisionShape world = moved->collider().worldShape(moved->transform());
+    require(world.kind() == CollisionShape::Kind::Box
+            && closeTo(world.box().center.x, moved->transform().position.x, 1e-5F)
+            && closeTo(world.box().center.y, moved->transform().position.y, 1e-5F),
+        "Collider geometry must follow the body pose.");
 
-    scene.destroy(objectId);
-    scene.update(0);
-    world.step(StepTime);
-    world.sync(scene);
+    // Масштаб влияет на геометрию и массу: сторона 10 при масштабе 3.
+    auto scaled = std::make_unique<GameObject>();
+    scaled->collider() = Collider{Box{{0, 0}, {10, 10}, 0}};
+    scaled->transform().scale = {3, 3};
+    scaled->enablePhysics(dynamicBody());
+    const ObjectId scaledId = scene.add(std::move(scaled));
+    require(closeTo(bodyMass(*scene.find(scaledId)), 900, 1e-2F),
+        "Scaled mass must follow the object scale.");
+
+    // Объект без включённого тела физикой не двигается.
+    auto loose = std::make_unique<GameObject>();
+    loose->collider() = Collider{Box{{0, 0}, {10, 10}, 0}};
+    loose->transform().position = {-100, -100};
+    const ObjectId looseId = scene.add(std::move(loose));
+    scene.update(StepTime);
+    require(scene.find(looseId)->transform().position == Vector2{-100, -100},
+        "Object without a body must not be stepped by physics.");
+
+    scene.destroy(id);
+    scene.update(StepTime);
+    require(scene.find(id) == nullptr, "Destroyed object must not stay in the scene.");
 }
 
 void testLayers()
 {
-    PhysicsWorld world;
-    world.gravity = {};
-    RigidBody first = circleBody({0, 0}, 10);
-    first.layer = 1U;
-    first.mask = 1U;
-    RigidBody second = circleBody({5, 0}, 10);
-    second.layer = 2U;
-    second.mask = 2U;
-    const BodyId firstId = world.addBody(first);
-    const BodyId secondId = world.addBody(second);
-    for (int step = 0; step < 30; ++step) {
-        world.step(StepTime);
-    }
-    require(world.contactEvents().empty(), "Masks must exclude the pair.");
-    require(closeTo(world.body(firstId)->position.x, 0, 1e-5F)
-            && closeTo(world.body(secondId)->position.x, 5, 1e-5F),
+    TestWorld world;
+    world.physics().gravity = {};
+    const ObjectId firstId = world.addCircle({0, 0}, 10);
+    world.body(firstId).collider().layer = 1U;
+    world.body(firstId).collider().mask = 1U;
+    const ObjectId secondId = world.addCircle({5, 0}, 10);
+    world.body(secondId).collider().layer = 2U;
+    world.body(secondId).collider().mask = 2U;
+    world.steps(30);
+    require(world.events().empty(), "Masks must exclude the pair.");
+    require(closeTo(world.body(firstId).transform().position.x, 0, 1e-5F)
+            && closeTo(world.body(secondId).transform().position.x, 5, 1e-5F),
         "Excluded pair must not move.");
 }
 
 void testFastMovement()
 {
-    PhysicsWorld world;
-    world.gravity = {};
-    world.addBody(boxBody({0, 0}, {100, 400}, BodyType::Static));
-    RigidBody missile = circleBody({-300, 0}, 10);
-    missile.velocity = {3000, 0};
-    const BodyId missileId = world.addBody(missile);
-    for (int step = 0; step < 120; ++step) {
-        world.step(StepTime);
-    }
-    const RigidBody* stopped = world.body(missileId);
-    require(std::isfinite(stopped->position.x), "Fast movement produced a non-finite state.");
-    require(stopped->position.x < -50, "Fast body tunneled through a thick wall.");
-    require(std::fabs(stopped->velocity.x) < 50, "Fast body did not lose its speed at the wall.");
+    TestWorld world;
+    world.physics().gravity = {};
+    world.addBox({0, 0}, {100, 400}, BodyType::Static);
+    const ObjectId missileId = world.addCircle({-300, 0}, 10);
+    world.body(missileId).body().velocity = {3000, 0};
+    world.steps(120);
+    const Vector2 stopped = world.body(missileId).transform().position;
+    require(std::isfinite(stopped.x), "Fast movement produced a non-finite state.");
+    require(stopped.x < -50, "Fast body tunneled through a thick wall.");
+    require(std::fabs(world.body(missileId).body().velocity.x) < 50,
+        "Fast body did not lose its speed at the wall.");
 
     // Восьмипиксельная стена: за шаг тело проходит сто пикселей, поэтому без проверки
     // времени удара оно пролетело бы сквозь неё.
-    PhysicsWorld thin;
-    thin.gravity = {};
-    thin.addBody(boxBody({0, 0}, {8, 400}, BodyType::Static));
-    RigidBody bullet = circleBody({-300, 0}, 10);
-    bullet.velocity = {5000, 0};
-    const BodyId bulletId = thin.addBody(bullet);
-    for (int step = 0; step < 60; ++step) {
-        thin.step(StepTime);
-    }
-    const RigidBody* swept = thin.body(bulletId);
-    require(std::isfinite(swept->position.x), "Swept motion produced a non-finite state.");
-    require(swept->position.x < -10, "Swept body tunneled through a thin wall.");
-    require(swept->position.x > -40, "Swept body must stop at the wall.");
+    TestWorld thin;
+    thin.physics().gravity = {};
+    thin.addBox({0, 0}, {8, 400}, BodyType::Static);
+    const ObjectId bulletId = thin.addCircle({-300, 0}, 10);
+    thin.body(bulletId).body().velocity = {5000, 0};
+    thin.steps(60);
+    const Vector2 swept = thin.body(bulletId).transform().position;
+    require(std::isfinite(swept.x), "Swept motion produced a non-finite state.");
+    require(swept.x < -10, "Swept body tunneled through a thin wall.");
+    require(swept.x > -40, "Swept body must stop at the wall.");
 
     // Быстрое падение на пол не оставляет проникновения в поверхность.
-    PhysicsWorld drop;
-    drop.gravity = {0, 1600};
+    TestWorld drop;
+    drop.physics().gravity = {0, 1600};
     constexpr float FloorSurface = 20;
-    drop.addBody(boxBody({0, FloorSurface + 20}, {400, 40}, BodyType::Static));
-    RigidBody falling = circleBody({0, -300}, 10);
-    const BodyId fallingId = drop.addBody(falling);
+    drop.addBox({0, FloorSurface + 20}, {400, 40}, BodyType::Static);
+    const ObjectId fallingId = drop.addCircle({0, -300}, 10);
     float deepest = -1000;
     for (int step = 0; step < 240; ++step) {
-        drop.step(StepTime);
-        const RigidBody* body = drop.body(fallingId);
-        deepest = std::max(deepest, body->position.y + 10 - FloorSurface);
+        drop.step();
+        deepest = std::max(deepest, drop.body(fallingId).transform().position.y + 10 - FloorSurface);
     }
     require(deepest < 0.5F, "Fast impact must not push the body into the floor.");
     require(deepest > -1.0F, "Fast impact must reach the floor.");
 
     // Быстрый шар не проходит сквозь динамический ящик.
-    PhysicsWorld dynamic;
-    dynamic.gravity = {};
-    RigidBody crate = boxBody({0, 0}, {40, 40});
-    crate.friction = 0;
-    const BodyId crateId = dynamic.addBody(crate);
-    RigidBody bulletBall = circleBody({-300, 0}, 10);
-    bulletBall.velocity = {4000, 0};
-    bulletBall.friction = 0;
-    const BodyId bulletBallId = dynamic.addBody(bulletBall);
-    for (int step = 0; step < 60; ++step) {
-        dynamic.step(StepTime);
-    }
-    require(dynamic.body(bulletBallId)->position.x < dynamic.body(crateId)->position.x - 20,
+    TestWorld dynamic;
+    dynamic.physics().gravity = {};
+    const ObjectId crateId = dynamic.addBox({0, 0}, {40, 40});
+    dynamic.body(crateId).body().friction = 0;
+    const ObjectId bulletBallId = dynamic.addCircle({-300, 0}, 10);
+    dynamic.body(bulletBallId).body().velocity = {4000, 0};
+    dynamic.body(bulletBallId).body().friction = 0;
+    dynamic.steps(60);
+    require(dynamic.body(bulletBallId).transform().position.x
+            < dynamic.body(crateId).transform().position.x - 20,
         "Fast body must not pass through a dynamic body.");
 
     // Тонкая динамическая стена тоже останавливает быстрый шар.
-    PhysicsWorld thinDynamic;
-    thinDynamic.gravity = {};
-    thinDynamic.addBody(boxBody({0, 0}, {8, 400}));
-    RigidBody pellet = circleBody({-300, 0}, 10);
-    pellet.velocity = {5000, 0};
-    const BodyId pelletId = thinDynamic.addBody(pellet);
-    for (int step = 0; step < 60; ++step) {
-        thinDynamic.step(StepTime);
-    }
-    require(thinDynamic.body(pelletId)->position.x
-            <= thinDynamic.body(1)->position.x - 4 - 10 + 1,
+    TestWorld thinDynamic;
+    thinDynamic.physics().gravity = {};
+    const ObjectId wallId = thinDynamic.addBox({0, 0}, {8, 400});
+    const ObjectId pelletId = thinDynamic.addCircle({-300, 0}, 10);
+    thinDynamic.body(pelletId).body().velocity = {5000, 0};
+    thinDynamic.steps(60);
+    require(thinDynamic.body(pelletId).transform().position.x
+            <= thinDynamic.body(wallId).transform().position.x - 4 - 10 + 1,
         "Swept body tunneled through a thin dynamic wall.");
 
     // Быстрое кинематическое тело толкает динамическое, а не проходит сквозь него.
-    PhysicsWorld carrier;
-    carrier.gravity = {};
-    const BodyId targetId = carrier.addBody(circleBody({0, 0}, 10));
-    RigidBody pusher = boxBody({-400, 0}, {40, 40}, BodyType::Kinematic);
-    pusher.velocity = {3000, 0};
-    carrier.addBody(pusher);
-    for (int step = 0; step < 30; ++step) {
-        carrier.step(StepTime);
-    }
-    require(carrier.body(targetId)->position.x > 20,
+    TestWorld carrier;
+    carrier.physics().gravity = {};
+    const ObjectId targetId = carrier.addCircle({0, 0}, 10);
+    const ObjectId pusherId = carrier.addBox({-400, 0}, {40, 40}, BodyType::Kinematic);
+    carrier.body(pusherId).body().velocity = {3000, 0};
+    carrier.steps(30);
+    require(carrier.body(targetId).transform().position.x > 20,
         "Kinematic body must push instead of passing through a dynamic body.");
 }
 
 void testTallStack()
 {
-    PhysicsWorld world;
-    world.gravity = {0, 900};
-    RigidBody floorBody = boxBody({0, 20}, {500, 40}, BodyType::Static);
-    floorBody.friction = 1;
-    world.addBody(floorBody);
-    std::vector<BodyId> ids;
+    TestWorld world;
+    world.physics().gravity = {0, 900};
+    const ObjectId floorId = world.addFloor(0, 500);
+    world.body(floorId).body().friction = 1;
+    std::vector<ObjectId> ids;
     for (int level = 0; level < 8; ++level) {
-        RigidBody crate = boxBody({0, -15 - 30 * static_cast<float>(level)}, {30, 30});
-        crate.friction = 0.8F;
-        ids.push_back(world.addBody(crate));
+        const ObjectId id = world.addBox({0, -15 - 30 * static_cast<float>(level)}, {30, 30});
+        world.body(id).body().friction = 0.8F;
+        ids.push_back(id);
     }
-    for (int step = 0; step < 600; ++step) {
-        world.step(StepTime);
-    }
+    world.steps(600);
     for (int level = 0; level < 8; ++level) {
-        const RigidBody* body = world.body(ids[static_cast<std::size_t>(level)]);
-        require(std::isfinite(body->position.x) && std::isfinite(body->position.y),
+        const GameObject& body = world.body(ids[static_cast<std::size_t>(level)]);
+        const Vector2 position = body.transform().position;
+        require(std::isfinite(position.x) && std::isfinite(position.y),
             "Tall stack produced a non-finite state.");
-        require(std::fabs(body->position.x) < 1, "Tall stack must not drift sideways.");
-        require(closeTo(body->position.y, -15 - 30 * static_cast<float>(level), 5),
+        require(std::fabs(position.x) < 1, "Tall stack must not drift sideways.");
+        require(closeTo(position.y, -15 - 30 * static_cast<float>(level), 5),
             "Tall stack level " + std::to_string(level) + " sank or floated.");
-        require(std::fabs(body->angle) < 0.05F,
+        require(std::fabs(body.transform().rotation) < 0.05F,
             "Tall stack level " + std::to_string(level) + " tilted.");
     }
 }
 
 void testSleeping()
 {
-    PhysicsWorld world;
-    world.gravity = {0, 900};
-    RigidBody floorBody = boxBody({0, 20}, {400, 40}, BodyType::Static);
-    floorBody.friction = 1;
-    world.addBody(floorBody);
-    std::vector<BodyId> ids;
+    TestWorld world;
+    world.physics().gravity = {0, 900};
+    const ObjectId floorId = world.addFloor(0);
+    world.body(floorId).body().friction = 1;
+    std::vector<ObjectId> ids;
     for (int level = 0; level < 4; ++level) {
-        RigidBody crate = boxBody({0, -15 - 30 * static_cast<float>(level)}, {30, 30});
-        crate.friction = 0.8F;
-        ids.push_back(world.addBody(crate));
+        const ObjectId id = world.addBox({0, -15 - 30 * static_cast<float>(level)}, {30, 30});
+        world.body(id).body().friction = 0.8F;
+        ids.push_back(id);
     }
-    for (int step = 0; step < 120; ++step) {
-        world.step(StepTime);
-    }
-    for (const BodyId id : ids) {
-        require(world.body(id)->sleeping, "Settled stack must fall asleep.");
-        require(world.body(id)->velocity == Vector2{}, "Sleeping body must keep zero velocity.");
+    world.steps(120);
+    for (const ObjectId id : ids) {
+        require(world.body(id).body().sleeping, "Settled stack must fall asleep.");
+        require(world.body(id).body().velocity == Vector2{}, "Sleeping body must keep zero velocity.");
     }
     std::vector<Vector2> frozen;
-    for (const BodyId id : ids) {
-        frozen.push_back(world.body(id)->position);
+    for (const ObjectId id : ids) {
+        frozen.push_back(world.body(id).transform().position);
     }
-    for (int step = 0; step < 120; ++step) {
-        world.step(StepTime);
-    }
+    world.steps(120);
     for (std::size_t index = 0; index < ids.size(); ++index) {
-        require(world.body(ids[index])->position == frozen[index], "Sleeping body must not move.");
+        require(world.body(ids[index]).transform().position == frozen[index],
+            "Sleeping body must not move.");
     }
     // Удар будит спящую стопку.
-    RigidBody ball = circleBody({0, -160}, 12);
-    ball.velocity = {0, 600};
-    world.addBody(ball);
-    for (int step = 0; step < 30; ++step) {
-        world.step(StepTime);
-    }
+    const ObjectId ballId = world.addCircle({0, -160}, 12);
+    world.body(ballId).body().velocity = {0, 600};
+    world.steps(30);
     bool woken = false;
-    for (const BodyId id : ids) {
-        woken = woken || !world.body(id)->sleeping;
+    for (const ObjectId id : ids) {
+        woken = woken || !world.body(id).body().sleeping;
     }
     require(woken, "Impact must wake the sleeping stack.");
 
     // Тело на движущейся кинематической платформе не засыпает.
-    PhysicsWorld carrier;
-    carrier.gravity = {0, 900};
-    RigidBody platform = boxBody({0, 0}, {120, 20}, BodyType::Kinematic);
-    platform.velocity = {40, 0};
-    carrier.addBody(platform);
-    RigidBody carried = boxBody({0, -25}, {30, 30});
-    carried.friction = 0.9F;
-    const BodyId carriedId = carrier.addBody(carried);
-    for (int step = 0; step < 120; ++step) {
-        carrier.step(StepTime);
-    }
-    require(!carrier.body(carriedId)->sleeping, "Body on a moving platform must stay awake.");
+    TestWorld carrier;
+    carrier.physics().gravity = {0, 900};
+    const ObjectId platformId = carrier.addBox({0, 0}, {120, 20}, BodyType::Kinematic);
+    carrier.body(platformId).body().velocity = {40, 0};
+    const ObjectId carriedId = carrier.addBox({0, -25}, {30, 30});
+    carrier.body(carriedId).body().friction = 0.9F;
+    carrier.steps(120);
+    require(!carrier.body(carriedId).body().sleeping, "Body on a moving platform must stay awake.");
 
     // Внешняя сила не даёт телу уснуть.
-    PhysicsWorld pushed;
-    pushed.gravity = {0, 900};
-    addFloor(pushed, 0);
-    RigidBody pressed = boxBody({0, -20}, {30, 30});
-    pressed.friction = 0.5F;
-    const BodyId pressedId = pushed.addBody(pressed);
+    TestWorld pushed;
+    pushed.physics().gravity = {0, 900};
+    pushed.addFloor(0);
+    const ObjectId pressedId = pushed.addBox({0, -20}, {30, 30});
+    pushed.body(pressedId).body().friction = 0.5F;
     for (int step = 0; step < 120; ++step) {
-        pushed.body(pressedId)->applyForce({20000, 0});
-        pushed.step(StepTime);
+        applyForce(pushed.body(pressedId), {20000, 0});
+        pushed.step();
     }
-    require(!pushed.body(pressedId)->sleeping, "Applied force must keep the body awake.");
+    require(!pushed.body(pressedId).body().sleeping, "Applied force must keep the body awake.");
+
+    // Кинематическое тело, перенесённое приложением через трансформацию, тоже будит стопку.
+    TestWorld moved;
+    moved.physics().gravity = {0, 900};
+    const ObjectId movedFloor = moved.addFloor(0);
+    moved.body(movedFloor).body().friction = 1;
+    std::vector<ObjectId> sleeping;
+    for (int level = 0; level < 2; ++level) {
+        const ObjectId id = moved.addBox({0, -15 - 30 * static_cast<float>(level)}, {30, 30});
+        moved.body(id).body().friction = 0.8F;
+        sleeping.push_back(id);
+    }
+    moved.steps(120);
+    for (const ObjectId id : sleeping) {
+        require(moved.body(id).body().sleeping, "Stack must sleep before the transform impact.");
+    }
+    const ObjectId pusher = moved.addBox({-300, -15}, {20, 20}, BodyType::Kinematic);
+    moved.body(pusher).transform().position = {0, -15};
+    moved.step();
+    bool wokenByTransform = false;
+    for (const ObjectId id : sleeping) {
+        wokenByTransform = wokenByTransform || !moved.body(id).body().sleeping;
+    }
+    require(wokenByTransform, "Kinematic transform movement must wake the sleeping stack.");
 }
 
 void testFixedStepReproducibility()
 {
-    const auto configure = [](PhysicsWorld& world) {
-        world.gravity = {0, 900};
-        addFloor(world, 0);
-        world.addBody(circleBody({-40, -200}, 12));
-        RigidBody crate = boxBody({40, -150}, {40, 40}, BodyType::Dynamic, 0.3F);
-        crate.velocity = {30, 0};
-        world.addBody(crate);
-        RigidBody heavy = boxBody({0, -260}, {60, 20});
-        heavy.density = 3;
-        world.addBody(heavy);
+    const auto configure = [](TestWorld& world) {
+        world.physics().gravity = {0, 900};
+        world.addFloor(0);
+        world.addCircle({-40, -200}, 12);
+        const ObjectId crateId = world.addBox({40, -150}, {40, 40}, BodyType::Dynamic, 0.3F);
+        world.body(crateId).body().velocity = {30, 0};
+        const ObjectId heavyId = world.addBox({0, -260}, {60, 20});
+        world.body(heavyId).body().density = 3;
     };
-    PhysicsWorld dense;
-    PhysicsWorld sparse;
+    TestWorld dense;
+    TestWorld sparse;
     configure(dense);
     configure(sparse);
-    for (int step = 0; step < 120; ++step) {
-        dense.step(StepTime);
-    }
+    dense.steps(120);
     // То же число шагов тем же размером, но разбитое по кадрам иначе.
     for (int frame = 0; frame < 40; ++frame) {
         for (int step = 0; step < 3; ++step) {
-            sparse.step(StepTime);
+            sparse.step();
         }
     }
-    const std::vector<RigidBody*> first = dense.bodies();
-    const std::vector<RigidBody*> second = sparse.bodies();
+    const std::vector<GameObject*> first = dense.scene().findAll();
+    const std::vector<GameObject*> second = sparse.scene().findAll();
     require(first.size() == second.size(), "Different body counts after equal steps.");
     for (std::size_t index = 0; index < first.size(); ++index) {
-        require(closeTo(first[index]->position.x, second[index]->position.x, 1e-4F)
-                && closeTo(first[index]->position.y, second[index]->position.y, 1e-4F)
-                && closeTo(first[index]->angle, second[index]->angle, 1e-4F),
+        require(closeTo(first[index]->transform().position.x, second[index]->transform().position.x, 1e-4F)
+                && closeTo(first[index]->transform().position.y, second[index]->transform().position.y, 1e-4F)
+                && closeTo(first[index]->transform().rotation, second[index]->transform().rotation, 1e-4F),
             "Fixed step results depend on frame grouping.");
     }
-}
 }
 
 void testPose()
 {
-    PhysicsWorld world;
-    RigidBody body = circleBody({50, 80}, 10);
-    body.velocity = {5, -3};
-    body.angularVelocity = 0.5F;
-    const BodyId id = world.addBody(body);
-    RigidBody* placed = world.body(id);
-    // Спящее тело при переносе просыпается, иначе мир не заметит нового положения.
-    placed->sleeping = true;
-    placed->setPose({200, 120}, 0.75F);
-    require(!placed->sleeping, "setPose must wake the body.");
-    require(placed->position == Vector2{200, 120} && closeTo(placed->angle, 0.75F, 1e-6F),
-        "setPose must place the body.");
-    require(placed->velocity == Vector2{5, -3} && closeTo(placed->angularVelocity, 0.5F, 1e-6F),
-        "setPose must keep the motion.");
-    require(closeTo(placed->worldShape().circle().center.x, 200, 1e-4F),
-        "worldShape must follow the new pose.");
-    // После переноса тело шагает из нового положения.
-    placed->velocity = {};
-    placed->angularVelocity = 0;
-    world.gravity = {};
-    world.step(StepTime);
-    require(closeTo(placed->position.x, 200, 1e-4F) && closeTo(placed->position.y, 120, 1e-4F),
-        "Placed body must be integrated from its new pose.");
-    // Перенос без угла возвращает угол в ноль.
-    placed->setPose({10, 15});
-    require(closeTo(placed->angle, 0, 1e-6F), "Default setPose angle must be zero.");
-    // Перенос неподвижного тела тоже меняет форму в мире.
-    RigidBody wall = boxBody({0, 0}, {40, 20}, BodyType::Static);
-    const BodyId wallId = world.addBody(wall);
-    world.body(wallId)->setPose({300, 300}, 1.0F);
-    require(closeTo(world.body(wallId)->worldBounds().center().x, 300, 1e-4F)
-            && closeTo(world.body(wallId)->worldBounds().center().y, 300, 1e-4F),
-        "Static body must follow setPose.");
+    TestWorld world;
+    world.physics().gravity = {};
+    const ObjectId id = world.addCircle({50, 80}, 10);
+    world.body(id).body().velocity = {5, -3};
+    world.body(id).body().angularVelocity = 0.5F;
+    world.step();
+    require(closeTo(world.body(id).transform().position.x, 50 + 5 * StepTime, 1e-4F)
+            && closeTo(world.body(id).transform().position.y, 80 - 3 * StepTime, 1e-4F),
+        "Physics must read the object pose and integrate it.");
+    require(closeTo(world.body(id).transform().rotation, 0.5F * StepTime, 1e-4F),
+        "Physics must integrate the object angle.");
+
+    // Перенос трансформации переносит тело: мир читает позу объекта в начале шага.
+    world.body(id).body().velocity = {};
+    world.body(id).body().angularVelocity = 0;
+    world.body(id).transform().position = {200, 120};
+    world.body(id).transform().rotation = 0.75F;
+    world.body(id).body().wake();
+    world.step();
+    require(closeTo(world.body(id).transform().position.x, 200, 1e-4F)
+            && closeTo(world.body(id).transform().position.y, 120, 1e-4F)
+            && closeTo(world.body(id).transform().rotation, 0.75F, 1e-4F),
+        "Placed body must keep its object pose.");
+
+    // Неподвижный объект остаётся на месте.
+    const ObjectId wallId = world.addBox({300, 300}, {40, 20}, BodyType::Static, 1.0F);
+    world.step();
+    require(closeTo(world.body(wallId).transform().position.x, 300, 1e-4F)
+            && closeTo(world.body(wallId).transform().position.y, 300, 1e-4F),
+        "Static body must keep its pose.");
+}
 }
 
 int main(int argumentCount, char** arguments)

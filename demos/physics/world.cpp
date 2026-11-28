@@ -59,6 +59,28 @@ float floorTop(const Rect& area, float bottomMargin = 55)
     return area.position.y + area.size.height - bottomMargin;
 }
 
+// Объект зоны: коллайдер даёт форму и правила пар, тело — динамику.
+ObjectId createBody(Scene& scene, const CollisionShape& shape, BodyType type, Vector2 position,
+    float angle = 0)
+{
+    auto object = std::make_unique<GameObject>();
+    object->collider() = Collider{shape};
+    object->transform().position = position;
+    object->transform().rotation = angle;
+    PhysicsBody settings;
+    settings.type = type;
+    object->enablePhysics(settings);
+    return scene.add(std::move(object));
+}
+
+ObjectId addZoneFloor(Scene& scene, const Rect& area, float friction = 0.6F, float bottomMargin = 55)
+{
+    const ObjectId id = createBody(scene, Box{{0, 0}, {area.size.width - 120, 20}, 0},
+        BodyType::Static, {area.center().x, floorTop(area, bottomMargin) + 10});
+    scene.find(id)->body().friction = friction;
+    return id;
+}
+
 // Пиксельная область зоны: края расширяются наружу, чтобы содержимое у границы не пропадало.
 Viewport screenViewport(const Rect& worldArea, const CameraView& view)
 {
@@ -73,27 +95,14 @@ Viewport screenViewport(const Rect& worldArea, const CameraView& view)
         static_cast<int>(right - left), static_cast<int>(bottom - top)};
 }
 
-BodyId addBody(PhysicsWorld& world, const CollisionShape& shape, BodyType type, Vector2 position,
-    float angle = 0)
+// Перенос объекта приложением: поза меняется, а скорость сбрасывается.
+void placeObject(GameObject& object, Vector2 position, float angle = 0)
 {
-    return world.addBody(RigidBody{shape, type, position, angle});
-}
-
-BodyId addZoneFloor(PhysicsWorld& world, const Rect& area, float friction = 0.6F,
-    float bottomMargin = 55)
-{
-    RigidBody floor{Box{{0, 0}, {area.size.width - 120, 20}, 0}, BodyType::Static,
-        {area.center().x, floorTop(area, bottomMargin) + 10}};
-    floor.friction = friction;
-    return world.addBody(floor);
-}
-
-// Перенос тела приложением: положение меняется, а скорость сбрасывается.
-void placeBody(RigidBody& body, Vector2 position, float angle = 0)
-{
-    body.setPose(position, angle);
-    body.velocity = {};
-    body.angularVelocity = 0;
+    object.transform().position = position;
+    object.transform().rotation = angle;
+    object.body().velocity = {};
+    object.body().angularVelocity = 0;
+    object.body().wake();
 }
 
 void drawShape(Renderer2D& drawing, const CollisionShape& shape, Color fill, Color outline)
@@ -126,21 +135,21 @@ public:
         , bounce(restitution)
     {
         world().gravity = {0, 900};
-        addZoneFloor(world(), area);
+        addZoneFloor(scene(), area);
         start = {zoneCenter(area).x, area.position.y + 80};
-        RigidBody body{Circle{{0, 0}, 14}, BodyType::Dynamic, start};
-        body.restitution = restitution;
-        body.friction = 0.2F;
-        id = world().addBody(body);
+        id = createBody(scene(), Circle{{0, 0}, 14}, BodyType::Dynamic, start);
+        GameObject& object = *scene().find(id);
+        object.body().restitution = restitution;
+        object.body().friction = 0.2F;
     }
 
     std::string state() const override
     {
-        const RigidBody* body = world().body(id);
-        if (body->sleeping) {
+        const GameObject* object = scene().find(id);
+        if (object->body().sleeping) {
             return "E " + formatFloat(bounce, 2) + "   SETTLED";
         }
-        return "E " + formatFloat(bounce, 2) + "   VY " + formatFloat(body->velocity.y, 0);
+        return "E " + formatFloat(bounce, 2) + "   VY " + formatFloat(object->body().velocity.y, 0);
     }
 
     std::string counters() const override
@@ -157,7 +166,7 @@ private:
             return;
         }
         dropClock = 0;
-        placeBody(*world().body(id), start);
+        placeObject(*scene().find(id), start);
     }
 
     void afterStep() override
@@ -176,7 +185,7 @@ private:
     static constexpr float DropInterval = 3.5F;
     float bounce = 0;
     Vector2 start;
-    BodyId id = 0;
+    ObjectId id = 0;
     float dropClock = 0;
     int impacts = 0;
     float lastImpulse = 0;
@@ -191,39 +200,39 @@ public:
         , surfaceFriction(friction)
     {
         world().gravity = {0, 900};
-        addZoneFloor(world(), area, friction);
+        addZoneFloor(scene(), area, friction);
         start = {area.position.x + 55, floorTop(area) - 12};
-        RigidBody body{Box{{0, 0}, {40, 24}, 0}, BodyType::Dynamic, start};
-        body.friction = friction;
-        body.velocity = {StartSpeed, 0};
-        id = world().addBody(body);
+        id = createBody(scene(), Box{{0, 0}, {40, 24}, 0}, BodyType::Dynamic, start);
+        GameObject& object = *scene().find(id);
+        object.body().friction = friction;
+        object.body().velocity = {StartSpeed, 0};
     }
 
     std::string state() const override
     {
-        return "VX " + formatFloat(world().body(id)->velocity.x, 0);
+        return "VX " + formatFloat(scene().find(id)->body().velocity.x, 0);
     }
 
     std::string counters() const override
     {
         return "FRICTION " + formatFloat(surfaceFriction, 1) + "   SLID "
-            + formatFloat(world().body(id)->position.x - start.x, 0) + "   RUNS "
+            + formatFloat(scene().find(id)->transform().position.x - start.x, 0) + "   RUNS "
             + std::to_string(runs);
     }
 
 private:
     void beforeStep(float deltaTime) override
     {
-        RigidBody* body = world().body(id);
-        if (std::fabs(body->velocity.x) < 1) {
+        GameObject& object = *scene().find(id);
+        if (std::fabs(object.body().velocity.x) < 1) {
             stopClock += deltaTime;
         } else {
             stopClock = 0;
         }
-        const bool escaped = body->position.x > area().position.x + area().size.width - 30;
+        const bool escaped = object.transform().position.x > area().position.x + area().size.width - 30;
         if (stopClock > 1.5F || escaped) {
-            placeBody(*body, start);
-            body->velocity = {StartSpeed, 0};
+            placeObject(object, start);
+            object.body().velocity = {StartSpeed, 0};
             stopClock = 0;
             ++runs;
         }
@@ -232,7 +241,7 @@ private:
     static constexpr float StartSpeed = 300;
     float surfaceFriction = 0;
     Vector2 start;
-    BodyId id = 0;
+    ObjectId id = 0;
     float stopClock = 0;
     int runs = 0;
 };
@@ -249,20 +258,19 @@ public:
         , drop(dropHeight)
     {
         world().gravity = {0, 900};
-        RigidBody floor{Box{{0, 0}, {240, 20}, 0}, BodyType::Static,
-            {area.center().x, floorTop(area, bottomMargin) + 10}};
-        floor.friction = 1;
-        world().addBody(floor);
+        const ObjectId floorId = createBody(scene(), Box{{0, 0}, {240, 20}, 0}, BodyType::Static,
+            {area.center().x, floorTop(area, bottomMargin) + 10});
+        scene().find(floorId)->body().friction = 1;
         const float firstY = floorTop(area, bottomMargin) - boxSize / 2;
         for (int level = 0; level < count; ++level) {
             const float restY = firstY - boxSize * static_cast<float>(level);
             // До падения ящики разделены зазором: они падают по очереди и укладываются вплотную.
-            RigidBody crate{Box{{0, 0}, {boxSize, boxSize}, 0}, BodyType::Dynamic,
-                {area.center().x, restY - drop - SpawnGap * static_cast<float>(level)}};
-            crate.friction = 0.8F;
-            ids.push_back(world().addBody(crate));
+            const ObjectId id = createBody(scene(), Box{{0, 0}, {boxSize, boxSize}, 0},
+                BodyType::Dynamic, {area.center().x, restY - drop - SpawnGap * static_cast<float>(level)});
+            scene().find(id)->body().friction = 0.8F;
+            ids.push_back(id);
             expected.push_back(restY);
-            dropStart.push_back(crate.position);
+            dropStart.push_back(scene().find(id)->transform().position);
         }
     }
 
@@ -272,9 +280,9 @@ public:
         float sink = 0;
         float rise = 0;
         for (std::size_t index = 0; index < ids.size(); ++index) {
-            const RigidBody* body = world().body(ids[index]);
-            drift = std::max(drift, std::fabs(body->position.x - area().center().x));
-            const float offset = body->position.y - expected[index];
+            const GameObject* object = scene().find(ids[index]);
+            drift = std::max(drift, std::fabs(object->transform().position.x - area().center().x));
+            const float offset = object->transform().position.y - expected[index];
             sink = std::max(sink, offset);
             rise = std::min(rise, offset);
         }
@@ -298,8 +306,8 @@ private:
     void afterStep() override
     {
         bool allSleeping = true;
-        for (const BodyId id : ids) {
-            allSleeping = allSleeping && world().body(id)->sleeping;
+        for (const ObjectId id : ids) {
+            allSleeping = allSleeping && scene().find(id)->body().sleeping;
         }
         if (!allSleeping) {
             stillClock = 0;
@@ -312,7 +320,7 @@ private:
         stillClock = 0;
         ++drops;
         for (std::size_t index = 0; index < ids.size(); ++index) {
-            placeBody(*world().body(ids[index]), dropStart[index]);
+            placeObject(*scene().find(ids[index]), dropStart[index]);
         }
     }
 
@@ -321,7 +329,7 @@ private:
     float drop = 0;
     static constexpr float RestInterval = 3.5F;
     static constexpr float SpawnGap = 3;
-    std::vector<BodyId> ids;
+    std::vector<ObjectId> ids;
     std::vector<float> expected;
     std::vector<Vector2> dropStart;
     float lastStep = 0;
@@ -338,40 +346,40 @@ public:
     {
         world().gravity = {0, 900};
         const Vector2 center = zoneCenter(area);
-        RigidBody platform{Box{{0, 0}, {150, 18}, 0}, BodyType::Kinematic, {center.x, center.y + 10}};
-        platform.velocity = {Speed, 0};
-        platform.friction = 0.9F;
-        platformId = world().addBody(platform);
+        platformId = createBody(scene(), Box{{0, 0}, {150, 18}, 0}, BodyType::Kinematic,
+            {center.x, center.y + 10});
+        scene().find(platformId)->body().velocity = {Speed, 0};
+        scene().find(platformId)->body().friction = 0.9F;
         crateStart = {center.x, center.y - 14};
-        RigidBody crate{Box{{0, 0}, {30, 30}, 0}, BodyType::Dynamic, crateStart};
-        crate.friction = 0.9F;
-        crateId = world().addBody(crate);
+        crateId = createBody(scene(), Box{{0, 0}, {30, 30}, 0}, BodyType::Dynamic, crateStart);
+        scene().find(crateId)->body().friction = 0.9F;
     }
 
     std::string state() const override
     {
-        return "CRATE SHIFT " + formatFloat(std::fabs(world().body(crateId)->position.x - crateStart.x), 0);
+        return "CRATE SHIFT "
+            + formatFloat(std::fabs(scene().find(crateId)->transform().position.x - crateStart.x), 0);
     }
 
     std::string counters() const override
     {
-        return "PLATFORM VX " + formatFloat(world().body(platformId)->velocity.x, 0);
+        return "PLATFORM VX " + formatFloat(scene().find(platformId)->body().velocity.x, 0);
     }
 
 private:
     void beforeStep(float) override
     {
-        RigidBody* platform = world().body(platformId);
-        if (platform->position.x <= area().position.x + 80) {
-            platform->velocity.x = Speed;
-        } else if (platform->position.x >= area().position.x + area().size.width - 80) {
-            platform->velocity.x = -Speed;
+        GameObject& platform = *scene().find(platformId);
+        if (platform.transform().position.x <= area().position.x + 80) {
+            platform.body().velocity.x = Speed;
+        } else if (platform.transform().position.x >= area().position.x + area().size.width - 80) {
+            platform.body().velocity.x = -Speed;
         }
     }
 
     static constexpr float Speed = 90;
-    BodyId platformId = 0;
-    BodyId crateId = 0;
+    ObjectId platformId = 0;
+    ObjectId crateId = 0;
     Vector2 crateStart;
 };
 
@@ -384,14 +392,14 @@ public:
     {
         world().gravity = {};
         start = zoneCenter(area);
-        id = addBody(world(), Box{{0, 0}, {64, 20}, 0}, BodyType::Dynamic, start);
+        id = createBody(scene(), Box{{0, 0}, {64, 20}, 0}, BodyType::Dynamic, start);
     }
 
     std::string state() const override
     {
-        const RigidBody* body = world().body(id);
-        return "W " + formatFloat(body->angularVelocity, 2) + "   VY "
-            + formatFloat(body->velocity.y, 0);
+        const GameObject* object = scene().find(id);
+        return "W " + formatFloat(object->body().angularVelocity, 2) + "   VY "
+            + formatFloat(object->body().velocity.y, 0);
     }
 
     std::string counters() const override
@@ -402,16 +410,16 @@ public:
 private:
     void beforeStep(float) override
     {
-        RigidBody* body = world().body(id);
-        body->applyForceAtPoint(Vector2{0, Force}, body->position + Vector2{28, 0});
-        if (body->position.y > area().position.y + area().size.height - 40) {
-            placeBody(*body, start);
+        GameObject& object = *scene().find(id);
+        applyForceAtPoint(object, Vector2{0, Force}, object.transform().position + Vector2{28, 0});
+        if (object.transform().position.y > area().position.y + area().size.height - 40) {
+            placeObject(object, start);
         }
     }
 
     static constexpr float Force = 40000;
     Vector2 start;
-    BodyId id = 0;
+    ObjectId id = 0;
 };
 
 // События: сенсор-область сообщает о начале и конце контакта, скорость не меняется.
@@ -423,19 +431,17 @@ public:
     {
         world().gravity = {};
         const Vector2 center = zoneCenter(area);
-        RigidBody sensor{Circle{{0, 0}, 65}, BodyType::Static, center};
-        sensor.sensor = true;
-        sensorId = world().addBody(sensor);
+        sensorId = createBody(scene(), Circle{{0, 0}, 65}, BodyType::Static, center);
+        scene().find(sensorId)->collider().trigger = true;
         start = {area.position.x + 40, center.y};
-        RigidBody ball{Circle{{0, 0}, 16}, BodyType::Dynamic, start};
-        ball.velocity = {Speed, 0};
-        ballId = world().addBody(ball);
+        ballId = createBody(scene(), Circle{{0, 0}, 16}, BodyType::Dynamic, start);
+        scene().find(ballId)->body().velocity = {Speed, 0};
     }
 
     std::string state() const override
     {
         return "INSIDE " + std::to_string(inside) + "   SPEED "
-            + formatFloat(world().body(ballId)->velocity.x, 0);
+            + formatFloat(scene().find(ballId)->body().velocity.x, 0);
     }
 
     std::string counters() const override
@@ -446,10 +452,10 @@ public:
 private:
     void beforeStep(float) override
     {
-        RigidBody* ball = world().body(ballId);
-        if (ball->position.x > area().position.x + area().size.width - 40) {
-            placeBody(*ball, start);
-            ball->velocity = {Speed, 0};
+        GameObject& ball = *scene().find(ballId);
+        if (ball.transform().position.x > area().position.x + area().size.width - 40) {
+            placeObject(ball, start);
+            ball.body().velocity = {Speed, 0};
         }
     }
 
@@ -472,8 +478,8 @@ private:
 
     static constexpr float Speed = 150;
     Vector2 start;
-    BodyId sensorId = 0;
-    BodyId ballId = 0;
+    ObjectId sensorId = 0;
+    ObjectId ballId = 0;
     int begun = 0;
     int ended = 0;
     int inside = 0;
@@ -488,15 +494,14 @@ public:
     {
         world().gravity = {};
         const Vector2 center = zoneCenter(area);
-        RigidBody sensor{Circle{{0, 0}, 65}, BodyType::Static, center};
-        sensor.sensor = true;
-        sensor.layer = 2U;
-        sensor.mask = 1U;
-        sensorId = world().addBody(sensor);
+        sensorId = createBody(scene(), Circle{{0, 0}, 65}, BodyType::Static, center);
+        GameObject& sensor = *scene().find(sensorId);
+        sensor.collider().trigger = true;
+        sensor.collider().layer = 2U;
+        sensor.collider().mask = 1U;
         start = {area.position.x + 40, center.y};
-        RigidBody ball{Circle{{0, 0}, 16}, BodyType::Dynamic, start};
-        ball.velocity = {Speed, 0};
-        ballId = world().addBody(ball);
+        ballId = createBody(scene(), Circle{{0, 0}, 16}, BodyType::Dynamic, start);
+        scene().find(ballId)->body().velocity = {Speed, 0};
     }
 
     std::string state() const override
@@ -513,7 +518,7 @@ public:
 private:
     bool allowed() const
     {
-        return world().body(sensorId)->mask == 1U;
+        return scene().find(sensorId)->collider().mask == 1U;
     }
 
     void beforeStep(float deltaTime) override
@@ -521,13 +526,13 @@ private:
         toggleClock += deltaTime;
         if (toggleClock >= ToggleInterval) {
             toggleClock = 0;
-            RigidBody* sensor = world().body(sensorId);
-            sensor->mask = allowed() ? 2U : 1U;
+            Collider& sensor = scene().find(sensorId)->collider();
+            sensor.mask = allowed() ? 2U : 1U;
         }
-        RigidBody* ball = world().body(ballId);
-        if (ball->position.x > area().position.x + area().size.width - 40) {
-            placeBody(*ball, start);
-            ball->velocity = {Speed, 0};
+        GameObject& ball = *scene().find(ballId);
+        if (ball.transform().position.x > area().position.x + area().size.width - 40) {
+            placeObject(ball, start);
+            ball.body().velocity = {Speed, 0};
         }
     }
 
@@ -551,8 +556,8 @@ private:
     static constexpr float Speed = 150;
     static constexpr float ToggleInterval = 2.5F;
     Vector2 start;
-    BodyId sensorId = 0;
-    BodyId ballId = 0;
+    ObjectId sensorId = 0;
+    ObjectId ballId = 0;
     float toggleClock = 0;
     int begun = 0;
     int ended = 0;
@@ -568,16 +573,15 @@ public:
     {
         world().gravity = {};
         start = {area.position.x + 20, zoneCenter(area).y};
-        RigidBody sensor{Box{{0, 0}, {120, 60}, 0}, BodyType::Static, zoneCenter(area)};
-        sensor.sensor = true;
-        sensorId = world().addBody(sensor);
+        sensorId = createBody(scene(), Box{{0, 0}, {120, 60}, 0}, BodyType::Static, zoneCenter(area));
+        scene().find(sensorId)->collider().trigger = true;
         spawnBall();
     }
 
     std::string state() const override
     {
         return "REMOVED " + std::to_string(removed) + "   ALIVE "
-            + std::to_string(world().bodyCount() - 1);
+            + std::to_string(scene().count() - 1);
     }
 
     std::string counters() const override
@@ -588,23 +592,22 @@ public:
 private:
     void spawnBall()
     {
-        RigidBody ball{Circle{{0, 0}, 14}, BodyType::Dynamic, start};
-        ball.velocity = {Speed, 0};
-        ballId = world().addBody(ball);
+        ballId = createBody(scene(), Circle{{0, 0}, 14}, BodyType::Dynamic, start);
+        scene().find(ballId)->body().velocity = {Speed, 0};
     }
 
     void beforeStep(float deltaTime) override
     {
-        if (world().bodyCount() == 1) {
+        if (scene().count() == 1) {
             respawnClock += deltaTime;
             if (respawnClock >= RespawnTime) {
                 respawnClock = 0;
                 spawnBall();
             }
         }
-        RigidBody* ball = world().body(ballId);
-        if (ball != nullptr && ball->position.x > area().position.x + area().size.width - 30) {
-            placeBody(*ball, start);
+        GameObject* ball = scene().find(ballId);
+        if (ball != nullptr && ball->transform().position.x > area().position.x + area().size.width - 30) {
+            placeObject(*ball, start);
         }
     }
 
@@ -615,11 +618,12 @@ private:
             if (!event.contact.sensor || event.phase != ContactPhase::Begin) {
                 continue;
             }
-            const BodyId other = event.contact.first == sensorId ? event.contact.second : event.contact.first;
-            if (world().body(other) == nullptr) {
+            const ObjectId other = event.contact.first == sensorId
+                ? event.contact.second : event.contact.first;
+            if (scene().find(other) == nullptr) {
                 continue;
             }
-            world().destroyBody(other);
+            scene().destroy(other);
             ++removed;
             hit = true;
         }
@@ -629,8 +633,8 @@ private:
     static constexpr float Speed = 70;
     static constexpr float RespawnTime = 0.6F;
     Vector2 start;
-    BodyId sensorId = 0;
-    BodyId ballId = 0;
+    ObjectId sensorId = 0;
+    ObjectId ballId = 0;
     float respawnClock = 0;
     int removed = 0;
 };
@@ -643,11 +647,10 @@ public:
         : Zone(area, "IMPACT DATA")
     {
         world().gravity = {0, 900};
-        addZoneFloor(world(), area);
+        addZoneFloor(scene(), area);
         start = {zoneCenter(area).x, area.position.y + 80};
-        RigidBody ball{Circle{{0, 0}, 14}, BodyType::Dynamic, start};
-        ball.restitution = 0.85F;
-        id = world().addBody(ball);
+        id = createBody(scene(), Circle{{0, 0}, 14}, BodyType::Dynamic, start);
+        scene().find(id)->body().restitution = 0.85F;
     }
 
     std::string state() const override
@@ -668,7 +671,7 @@ private:
             return;
         }
         dropClock = 0;
-        placeBody(*world().body(id), start);
+        placeObject(*scene().find(id), start);
     }
 
     void afterStep() override
@@ -684,7 +687,7 @@ private:
 
     static constexpr float DropInterval = 2.5F;
     Vector2 start;
-    BodyId id = 0;
+    ObjectId id = 0;
     float dropClock = 0;
     int impacts = 0;
     float lastImpulse = 0;
@@ -699,11 +702,10 @@ public:
         : Zone(area, "CONTACT POINTS")
     {
         world().gravity = {0, 900};
-        addZoneFloor(world(), area);
-        RigidBody box{Box{{0, 0}, {60, 26}, 0}, BodyType::Dynamic,
-            {zoneCenter(area).x, floorTop(area) - 13}};
-        box.friction = 0.8F;
-        world().addBody(box);
+        addZoneFloor(scene(), area);
+        const ObjectId id = createBody(scene(), Box{{0, 0}, {60, 26}, 0}, BodyType::Dynamic,
+            {zoneCenter(area).x, floorTop(area) - 13});
+        scene().find(id)->body().friction = 0.8F;
     }
 
     std::string state() const override
@@ -754,13 +756,11 @@ public:
     {
         world().gravity = {};
         const Vector2 center = zoneCenter(area);
-        RigidBody sensor{Circle{{0, 0}, 55}, BodyType::Static, center};
-        sensor.sensor = true;
-        world().addBody(sensor);
+        const ObjectId sensorId = createBody(scene(), Circle{{0, 0}, 55}, BodyType::Static, center);
+        scene().find(sensorId)->collider().trigger = true;
         start = {area.position.x + 50, center.y};
-        RigidBody ball{Circle{{0, 0}, 14}, BodyType::Dynamic, start};
-        ball.velocity = {Speed, 0};
-        ballId = world().addBody(ball);
+        ballId = createBody(scene(), Circle{{0, 0}, 14}, BodyType::Dynamic, start);
+        scene().find(ballId)->body().velocity = {Speed, 0};
     }
 
     std::string state() const override
@@ -777,11 +777,11 @@ public:
 private:
     void beforeStep(float) override
     {
-        RigidBody* ball = world().body(ballId);
-        if (ball->position.x > area().position.x + area().size.width - 40) {
-            ball->velocity.x = -Speed;
-        } else if (ball->position.x < area().position.x + 40) {
-            ball->velocity.x = Speed;
+        GameObject& ball = *scene().find(ballId);
+        if (ball.transform().position.x > area().position.x + area().size.width - 40) {
+            ball.body().velocity.x = -Speed;
+        } else if (ball.transform().position.x < area().position.x + 40) {
+            ball.body().velocity.x = Speed;
         }
     }
 
@@ -809,7 +809,7 @@ private:
 
     static constexpr float Speed = 120;
     Vector2 start;
-    BodyId ballId = 0;
+    ObjectId ballId = 0;
     int begun = 0;
     int persisted = 0;
     int ended = 0;
@@ -826,19 +826,17 @@ public:
     {
         world().gravity = {};
         center = zoneCenter(area);
-        RigidBody wall{Box{{0, 0}, {8, 240}, 0}, BodyType::Static, center};
-        wallId = world().addBody(wall);
+        wallId = createBody(scene(), Box{{0, 0}, {8, 240}, 0}, BodyType::Static, center);
         start = {area.position.x + 40, center.y};
-        RigidBody ball{Circle{{0, 0}, 10}, BodyType::Dynamic, start};
-        ball.velocity = {Speed, 0};
-        ballId = world().addBody(ball);
+        ballId = createBody(scene(), Circle{{0, 0}, 10}, BodyType::Dynamic, start);
+        scene().find(ballId)->body().velocity = {Speed, 0};
     }
 
     std::string state() const override
     {
-        const RigidBody* ball = world().body(ballId);
-        const float gap = (center.x - 4) - (ball->position.x + 10);
-        return "VX " + formatFloat(ball->velocity.x, 0) + "   GAP " + formatFloat(gap, 1);
+        const GameObject* ball = scene().find(ballId);
+        const float gap = (center.x - 4) - (ball->transform().position.x + 10);
+        return "VX " + formatFloat(ball->body().velocity.x, 0) + "   GAP " + formatFloat(gap, 1);
     }
 
     std::string counters() const override
@@ -854,8 +852,8 @@ private:
             return;
         }
         resetClock = 0;
-        placeBody(*world().body(ballId), start);
-        world().body(ballId)->velocity = {Speed, 0};
+        placeObject(*scene().find(ballId), start);
+        scene().find(ballId)->body().velocity = {Speed, 0};
     }
 
     void afterStep() override
@@ -872,8 +870,8 @@ private:
     static constexpr float ResetInterval = 1.6F;
     Vector2 center;
     Vector2 start;
-    BodyId wallId = 0;
-    BodyId ballId = 0;
+    ObjectId wallId = 0;
+    ObjectId ballId = 0;
     float resetClock = 0;
     int impacts = 0;
 };
@@ -887,22 +885,20 @@ public:
     {
         world().gravity = {};
         center = zoneCenter(area);
-        RigidBody wall{Box{{0, 0}, {8, 240}, 0}, BodyType::Dynamic, center};
-        wall.friction = 0.2F;
-        wall.density = 40;
-        wallId = world().addBody(wall);
+        wallId = createBody(scene(), Box{{0, 0}, {8, 240}, 0}, BodyType::Dynamic, center);
+        scene().find(wallId)->body().friction = 0.2F;
+        scene().find(wallId)->body().density = 40;
         start = {area.position.x + 40, center.y};
-        RigidBody ball{Circle{{0, 0}, 10}, BodyType::Dynamic, start};
-        ball.velocity = {Speed, 0};
-        ballId = world().addBody(ball);
+        ballId = createBody(scene(), Circle{{0, 0}, 10}, BodyType::Dynamic, start);
+        scene().find(ballId)->body().velocity = {Speed, 0};
     }
 
     std::string state() const override
     {
-        const RigidBody* ball = world().body(ballId);
-        const RigidBody* wall = world().body(wallId);
-        const float gap = (wall->position.x - 4) - (ball->position.x + 10);
-        return "VX " + formatFloat(ball->velocity.x, 0) + "   GAP " + formatFloat(gap, 1);
+        const GameObject* ball = scene().find(ballId);
+        const GameObject* wall = scene().find(wallId);
+        const float gap = (wall->transform().position.x - 4) - (ball->transform().position.x + 10);
+        return "VX " + formatFloat(ball->body().velocity.x, 0) + "   GAP " + formatFloat(gap, 1);
     }
 
     std::string counters() const override
@@ -928,17 +924,25 @@ private:
             return;
         }
         resetClock = 0;
-        placeBody(*world().body(wallId), center);
-        placeBody(*world().body(ballId), start);
-        world().body(ballId)->velocity = {Speed, 0};
+        placeObject(*scene().find(wallId), center);
+        placeObject(*scene().find(ballId), start);
+        scene().find(ballId)->body().velocity = {Speed, 0};
+    }
+
+    Color fillOf(const GameObject& object) const override
+    {
+        if (object.id() == wallId) {
+            return StaticFill;
+        }
+        return Zone::fillOf(object);
     }
 
     static constexpr float Speed = 5000;
     static constexpr float ResetInterval = 1.6F;
     Vector2 center;
     Vector2 start;
-    BodyId wallId = 0;
-    BodyId ballId = 0;
+    ObjectId wallId = 0;
+    ObjectId ballId = 0;
     float resetClock = 0;
     int impacts = 0;
 };
@@ -952,17 +956,16 @@ public:
     {
         world().gravity = {};
         pusherStart = {area.position.x + 40, zoneCenter(area).y};
-        RigidBody pusher{Box{{0, 0}, {40, 40}, 0}, BodyType::Kinematic, pusherStart};
-        pusher.velocity = {Speed, 0};
-        pusherId = world().addBody(pusher);
+        pusherId = createBody(scene(), Box{{0, 0}, {40, 40}, 0}, BodyType::Kinematic, pusherStart);
+        scene().find(pusherId)->body().velocity = {Speed, 0};
         targetStart = {area.position.x + 170, zoneCenter(area).y};
-        targetId = addBody(world(), Circle{{0, 0}, 12}, BodyType::Dynamic, targetStart);
+        targetId = createBody(scene(), Circle{{0, 0}, 12}, BodyType::Dynamic, targetStart);
     }
 
     std::string state() const override
     {
-        return "PUSHER X " + formatFloat(world().body(pusherId)->position.x - pusherStart.x, 0)
-            + "   TARGET VX " + formatFloat(world().body(targetId)->velocity.x, 0);
+        return "PUSHER X " + formatFloat(scene().find(pusherId)->transform().position.x - pusherStart.x, 0)
+            + "   TARGET VX " + formatFloat(scene().find(targetId)->body().velocity.x, 0);
     }
 
     std::string counters() const override
@@ -973,20 +976,20 @@ public:
 private:
     void beforeStep(float) override
     {
-        RigidBody* pusher = world().body(pusherId);
-        if (pusher->position.x <= area().position.x + area().size.width - 60) {
+        GameObject& pusher = *scene().find(pusherId);
+        if (pusher.transform().position.x <= area().position.x + area().size.width - 60) {
             return;
         }
-        placeBody(*pusher, pusherStart);
-        pusher->velocity = {Speed, 0};
-        placeBody(*world().body(targetId), targetStart);
+        placeObject(pusher, pusherStart);
+        pusher.body().velocity = {Speed, 0};
+        placeObject(*scene().find(targetId), targetStart);
     }
 
     static constexpr float Speed = 3000;
     Vector2 pusherStart;
     Vector2 targetStart;
-    BodyId pusherId = 0;
-    BodyId targetId = 0;
+    ObjectId pusherId = 0;
+    ObjectId targetId = 0;
 };
 
 // Стандарт: упругость считается по скорости до шага, отскок равен удару без накачки.
@@ -997,12 +1000,11 @@ public:
         : Zone(area, "EXACT REBOUND")
     {
         world().gravity = {0, 900};
-        addZoneFloor(world(), area);
+        addZoneFloor(scene(), area);
         start = {zoneCenter(area).x, area.position.y + 80};
-        RigidBody ball{Circle{{0, 0}, 14}, BodyType::Dynamic, start};
-        ball.restitution = 1;
-        ball.friction = 0.05F;
-        id = world().addBody(ball);
+        id = createBody(scene(), Circle{{0, 0}, 14}, BodyType::Dynamic, start);
+        scene().find(id)->body().restitution = 1;
+        scene().find(id)->body().friction = 0.05F;
     }
 
     std::string state() const override
@@ -1023,23 +1025,23 @@ private:
             return;
         }
         dropClock = 0;
-        placeBody(*world().body(id), start);
+        placeObject(*scene().find(id), start);
     }
 
     void afterStep() override
     {
-        const RigidBody* body = world().body(id);
-        if (previousVy > 100 && body->velocity.y < 0) {
+        const PhysicsBody& body = scene().find(id)->body();
+        if (previousVy > 100 && body.velocity.y < 0) {
             impact = previousVy;
-            rebound = -body->velocity.y;
+            rebound = -body.velocity.y;
             ++bounces;
         }
-        previousVy = body->velocity.y;
+        previousVy = body.velocity.y;
     }
 
     static constexpr float DropInterval = 4.0F;
     Vector2 start;
-    BodyId id = 0;
+    ObjectId id = 0;
     float dropClock = 0;
     float previousVy = 0;
     float impact = 0;
@@ -1055,19 +1057,16 @@ public:
         : Zone(area, "SLEEPING ISLANDS")
     {
         world().gravity = {0, 900};
-        RigidBody floor{Box{{0, 0}, {240, 20}, 0}, BodyType::Static,
-            {area.center().x, floorTop(area) + 10}};
-        floor.friction = 1;
-        world().addBody(floor);
-        RigidBody crate{Box{{0, 0}, {CrateWidth, CrateHeight}, 0}, BodyType::Dynamic,
-            {area.center().x, floorTop(area) - CrateHeight / 2}};
-        crate.friction = 0.8F;
-        crateId = world().addBody(crate);
+        const ObjectId floorId = createBody(scene(), Box{{0, 0}, {240, 20}, 0}, BodyType::Static,
+            {area.center().x, floorTop(area) + 10});
+        scene().find(floorId)->body().friction = 1;
+        crateId = createBody(scene(), Box{{0, 0}, {CrateWidth, CrateHeight}, 0}, BodyType::Dynamic,
+            {area.center().x, floorTop(area) - CrateHeight / 2});
+        scene().find(crateId)->body().friction = 0.8F;
         const Vector2 ballRest{area.center().x, floorTop(area) - CrateHeight - BallRadius};
-        RigidBody ball{Circle{{0, 0}, BallRadius}, BodyType::Dynamic, ballRest};
-        ball.friction = 0.4F;
-        ball.restitution = 0.3F;
-        ballId = world().addBody(ball);
+        ballId = createBody(scene(), Circle{{0, 0}, BallRadius}, BodyType::Dynamic, ballRest);
+        scene().find(ballId)->body().friction = 0.4F;
+        scene().find(ballId)->body().restitution = 0.3F;
     }
 
     std::string state() const override
@@ -1084,8 +1083,8 @@ public:
 private:
     int sleepingCount() const
     {
-        return (world().body(crateId)->sleeping ? 1 : 0)
-            + (world().body(ballId)->sleeping ? 1 : 0);
+        return (scene().find(crateId)->body().sleeping ? 1 : 0)
+            + (scene().find(ballId)->body().sleeping ? 1 : 0);
     }
 
     void beforeStep(float deltaTime) override
@@ -1095,8 +1094,7 @@ private:
             launchClock += deltaTime;
             if (launchClock >= LaunchDelay) {
                 launchClock = 0;
-                RigidBody* ball = world().body(ballId);
-                placeBody(*ball, {area().center().x, area().position.y + 70});
+                placeObject(*scene().find(ballId), {area().center().x, area().position.y + 70});
             }
         } else {
             launchClock = 0;
@@ -1117,8 +1115,8 @@ private:
     static constexpr float CrateHeight = 30;
     static constexpr float BallRadius = 10;
     static constexpr float LaunchDelay = 0.8F;
-    BodyId crateId = 0;
-    BodyId ballId = 0;
+    ObjectId crateId = 0;
+    ObjectId ballId = 0;
     float launchClock = 0;
     int sleeping = 0;
     int wakeups = 0;
@@ -1141,9 +1139,7 @@ void Zone::update(float deltaTime)
 {
     elapsed += deltaTime;
     beforeStep(deltaTime);
-    simulation.step(deltaTime);
-    simulation.sync(ownedScene);
-    ownedScene.update(0);
+    ownedScene.update(deltaTime);
     afterStep();
 }
 
@@ -1159,32 +1155,32 @@ void Zone::drawExtra(Renderer2D&) const
 {
 }
 
-Color Zone::fillOf(const RigidBody& body) const
+Color Zone::fillOf(const GameObject& object) const
 {
-    if (body.sensor) {
+    if (object.collider().trigger) {
         return SensorFill;
     }
-    if (body.type == BodyType::Static) {
+    if (object.body().type == BodyType::Static) {
         return StaticFill;
     }
-    if (body.type == BodyType::Kinematic) {
+    if (object.body().type == BodyType::Kinematic) {
         return KinematicFill;
     }
-    return body.shape.kind() == CollisionShape::Kind::Circle ? BallFill : CrateFill;
+    return object.collider().shape.kind() == CollisionShape::Kind::Circle ? BallFill : CrateFill;
 }
 
-Color Zone::outlineOf(const RigidBody& body) const
+Color Zone::outlineOf(const GameObject& object) const
 {
-    if (body.sensor) {
+    if (object.collider().trigger) {
         return SensorOutline;
     }
-    if (body.type == BodyType::Static) {
+    if (object.body().type == BodyType::Static) {
         return StaticOutline;
     }
-    if (body.type == BodyType::Kinematic) {
+    if (object.body().type == BodyType::Kinematic) {
         return KinematicOutline;
     }
-    return body.shape.kind() == CollisionShape::Kind::Circle ? BallOutline : CrateOutline;
+    return object.collider().shape.kind() == CollisionShape::Kind::Circle ? BallOutline : CrateOutline;
 }
 
 void Zone::drawContent(Renderer2D& drawing) const
@@ -1192,11 +1188,9 @@ void Zone::drawContent(Renderer2D& drawing) const
     const Vector2 origin = zoneArea.position;
     drawing.drawDebugText(zoneTitle, Vector2{origin.x + 12, origin.y + TitleOffset}, TitleColor,
         TitlePixel);
-    for (const RigidBody* body : simulation.bodies()) {
-        if (body->object != 0) {
-            continue;
-        }
-        drawShape(drawing, body->worldShape(), fillOf(*body), outlineOf(*body));
+    for (const GameObject* object : ownedScene.findAll()) {
+        drawShape(drawing, object->collider().worldShape(object->transform()), fillOf(*object),
+            outlineOf(*object));
     }
     ownedScene.draw(drawing);
     drawExtra(drawing);

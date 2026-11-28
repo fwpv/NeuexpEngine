@@ -5,6 +5,7 @@
 #include "core/transform.h"
 #include "collision/collider.h"
 #include "object_id.h"
+#include "physics/body.h"
 
 #include <string>
 #include <utility>
@@ -53,6 +54,16 @@ public:
     const Collider& collider() const { return collision; }
     Collider& collider() { return collision; }
 
+    // Физика сцены: тело включается явно и копирует настройки; геометрию, слои
+    // и сенсор задаёт коллайдер, позу — transform. Выключение убирает объект
+    // из контактов и интегрирования, не меняя позу и коллайдер.
+    void enablePhysics(const PhysicsBody& settings = PhysicsBody{});
+    void disablePhysics();
+    bool physicsEnabled() const { return bodyEnabled; }
+    // Состояние тела; предусловие — physicsEnabled().
+    const PhysicsBody& body() const;
+    PhysicsBody& body();
+
     // Вызываются сценой. Обновление по умолчанию ничего не делает; базовый draw()
     // рисует visual и пропускается для спрайта без текстуры. Подкласс расширяет
     // поведение переопределением методов и при необходимости вызывает базовую отрисовку.
@@ -68,6 +79,8 @@ private:
     Transform2 placement;
     Sprite appearance;
     Collider collision;
+    PhysicsBody physicsBody;
+    bool bodyEnabled = false;
     bool visible = true;
     // Удалён из сцены; память освобождается в конце update() или в clear().
     bool removalPending = false;

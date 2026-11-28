@@ -117,6 +117,17 @@ std::vector<const GameObject*> Scene::findByGroup(std::string_view group) const
     return result;
 }
 
+std::vector<GameObject*> Scene::findAll()
+{
+    std::vector<GameObject*> result;
+    for (const auto& object : objects) {
+        if (!object->removalPending) {
+            result.push_back(object.get());
+        }
+    }
+    return result;
+}
+
 std::vector<const GameObject*> Scene::findAll() const
 {
     std::vector<const GameObject*> result;
@@ -147,6 +158,11 @@ void Scene::update(float deltaTime)
             objects[index]->update(deltaTime);
         }
     }
+    // Физика идёт после обновления объектов: их изменения поз и скоростей входят
+    // в текущий шаг, а записанные позы тел попадут в отрисовку этого же кадра.
+    if (deltaTime > 0) {
+        physicsWorld.step(*this, deltaTime);
+    }
     releaseRemoved();
 }
 
@@ -170,9 +186,11 @@ void Scene::clear()
         for (const auto& object : objects) {
             object->removalPending = true;
         }
+        physicsWorld.clear();
         return;
     }
     objects.clear();
+    physicsWorld.clear();
 }
 
 void Scene::releaseRemoved()
