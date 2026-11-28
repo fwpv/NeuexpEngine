@@ -188,7 +188,6 @@ void PhysicsWorld::collectBodies(const std::vector<GameObject*>& objects)
             ? 1 / mass.inertia : 0;
         bodies.push_back(entry);
     }
-    // Позы ушедших объектов забываются, чтобы карта не росла бесконечно.
     for (auto pose = previousPoses.begin(); pose != previousPoses.end();) {
         const bool alive = std::any_of(bodies.begin(), bodies.end(),
             [&pose](const Body& entry) { return entry.id == pose->first; });
@@ -208,7 +207,6 @@ void PhysicsWorld::integrateVelocities(float deltaTime)
         if (body.type != BodyType::Dynamic) {
             continue;
         }
-        // Внешняя сила, заданная скорость или импульс будят тело.
         if (body.sleeping && (body.force.x != 0 || body.force.y != 0 || body.torque != 0
                 || body.velocity.x != 0 || body.velocity.y != 0 || body.angularVelocity != 0)) {
             body.sleeping = false;
@@ -330,7 +328,6 @@ void PhysicsWorld::warmStartContact(SolveContact& contact)
     for (int index = 0; index < contact.count; ++index) {
         SolvePoint& point = contact.points[static_cast<std::size_t>(index)];
         int best = -1;
-        // Сначала та же особенность форм: устойчивый контакт сохраняет импульсы точно.
         for (int candidate = 0; candidate < previous->second.count; ++candidate) {
             if (used[static_cast<std::size_t>(candidate)]) {
                 continue;
@@ -499,7 +496,6 @@ void PhysicsWorld::updateSleeping(float deltaTime)
         if (!ready[index]) {
             continue;
         }
-        // Засыпает весь остров: все его тела должны быть готовы.
         bool islandReady = true;
         for (std::size_t other = 0; other < count; ++other) {
             if (root(other) != root(index)) {
@@ -824,7 +820,6 @@ void PhysicsWorld::integratePositions(float deltaTime)
             if (stopped[index]) {
                 continue;
             }
-            // Задетое спящее тело просыпается: удар его разбудил.
             PhysicsBody& body = bodies[index].object->body();
             body.sleeping = false;
             body.sleepTime = 0;
