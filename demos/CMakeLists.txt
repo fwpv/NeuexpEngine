@@ -102,6 +102,13 @@ endif()
 target_link_libraries(collision_demo PRIVATE neuexpengine_entry_point neuexpengine project_warnings)
 set_target_properties(collision_demo PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 
+add_executable(physics_demo physics/main.cpp physics/world.cpp)
+if(WIN32)
+    set_target_properties(physics_demo PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+target_link_libraries(physics_demo PRIVATE neuexpengine_entry_point neuexpengine project_warnings)
+set_target_properties(physics_demo PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
+
 add_executable(nehopio
     nehopio/main.cpp
     nehopio/game.cpp
