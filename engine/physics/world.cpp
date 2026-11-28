@@ -130,6 +130,12 @@ void PhysicsWorld::step(const std::vector<GameObject*>& objects, float deltaTime
     storeWarmStart();
     resetForces();
     emitEvents();
+    // Тела и контакты нужны только на время шага: между шагами мир держит только
+    // идентификаторы и позы, поэтому удалённый после шага объект не оставляет
+    // висячих указателей.
+    bodies.clear();
+    order.clear();
+    contacts.clear();
 }
 
 void PhysicsWorld::collectBodies(const std::vector<GameObject*>& objects)
