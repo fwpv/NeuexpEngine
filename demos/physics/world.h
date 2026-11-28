@@ -1,25 +1,80 @@
 #pragma once
 
-#include "core/image.h"
 #include "core/math2d.h"
 #include "core/resources.h"
 #include "core/texture.h"
 #include "graphics/renderer.h"
-#include "graphics/sprite.h"
 #include "physics/body.h"
 #include "physics/world.h"
 #include "scene/object.h"
 #include "scene/scene.h"
 
 #include <cstddef>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace PhysicsDemo
 {
+// Мир демонстрации: полоса подписей сверху и сетка зон проверки под ней.
 constexpr float WorldWidth = 1100;
 constexpr float WorldHeight = 700;
+constexpr float CellWidth = 340;
+constexpr float CellHeight = 300;
+constexpr float GridLeft = 20;
+constexpr float GridTop = 76;
+constexpr float GridGapX = 20;
+constexpr float GridGapY = 12;
 
-// Счётчики событий мира для подписей.
-struct Statistics
+// Зона проверки страницы: три столбца и два ряда, как у проверок столкновений.
+NeuexpEngine::Rect cellArea(int column, int row);
+
+// Одна проверка поведения физики. У зоны собственные сцена и физический мир,
+// поэтому зоны не влияют друг на друга. Подпись зоны показывает наблюдение.
+class Zone
+{
+public:
+    Zone(NeuexpEngine::Rect area, std::string title);
+    virtual ~Zone() = default;
+    Zone(const Zone&) = delete;
+    Zone& operator=(const Zone&) = delete;
+
+    const NeuexpEngine::Rect& area() const { return zoneArea; }
+    const std::string& title() const { return zoneTitle; }
+    // Один шаг мира зоны постоянной длительности; dT конечен и положителен.
+    void update(float deltaTime);
+    // Текущее наблюдение зоны и счётчики для подписей и проверок.
+    virtual std::string state() const = 0;
+    virtual std::string counters() const { return {}; }
+    bool highlighted() const { return highlight; }
+    void draw(NeuexpEngine::Renderer2D& drawing) const;
+
+protected:
+    NeuexpEngine::Scene& scene() { return ownedScene; }
+    const NeuexpEngine::Scene& scene() const { return ownedScene; }
+    NeuexpEngine::PhysicsWorld& world() { return simulation; }
+    const NeuexpEngine::PhysicsWorld& world() const { return simulation; }
+    float elapsedSeconds() const { return elapsed; }
+    void markHighlighted(bool value) { highlight = value; }
+
+    // Действия зоны перед шагом и обработка событий шага.
+    virtual void beforeStep(float deltaTime);
+    virtual void afterStep();
+    virtual void drawExtra(NeuexpEngine::Renderer2D& drawing) const;
+    virtual NeuexpEngine::Color fillOf(const NeuexpEngine::RigidBody& body) const;
+    virtual NeuexpEngine::Color outlineOf(const NeuexpEngine::RigidBody& body) const;
+
+private:
+    NeuexpEngine::Rect zoneArea;
+    std::string zoneTitle;
+    NeuexpEngine::Scene ownedScene;
+    NeuexpEngine::PhysicsWorld simulation;
+    float elapsed = 0;
+    bool highlight = false;
+};
+
+// Счётчики большой площадки.
+struct PlaygroundStatistics
 {
     int gateBegins = 0;
     int gateEnds = 0;
@@ -30,61 +85,48 @@ struct Statistics
     int contacts = 0;
 };
 
-// Демонстрационный мир: неподвижные конструкции, падающие тела, движущаяся площадка
-// и два сенсора. Ящики рисуются спрайтами из трансформаций объектов сцены, остальные
-// тела — фигурами по состоянию физики.
-class World
+class PlaygroundZone;
+
+// Фабрика проверок: страницы зон, их обновление, отрисовка и переключение.
+class CheckBoard
 {
 public:
-    World() = default;
-    World(const World&) = delete;
-    World& operator=(const World&) = delete;
+    CheckBoard() = default;
+    CheckBoard(const CheckBoard&) = delete;
+    CheckBoard& operator=(const CheckBoard&) = delete;
 
-    // Текстура ящика создаётся один раз до первого recreate().
+    // Текстура ящиков создаётся до build(); без неё площадка работает без спрайтов.
     bool loadAssets(NeuexpEngine::Renderer2D& renderer, NeuexpEngine::ResourceError& error);
-    // Строит мир заново: сцена, тела и счётчики возвращаются в исходное состояние.
-    void recreate();
+    // Строит все страницы заново и остаётся на текущей странице.
+    void build();
+    void restart() { build(); }
 
-    // Один шаг симуляции, события шага и перевод состояния в трансформации объектов.
-    void step(float deltaTime);
+    void update(float deltaTime);
     void draw(NeuexpEngine::Renderer2D& drawing) const;
 
-    void toggleWind();
-    bool isWindActive() const { return wind; }
-    void setAttract(bool active) { attracting = active; }
-    void setCaret(NeuexpEngine::Vector2 point) { caret = point; }
-    // Импульс вверх в точке; false — под точкой нет динамического тела.
-    bool impulseAt(NeuexpEngine::Vector2 point);
-    // Новый шар над миром; вызывается по клавише и таймером.
-    void spawnBall();
+    void nextPage();
+    int pageIndex() const { return currentPage; }
+    int pageCount() const;
+    const std::string& pageName() const;
+    bool isPlaygroundPage() const;
+    const std::vector<std::unique_ptr<Zone>>& zones() const;
 
-    const Statistics& statistics() const { return stats; }
-    const NeuexpEngine::PhysicsWorld& physics() const { return simulation; }
-    std::size_t bodyCount() const { return simulation.bodyCount(); }
+    // Управление большой площадкой; на других страницах ничего не делает.
+    void toggleWind();
+    bool isWindActive() const;
+    void setAttract(bool active);
+    void setCaret(NeuexpEngine::Vector2 point);
+    bool impulseAt(NeuexpEngine::Vector2 point);
+    void spawnBall();
+    const PlaygroundStatistics* playgroundStatistics() const;
 
 private:
-    void addStatic(NeuexpEngine::Vector2 center, NeuexpEngine::Size2 size, float angle = 0);
-    NeuexpEngine::BodyId addSensor(NeuexpEngine::Vector2 center, NeuexpEngine::Size2 size);
-    void addPlatform();
-    void addCrate(NeuexpEngine::Vector2 position, NeuexpEngine::Size2 size, float angle, float density,
-        float angularVelocity = 0);
-    void addBall(NeuexpEngine::Vector2 position, float radius);
-    NeuexpEngine::Sprite crateSprite(NeuexpEngine::Size2 size) const;
-    void updatePlatform();
-    void applyForces();
-    void handleEvents();
+    void buildSmallPage(int page);
 
-    NeuexpEngine::Scene scene;
-    NeuexpEngine::PhysicsWorld simulation;
     NeuexpEngine::Texture crateTexture;
-    Statistics stats;
-    NeuexpEngine::BodyId platformId = 0;
-    NeuexpEngine::BodyId gateId = 0;
-    NeuexpEngine::BodyId pitId = 0;
-    NeuexpEngine::Vector2 caret;
-    bool wind = false;
-    bool attracting = false;
-    int spawnIndex = 0;
-    int spawnTimer = 0;
+    std::vector<std::vector<std::unique_ptr<Zone>>> pages;
+    std::vector<std::string> pageNames;
+    int currentPage = 0;
+    PlaygroundZone* playground = nullptr;
 };
 }

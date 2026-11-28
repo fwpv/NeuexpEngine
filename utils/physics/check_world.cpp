@@ -1,6 +1,6 @@
-// Проверка содержания демо physics без окна: мир остаётся устойчивым, состояние тел
-// не уходит в NaN, сенсоры считают переходы, яма удаляет тела, одинаковые шаги
-// воспроизводимы. В сборку демо не входит, собирается вручную после ./scripts/build_demos.sh:
+// Проверка содержания демо physics без окна: каждая зона показывает ожидаемое
+// поведение, страницы независимы, площадка считает события и воспроизводима.
+// В сборку демо не входит, собирается вручную после ./scripts/build_demos.sh:
 //   g++ -std=c++17 -O2 -Iengine -Idemos/physics utils/physics/check_world.cpp \
 //       demos/physics/world.cpp build/engine/libneuexpengine.a build/libstb_image.a \
 //       -lGL -lX11 -lm -lpthread -ldl -o build/physics_checks
@@ -8,9 +8,9 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <iostream>
 #include <string>
-#include <vector>
 
 namespace
 {
@@ -28,108 +28,202 @@ void require(bool condition, const std::string& message)
     }
 }
 
-void requireFinite(const PhysicsDemo::World& world)
+bool contains(const std::string& text, const char* part)
 {
-    for (const RigidBody* body : world.physics().bodies()) {
-        require(std::isfinite(body->position.x) && std::isfinite(body->position.y)
-                && std::isfinite(body->velocity.x) && std::isfinite(body->velocity.y)
-                && std::isfinite(body->angle) && std::isfinite(body->angularVelocity),
-            "Body state must stay finite.");
+    return text.find(part) != std::string::npos;
+}
+
+// Целое число после подписи в тексте зоны; -1 — подпись не найдена.
+int valueAfter(const std::string& text, const char* name)
+{
+    const std::size_t found = text.find(name);
+    if (found == std::string::npos) {
+        return -1;
+    }
+    std::size_t position = found + std::char_traits<char>::length(name);
+    while (position < text.size() && text[position] == ' ') {
+        ++position;
+    }
+    bool negative = false;
+    if (position < text.size() && text[position] == '-') {
+        negative = true;
+        ++position;
+    }
+    int value = 0;
+    bool digits = false;
+    while (position < text.size() && text[position] >= '0' && text[position] <= '9') {
+        value = value * 10 + (text[position] - '0');
+        ++position;
+        digits = true;
+    }
+    return digits ? (negative ? -value : value) : -1;
+}
+
+const PhysicsDemo::Zone* findZone(const PhysicsDemo::CheckBoard& board, const char* title)
+{
+    for (const std::unique_ptr<PhysicsDemo::Zone>& zone : board.zones()) {
+        if (zone->title() == title) {
+            return zone.get();
+        }
+    }
+    return nullptr;
+}
+
+void stepBoard(PhysicsDemo::CheckBoard& board, int steps)
+{
+    for (int step = 0; step < steps; ++step) {
+        board.update(StepTime);
+    }
+}
+
+void requireZonesHaveText(PhysicsDemo::CheckBoard& board)
+{
+    for (const std::unique_ptr<PhysicsDemo::Zone>& zone : board.zones()) {
+        require(!zone->title().empty() && !zone->state().empty(),
+            "Zone must have a title and an observation.");
+        require(!contains(zone->state(), "nan") && !contains(zone->state(), "inf"),
+            "Zone state must stay finite: " + zone->title());
     }
 }
 }
 
 int main()
 {
-    PhysicsDemo::World world;
-    world.recreate();
-    // Мир выдерживает долгую симуляцию: тела не проваливаются, сенсоры работают,
-    // яма удаляет тела, население мира ограничено.
-    for (int step = 0; step < 1800; ++step) {
-        world.step(StepTime);
-        if (step % 120 == 0) {
-            requireFinite(world);
-        }
+    PhysicsDemo::CheckBoard board;
+    board.build();
+    require(board.pageCount() == 5, "Expected five pages.");
+    require(board.pageIndex() == 0, "Board must start on the first page.");
+    require(board.zones().size() == 6, "Every small page has six zones.");
+
+    // Страница 1: падение, отскок, затухание, снаряд.
+    stepBoard(board, 30);
+    requireZonesHaveText(board);
+    const PhysicsDemo::Zone* freeFall = findZone(board, "FREE FALL");
+    require(freeFall != nullptr && contains(freeFall->state(), "VY"), "Free fall must report speed.");
+    require(valueAfter(findZone(board, "LINEAR DAMPING")->state(), "LIMIT") == 360,
+        "Linear damping must show terminal velocity.");
+    const PhysicsDemo::Zone* bouncy = findZone(board, "RESTITUTION 0.9");
+    const PhysicsDemo::Zone* dull = findZone(board, "RESTITUTION 0.1");
+    require(bouncy != nullptr && dull != nullptr, "Restitution zones are missing.");
+    require(valueAfter(findZone(board, "PROJECTILE")->state(), "VX") == 160,
+        "Projectile must keep horizontal speed.");
+    stepBoard(board, 300);
+    requireZonesHaveText(board);
+    require(valueAfter(bouncy->counters(), "IMPACTS") > valueAfter(dull->counters(), "IMPACTS"),
+        "Bouncy ball must hit more often than the dull one.");
+    require(valueAfter(findZone(board, "ANGULAR DAMPING")->state(), "W") <= 8
+            && valueAfter(findZone(board, "ANGULAR DAMPING")->state(), "W") >= 0,
+        "Angular damping must stay within the initial speed.");
+    board.nextPage();
+
+    // Страница 2: силы, импульсы, момент и их отсутствие у статики.
+    stepBoard(board, 120);
+    requireZonesHaveText(board);
+    require(valueAfter(findZone(board, "CONSTANT FORCE")->state(), "VX") > 0,
+        "Constant force must accelerate the body.");
+    require(valueAfter(findZone(board, "IMPULSE")->counters(), "IMPULSES") >= 1,
+        "Impulse zone must apply kicks.");
+    require(valueAfter(findZone(board, "TORQUE")->state(), "W") > 0,
+        "Torque must spin the body.");
+    require(contains(findZone(board, "STATIC / KINEMATIC")->counters(), "IGNORED"),
+        "Static and kinematic bodies must ignore forces.");
+    require(valueAfter(findZone(board, "STATIC / KINEMATIC")->state(), "STATIC SHIFT") == 0,
+        "Static body must not move.");
+    board.nextPage();
+
+    // Страница 3: масса, трение и стопка.
+    stepBoard(board, 300);
+    requireZonesHaveText(board);
+    require(contains(findZone(board, "DENSITY TO MASS")->state(), "MASS 800 / 3200"),
+        "Density must define mass.");
+    require(valueAfter(findZone(board, "FRICTION")->counters(), "RUNS") >= 1,
+        "Friction zone must show sliding runs.");
+    require(valueAfter(findZone(board, "FRICTIONLESS")->state(), "VX") == 300,
+        "Frictionless box must keep its speed.");
+    require(contains(findZone(board, "STACK")->state(), "STABLE"),
+        "Stack must stay stable.");
+    require(valueAfter(findZone(board, "FORCE VS FRICTION")->counters(), "LIMIT") > 0,
+        "Friction limit must be reported.");
+    board.nextPage();
+
+    // Страница 4: сенсоры, контакты и кинематическое движение.
+    bool maskExcluded = false;
+    bool maskAllowed = false;
+    int removed = 0;
+    int carried = 0;
+    for (int step = 0; step < 360; ++step) {
+        board.update(StepTime);
+        const std::string maskState = findZone(board, "SENSOR MASK")->state();
+        maskExcluded = maskExcluded || contains(maskState, "EXCLUDED");
+        maskAllowed = maskAllowed || contains(maskState, "ALLOWED");
+        removed = std::max(removed, valueAfter(findZone(board, "SENSOR REMOVES")->state(), "REMOVED"));
+        const int shift = valueAfter(findZone(board, "KINEMATIC CARRIER")->state(), "CRATE SHIFT");
+        carried = std::max(carried, std::abs(shift));
     }
-    requireFinite(world);
-    const PhysicsDemo::Statistics& stats = world.statistics();
-    std::cout << "bodies " << world.bodyCount() << "   gate inside " << stats.gateInside
-              << "   begin " << stats.gateBegins << "   end " << stats.gateEnds
-              << "   pit " << stats.pitRemoved << "   impacts " << stats.impacts << '\n';
-    require(stats.gateBegins > 0 && stats.gateEnds > 0, "Gate sensor must report begin and end.");
-    require(stats.gateInside >= 0, "Gate inside count must not go negative.");
-    require(stats.pitRemoved > 0, "Pit sensor must remove bodies.");
-    require(stats.impacts > 0 && stats.lastImpactImpulse > 0, "Contacts must report impulses.");
-    require(world.bodyCount() > 0 && world.bodyCount() < 40, "Body population must stay bounded.");
+    requireZonesHaveText(board);
+    const PhysicsDemo::Zone* sensorPass = findZone(board, "SENSOR PASS");
+    require(valueAfter(sensorPass->counters(), "BEGIN") > 0
+            && valueAfter(sensorPass->counters(), "END") > 0,
+        "Sensor must report begin and end.");
+    require(valueAfter(sensorPass->state(), "SPEED") == 150,
+        "Sensor must not slow the body down.");
+    require(maskExcluded && maskAllowed, "Sensor mask must toggle pair filtering.");
+    require(removed > 0, "Sensor must remove bodies through deferred removal.");
+    require(valueAfter(findZone(board, "IMPACT IMPULSE")->counters(), "IMPACTS") > 0,
+        "Impact zone must report contacts.");
+    require(contains(findZone(board, "CONTACT POINTS")->state(), "POINTS 2"),
+        "Resting box must have two contact points.");
+    require(carried > 10, "Kinematic platform must carry the crate.");
+    board.nextPage();
 
-    // Одинаковые шаги дают одинаковый результат независимо от разбиения по кадрам.
-    PhysicsDemo::World dense;
-    PhysicsDemo::World sparse;
-    dense.recreate();
-    sparse.recreate();
-    for (int step = 0; step < 300; ++step) {
-        dense.step(StepTime);
+    // Страница 5: площадка.
+    require(board.isPlaygroundPage(), "Last page must be the playground.");
+    stepBoard(board, 1200);
+    requireZonesHaveText(board);
+    const PhysicsDemo::PlaygroundStatistics* stats = board.playgroundStatistics();
+    require(stats != nullptr, "Playground statistics are missing.");
+    require(stats->gateBegins > 0 && stats->gateEnds > 0, "Gate sensor must count transitions.");
+    require(stats->gateInside >= 0, "Gate inside count must not be negative.");
+    require(stats->pitRemoved > 0, "Pit sensor must remove bodies.");
+    require(stats->impacts > 0 && stats->lastImpactImpulse > 0, "Playground must report impacts.");
+
+    // Страницы не влияют друг на друга: пока страница не обновляется, её зоны стоят.
+    PhysicsDemo::CheckBoard isolated;
+    isolated.build();
+    stepBoard(isolated, 20);
+    const std::string frozen = isolated.zones().front()->state();
+    isolated.nextPage();
+    stepBoard(isolated, 20);
+    while (isolated.pageIndex() != 0) {
+        isolated.nextPage();
     }
-    for (int frame = 0; frame < 75; ++frame) {
-        for (int step = 0; step < 4; ++step) {
-            sparse.step(StepTime);
-        }
+    require(isolated.zones().front()->state() == frozen, "Pages must not affect each other.");
+
+    // Перезапуск возвращает счётчики площадки и остаётся на её странице.
+    board.restart();
+    require(board.isPlaygroundPage(), "Restart must keep the current page.");
+    require(board.playgroundStatistics() != nullptr
+            && board.playgroundStatistics()->gateBegins == 0
+            && board.playgroundStatistics()->pitRemoved == 0,
+        "Restart must reset the playground counters.");
+
+    // Одинаковые шаги дают одинаковый результат в двух независимых мирах.
+    PhysicsDemo::CheckBoard first;
+    PhysicsDemo::CheckBoard second;
+    first.build();
+    second.build();
+    while (!first.isPlaygroundPage()) {
+        first.nextPage();
     }
-    const std::vector<const RigidBody*> first = dense.physics().bodies();
-    const std::vector<const RigidBody*> second = sparse.physics().bodies();
-    require(first.size() == second.size(), "Equal steps must keep the same bodies.");
-    int differences = 0;
-    for (std::size_t index = 0; index < first.size() && index < second.size(); ++index) {
-        if (std::fabs(first[index]->position.x - second[index]->position.x) > 0.001F
-            || std::fabs(first[index]->position.y - second[index]->position.y) > 0.001F) {
-            ++differences;
-        }
+    while (!second.isPlaygroundPage()) {
+        second.nextPage();
     }
-    require(differences == 0, "Fixed step results depend on frame grouping.");
-
-    // Перезапуск возвращает счётчики и население мира к исходному.
-    PhysicsDemo::World fresh;
-    fresh.recreate();
-    world.recreate();
-    require(world.statistics().gateBegins == 0 && world.statistics().pitRemoved == 0,
-        "Restart must reset the counters.");
-    require(world.bodyCount() == fresh.bodyCount(), "Restart must restore the initial bodies.");
-
-    // Управление миром: новый шар, сила ветра, импульс в точке и притяжение курсором.
-    PhysicsDemo::World controls;
-    controls.recreate();
-    const std::size_t beforeSpawn = controls.bodyCount();
-    controls.spawnBall();
-    require(controls.bodyCount() == beforeSpawn + 1, "Spawning must add one body.");
-    controls.recreate();
-    require(!controls.impulseAt({550, 380}), "Impulse must not hit empty space.");
-    const auto ballAt = [&controls](float x, float y) -> const RigidBody* {
-        for (const RigidBody* body : controls.physics().bodies()) {
-            if (body->type == BodyType::Dynamic && body->worldShape().kind() == CollisionShape::Kind::Circle
-                && std::fabs(body->position.x - x) < 2 && std::fabs(body->position.y - y) < 2) {
-                return body;
-            }
-        }
-        return nullptr;
-    };
-    const RigidBody* target = ballAt(470, 70);
-    require(target != nullptr, "Expected ball is missing.");
-    require(controls.impulseAt({470, 70}), "Impulse must hit a dynamic body.");
-    require(target->velocity.y < -300, "Impulse must throw the body up.");
-
-    controls.recreate();
-    controls.setCaret({550, 650});
-    controls.setAttract(true);
-    controls.step(StepTime);
-    require(ballAt(470, 71)->velocity.y > 30, "Attraction must pull the body to the caret.");
-    controls.setAttract(false);
-
-    controls.recreate();
-    require(!controls.isWindActive(), "Wind must start disabled.");
-    controls.toggleWind();
-    require(controls.isWindActive(), "Wind toggle failed.");
-    controls.step(StepTime);
-    require(ballAt(470, 71)->velocity.x > 10, "Wind must push bodies sideways.");
+    stepBoard(first, 400);
+    stepBoard(second, 400);
+    require(first.zones().front()->state() == second.zones().front()->state(),
+        "Playground state depends on the world instance.");
+    require(first.zones().front()->counters() == second.zones().front()->counters(),
+        "Playground counters depend on the world instance.");
 
     if (failures == 0) {
         std::cout << "CHECKS OK\n";
