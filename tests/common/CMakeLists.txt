@@ -41,6 +41,13 @@ foreach(group math geometry transform polygon collision collision_query collider
     add_test(NAME ${group} COMMAND ${group}_test)
 endforeach()
 
+add_executable(physics_test physics_test.cpp)
+target_link_libraries(physics_test PRIVATE neuexpengine project_warnings)
+foreach(mode manifold properties integration forces collisions restitution friction stack rotation
+    sensors events deferred sync layers fast fixedstep)
+    add_test(NAME physics_${mode} COMMAND physics_test ${mode})
+endforeach()
+
 add_executable(sprite_test sprite_test.cpp)
 target_link_libraries(sprite_test PRIVATE neuexpengine project_warnings)
 add_test(NAME sprite COMMAND sprite_test)
@@ -175,7 +182,7 @@ target_include_directories(application_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}
     "${PROJECT_SOURCE_DIR}/engine/app")
 target_link_libraries(application_test PRIVATE neuexpengine project_warnings)
 
-foreach(group lifecycle pause failures vsync limiter statistics)
+foreach(group lifecycle pause failures vsync limiter statistics fixed_step)
     add_test(NAME application_${group} COMMAND application_test ${group})
     set_tests_properties(application_${group} PROPERTIES TIMEOUT 15)
 endforeach()
