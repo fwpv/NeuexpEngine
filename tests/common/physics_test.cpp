@@ -588,6 +588,38 @@ void testFastMovement()
     require(std::isfinite(stopped->position.x), "Fast movement produced a non-finite state.");
     require(stopped->position.x < -50, "Fast body tunneled through a thick wall.");
     require(std::fabs(stopped->velocity.x) < 50, "Fast body did not lose its speed at the wall.");
+
+    // Восьмипиксельная стена: за шаг тело проходит сто пикселей, поэтому без проверки
+    // времени удара оно пролетело бы сквозь неё.
+    PhysicsWorld thin;
+    thin.gravity = {};
+    thin.addBody(boxBody({0, 0}, {8, 400}, BodyType::Static));
+    RigidBody bullet = circleBody({-300, 0}, 10);
+    bullet.velocity = {5000, 0};
+    const BodyId bulletId = thin.addBody(bullet);
+    for (int step = 0; step < 60; ++step) {
+        thin.step(StepTime);
+    }
+    const RigidBody* swept = thin.body(bulletId);
+    require(std::isfinite(swept->position.x), "Swept motion produced a non-finite state.");
+    require(swept->position.x < -10, "Swept body tunneled through a thin wall.");
+    require(swept->position.x > -40, "Swept body must stop at the wall.");
+
+    // Быстрое падение на пол не оставляет проникновения в поверхность.
+    PhysicsWorld drop;
+    drop.gravity = {0, 1600};
+    constexpr float FloorSurface = 20;
+    drop.addBody(boxBody({0, FloorSurface + 20}, {400, 40}, BodyType::Static));
+    RigidBody falling = circleBody({0, -300}, 10);
+    const BodyId fallingId = drop.addBody(falling);
+    float deepest = -1000;
+    for (int step = 0; step < 240; ++step) {
+        drop.step(StepTime);
+        const RigidBody* body = drop.body(fallingId);
+        deepest = std::max(deepest, body->position.y + 10 - FloorSurface);
+    }
+    require(deepest < 0.5F, "Fast impact must not push the body into the floor.");
+    require(deepest > -1.0F, "Fast impact must reach the floor.");
 }
 
 void testFixedStepReproducibility()

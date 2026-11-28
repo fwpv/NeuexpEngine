@@ -21,6 +21,9 @@ constexpr float LinearSlop = 0.1F;
 constexpr float MaximumCorrection = 4.0F;
 // Ниже этой скорости сближения удар не возвращает энергию: иначе покоящееся тело дрожит.
 constexpr float RestitutionThreshold = 20.0F;
+// Небольшое проникновение в точке удара: контакт получается устойчивым, как у обычного
+// решателя, а на экране такая глубина незаметна.
+constexpr float ImpactMargin = 0.2F;
 // Квадрат допустимого сдвига локальных якорей, при котором точка контакта считается
 // прежней и получает импульсы прошлого шага.
 constexpr float WarmStartTolerance = 4.0F;
@@ -46,6 +49,47 @@ float normalMass(const RigidBody& first, const RigidBody& second, Vector2 armFir
     const float armSecondCross = cross(armSecond, normal);
     return first.inverseMass() + second.inverseMass() + first.inverseInertia() * armFirstCross * armFirstCross
         + second.inverseInertia() * armSecondCross * armSecondCross;
+}
+
+// Мировая форма тела в заданной позе: используется для поиска времени удара.
+CollisionShape shapeAtPose(const RigidBody& body, Vector2 position, float angle)
+{
+    RigidBody probe = body;
+    probe.position = position;
+    probe.angle = angle;
+    return probe.worldShape();
+}
+
+// Охватывающий прямоугольник всего пути перемещения формы.
+Rect pathBounds(const CollisionShape& start, const CollisionShape& end)
+{
+    const Rect startBounds = bounds(start);
+    const Rect endBounds = bounds(end);
+    const float left = std::min(startBounds.position.x, endBounds.position.x);
+    const float top = std::min(startBounds.position.y, endBounds.position.y);
+    const float right = std::max(startBounds.position.x + startBounds.size.width,
+        endBounds.position.x + endBounds.size.width);
+    const float bottom = std::max(startBounds.position.y + startBounds.size.height,
+        endBounds.position.y + endBounds.size.height);
+    return Rect{left, top, right - left, bottom - top};
+}
+
+// Минимальная ширина формы: по ней выбирается шаг выборки пути при поиске удара.
+float minimalWidth(const CollisionShape& shape)
+{
+    if (shape.kind() == CollisionShape::Kind::Circle) {
+        return shape.circle().radius * 2;
+    }
+    if (shape.kind() == CollisionShape::Kind::Rect) {
+        return std::min(shape.rect().size.width, shape.rect().size.height);
+    }
+    return std::min(shape.box().size.width, shape.box().size.height);
+}
+
+bool poseOverlaps(const RigidBody& body, Vector2 position, float angle, const CollisionShape& target)
+{
+    ContactManifold manifold;
+    return detectContact(shapeAtPose(body, position, angle), target, manifold);
 }
 }
 
@@ -392,14 +436,102 @@ void PhysicsWorld::solveVelocities()
     }
 }
 
+float PhysicsWorld::timeOfImpact(const RigidBody& body, Vector2 startPosition, float startAngle,
+    Vector2 endPosition, float endAngle, Vector2& normal) const
+{
+    const CollisionShape startShape = shapeAtPose(body, startPosition, startAngle);
+    const Rect path = pathBounds(startShape, shapeAtPose(body, endPosition, endAngle));
+    const float travel = length(endPosition - startPosition);
+    float impact = 1;
+    for (const BroadEntry& target : entries) {
+        if (target.body == &body || target.body->type != BodyType::Static || target.body->sensor) {
+            continue;
+        }
+        if ((body.layer & target.body->mask) == 0 || (target.body->layer & body.mask) == 0) {
+            continue;
+        }
+        if (!intersects(path, target.bounds)) {
+            continue;
+        }
+        ContactManifold manifold;
+        // Уже касается в начале шага: этим занимается решатель контактов.
+        if (detectContact(startShape, target.shape, manifold)) {
+            continue;
+        }
+        // Путь просматривается выборкой: препятствие может быть пройдено целиком,
+        // и проверки одного конечного положения мало.
+        const float extent = std::max(2.0F, 0.5F * (minimalWidth(body.shape) + minimalWidth(target.shape)));
+        const int samples = static_cast<int>(std::min(48.0F, std::max(1.0F, std::ceil(travel / extent))));
+        float previous = 0;
+        float found = 1;
+        bool hit = false;
+        for (int index = 1; index <= samples; ++index) {
+            const float fraction = static_cast<float>(index) / static_cast<float>(samples);
+            if (poseOverlaps(body, startPosition + (endPosition - startPosition) * fraction,
+                    startAngle + (endAngle - startAngle) * fraction, target.shape)) {
+                previous = static_cast<float>(index - 1) / static_cast<float>(samples);
+                found = fraction;
+                hit = true;
+                break;
+            }
+        }
+        if (!hit) {
+            continue;
+        }
+        // Уточнение первого касания между двумя соседними выборками.
+        float low = previous;
+        float high = found;
+        for (int step = 0; step < 12; ++step) {
+            const float middle = (low + high) / 2;
+            if (poseOverlaps(body, startPosition + (endPosition - startPosition) * middle,
+                    startAngle + (endAngle - startAngle) * middle, target.shape)) {
+                high = middle;
+            } else {
+                low = middle;
+            }
+        }
+        if (high < impact) {
+            impact = high;
+            ContactManifold manifold;
+            if (detectContact(shapeAtPose(body, startPosition + (endPosition - startPosition) * high,
+                    startAngle + (endAngle - startAngle) * high), target.shape, manifold)) {
+                normal = -manifold.normal;
+            }
+        }
+    }
+    return impact;
+}
+
 void PhysicsWorld::integratePositions(float deltaTime)
 {
     for (Slot& slot : slots) {
         if (slot.removalPending || slot.body.type == BodyType::Static) {
             continue;
         }
-        slot.body.position += slot.body.velocity * deltaTime;
-        slot.body.angle += slot.body.angularVelocity * deltaTime;
+        RigidBody& body = slot.body;
+        const Vector2 startPosition = body.position;
+        const float startAngle = body.angle;
+        const Vector2 endPosition = startPosition + body.velocity * deltaTime;
+        const float endAngle = startAngle + body.angularVelocity * deltaTime;
+        if (body.type == BodyType::Dynamic) {
+            Vector2 normal;
+            const float impact = timeOfImpact(body, startPosition, startAngle, endPosition, endAngle, normal);
+            if (impact < 1) {
+                // Тело останавливается в точке касания: за шаг оно не заходит внутрь
+                // препятствия. Остаток пути внутри препятствия — только небольшая доля
+                // маржи, чтобы контакт оставался устойчивым решателю.
+                float fraction = impact;
+                const float approach = -dot(body.velocity, normal);
+                if (approach > 1) {
+                    fraction = std::min(1.0F, fraction + ImpactMargin / (approach * deltaTime));
+                }
+                body.position = startPosition + (endPosition - startPosition) * fraction;
+                body.angle = startAngle + (endAngle - startAngle) * fraction;
+                continue;
+            }
+        }
+        body.position = endPosition;
+        body.angle = endAngle;
     }
 }
 
