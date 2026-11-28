@@ -76,6 +76,16 @@ BodyId addZoneFloor(PhysicsWorld& world, const Rect& area, float friction = 0.6F
     return world.addBody(floor);
 }
 
+// Перенос тела приложением: мир не видит изменения позиции, поэтому тело будится.
+void placeBody(RigidBody& body, Vector2 position, float angle = 0)
+{
+    body.position = position;
+    body.angle = angle;
+    body.velocity = {};
+    body.angularVelocity = 0;
+    body.wake();
+}
+
 void drawShape(Renderer2D& drawing, const CollisionShape& shape, Color fill, Color outline)
 {
     DrawOptions filled;
@@ -155,8 +165,7 @@ private:
     {
         RigidBody* body = world().body(id);
         if (body->position.y > area().position.y + area().size.height - 20) {
-            body->position = start;
-            body->velocity = {};
+            placeBody(*body, start);
             ++restarts;
         }
     }
@@ -215,11 +224,7 @@ private:
             return;
         }
         dropClock = 0;
-        RigidBody* body = world().body(id);
-        body->position = start;
-        body->angle = 0;
-        body->velocity = {};
-        body->angularVelocity = 0;
+        placeBody(*world().body(id), start);
     }
 
     void afterStep() override
@@ -275,8 +280,7 @@ private:
     {
         RigidBody* body = world().body(id);
         if (body->position.y > area().position.y + area().size.height - 20) {
-            body->position = start;
-            body->velocity = {};
+            placeBody(*body, start);
             ++restarts;
         }
     }
@@ -402,8 +406,7 @@ private:
         RigidBody* body = world().body(id);
         body->applyForce(Vector2{Acceleration * body->mass(), 0});
         if (body->position.x > area().position.x + area().size.width - 40) {
-            body->position = start;
-            body->velocity = {};
+            placeBody(*body, start);
         }
     }
 
@@ -442,10 +445,7 @@ private:
         RigidBody* body = world().body(id);
         body->applyForceAtPoint(Vector2{0, Force}, body->position + Vector2{28, 0});
         if (body->position.y > area().position.y + area().size.height - 40) {
-            body->position = start;
-            body->angle = 0;
-            body->velocity = {};
-            body->angularVelocity = 0;
+            placeBody(*body, start);
         }
     }
 
@@ -488,8 +488,7 @@ private:
             ++impulses;
         }
         if (body->position.x > area().position.x + area().size.width - 40) {
-            body->position = start;
-            body->velocity = {};
+            placeBody(*body, start);
         }
     }
 
@@ -538,10 +537,7 @@ private:
             ++impulses;
         }
         if (body->position.y < area().position.y + 40) {
-            body->position = start;
-            body->angle = 0;
-            body->velocity = {};
-            body->angularVelocity = 0;
+            placeBody(*body, start);
             kickClock = KickInterval;
         }
     }
@@ -585,6 +581,7 @@ private:
         if (body->angle > 3.0F * Pi) {
             body->angle = 0;
             body->angularVelocity = 0;
+            body->wake();
         }
     }
 
@@ -794,7 +791,7 @@ private:
         }
         const bool escaped = body->position.x > area().position.x + area().size.width - 30;
         if (stopClock > 1.5F || escaped) {
-            body->position = start;
+            placeBody(*body, start);
             body->velocity = {StartSpeed, 0};
             stopClock = 0;
             ++runs;
@@ -848,9 +845,7 @@ private:
         phaseClock += deltaTime;
         if (phaseClock >= PhaseTime * 2) {
             phaseClock = 0;
-            RigidBody* body = world().body(id);
-            body->position = start;
-            body->velocity = {};
+            placeBody(*world().body(id), start);
         }
         RigidBody* body = world().body(id);
         if (body->position.x > area().position.x + area().size.width - 30) {
@@ -943,7 +938,7 @@ private:
     {
         RigidBody* ball = world().body(ballId);
         if (ball->position.x > area().position.x + area().size.width - 40) {
-            ball->position = start;
+            placeBody(*ball, start);
             ball->velocity = {Speed, 0};
         }
     }
@@ -1021,7 +1016,7 @@ private:
         }
         RigidBody* ball = world().body(ballId);
         if (ball->position.x > area().position.x + area().size.width - 40) {
-            ball->position = start;
+            placeBody(*ball, start);
             ball->velocity = {Speed, 0};
         }
     }
@@ -1163,10 +1158,7 @@ private:
             return;
         }
         dropClock = 0;
-        RigidBody* body = world().body(id);
-        body->position = start;
-        body->velocity = {};
-        body->angularVelocity = 0;
+        placeBody(*world().body(id), start);
     }
 
     void afterStep() override
