@@ -59,6 +59,20 @@ float floorTop(const Rect& area, float bottomMargin = 55)
     return area.position.y + area.size.height - bottomMargin;
 }
 
+// Пиксельная область зоны: края расширяются наружу, чтобы содержимое у границы не пропадало.
+Viewport screenViewport(const Rect& worldArea, const CameraView& view)
+{
+    const Vector2 first = view.worldToScreen({worldArea.position.x, worldArea.position.y});
+    const Vector2 second = view.worldToScreen(
+        {worldArea.position.x + worldArea.size.width, worldArea.position.y + worldArea.size.height});
+    const float left = std::floor(std::min(first.x, second.x));
+    const float top = std::floor(std::min(first.y, second.y));
+    const float right = std::ceil(std::max(first.x, second.x));
+    const float bottom = std::ceil(std::max(first.y, second.y));
+    return Viewport{static_cast<int>(left), static_cast<int>(top),
+        static_cast<int>(right - left), static_cast<int>(bottom - top)};
+}
+
 BodyId addBody(PhysicsWorld& world, const CollisionShape& shape, BodyType type, Vector2 position,
     float angle = 0)
 {
@@ -1131,13 +1145,8 @@ Color Zone::outlineOf(const RigidBody& body) const
     return body.shape.kind() == CollisionShape::Kind::Circle ? BallOutline : CrateOutline;
 }
 
-void Zone::draw(Renderer2D& drawing) const
+void Zone::drawContent(Renderer2D& drawing) const
 {
-    DrawOptions frame;
-    frame.color = highlight ? ActiveFrameColor : FrameColor;
-    frame.lineWidth = highlight ? 3 : 1;
-    drawing.drawRectangle(zoneArea, frame, ShapeFill::Outline);
-
     const Vector2 origin = zoneArea.position;
     drawing.drawDebugText(zoneTitle, Vector2{zoneArea.center().x, origin.y + TitleOffset}, TitleColor,
         TitlePixel, TextAlignment::Center);
@@ -1155,6 +1164,14 @@ void Zone::draw(Renderer2D& drawing) const
         drawing.drawDebugText(counterText, Vector2{origin.x + 12, origin.y + CountersOffset},
             HintColor, TextPixel);
     }
+}
+
+void Zone::drawFrame(Renderer2D& drawing) const
+{
+    DrawOptions frame;
+    frame.color = highlight ? ActiveFrameColor : FrameColor;
+    frame.lineWidth = highlight ? 3 : 1;
+    drawing.drawRectangle(zoneArea, frame, ShapeFill::Outline);
 }
 
 namespace
@@ -1213,10 +1230,18 @@ void CheckBoard::update(float deltaTime)
     }
 }
 
-void CheckBoard::draw(Renderer2D& drawing) const
+void CheckBoard::draw(Renderer2D& drawing, const CameraView& view) const
 {
-    for (const std::unique_ptr<Zone>& zone : pages[static_cast<std::size_t>(currentPage)]) {
-        zone->draw(drawing);
+    const std::vector<std::unique_ptr<Zone>>& viewZones = pages[static_cast<std::size_t>(currentPage)];
+    // Тело может улететь за пределы зоны: содержимое обрезается по её пиксельной области,
+    // а рамки рисуются после содержимого и не обрезаются.
+    for (const std::unique_ptr<Zone>& zone : viewZones) {
+        drawing.setClip(screenViewport(zone->area(), view));
+        zone->drawContent(drawing);
+    }
+    drawing.setClip(std::nullopt);
+    for (const std::unique_ptr<Zone>& zone : viewZones) {
+        zone->drawFrame(drawing);
     }
 }
 

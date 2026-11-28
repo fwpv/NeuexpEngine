@@ -94,7 +94,7 @@ private:
         NE::Renderer2D& drawing = getRenderer();
         beginFrame(frame.window.width, frame.window.height, Background);
         drawing.setWorldView(view);
-        board.draw(drawing);
+        board.draw(drawing, view);
         drawHud(drawing, frame);
         return endFrame(error);
     }

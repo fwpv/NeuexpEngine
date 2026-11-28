@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/camera.h"
 #include "core/math2d.h"
 #include "graphics/renderer.h"
 #include "physics/body.h"
@@ -44,7 +45,10 @@ public:
     virtual std::string state() const = 0;
     virtual std::string counters() const { return {}; }
     bool highlighted() const { return highlight; }
-    void draw(NeuexpEngine::Renderer2D& drawing) const;
+    // Содержимое зоны: тела, сцена и подписи. Рисуется в пределах области зоны.
+    void drawContent(NeuexpEngine::Renderer2D& drawing) const;
+    // Рамка зоны рисуется последней, поверх содержимого соседних зон.
+    void drawFrame(NeuexpEngine::Renderer2D& drawing) const;
 
 protected:
     NeuexpEngine::Scene& scene() { return ownedScene; }
@@ -83,7 +87,8 @@ public:
     void restart() { build(); }
 
     void update(float deltaTime);
-    void draw(NeuexpEngine::Renderer2D& drawing) const;
+    // Содержимое каждой зоны обрезается по её области экрана; view даёт преобразование.
+    void draw(NeuexpEngine::Renderer2D& drawing, const NeuexpEngine::CameraView& view) const;
 
     void nextPage();
     // Открывает страницу по индексу; индекс вне диапазона отклоняется assert-ом.
