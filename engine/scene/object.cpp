@@ -14,6 +14,13 @@ void GameObject::disablePhysics()
     physicsBody = PhysicsBody{};
 }
 
+void GameObject::setPose(Vector2 position, float angle)
+{
+    placement.position = position;
+    placement.rotation = angle;
+    physicsBody.wake();
+}
+
 void GameObject::applyImpulse(Vector2 impulse)
 {
     if (physicsBody.type != BodyType::Dynamic) {

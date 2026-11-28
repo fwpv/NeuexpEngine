@@ -101,11 +101,9 @@ Viewport screenViewport(const Rect& worldArea, const CameraView& view)
 // Перенос объекта приложением: поза меняется, а скорость сбрасывается.
 void placeObject(GameObject& object, Vector2 position, float angle = 0)
 {
-    object.transform().position = position;
-    object.transform().rotation = angle;
+    object.setPose(position, angle);
     object.body().velocity = {};
     object.body().angularVelocity = 0;
-    object.body().wake();
 }
 
 void drawShape(Renderer2D& drawing, const CollisionShape& shape, Color fill, Color outline)

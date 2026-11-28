@@ -945,12 +945,12 @@ void testPose()
     require(closeTo(world.body(id).transform().rotation, 0.5F * StepTime, 1e-4F),
         "Physics must integrate the object angle.");
 
-    // Перенос трансформации переносит тело: мир читает позу объекта в начале шага.
+    // setPose переносит тело и будит его: мир читает позу объекта в начале шага.
     world.body(id).body().velocity = {};
     world.body(id).body().angularVelocity = 0;
-    world.body(id).transform().position = {200, 120};
-    world.body(id).transform().rotation = 0.75F;
-    world.body(id).body().wake();
+    world.body(id).body().sleeping = true;
+    world.body(id).setPose({200, 120}, 0.75F);
+    require(!world.body(id).body().sleeping, "setPose must wake the body.");
     world.step();
     require(closeTo(world.body(id).transform().position.x, 200, 1e-4F)
             && closeTo(world.body(id).transform().position.y, 120, 1e-4F)
