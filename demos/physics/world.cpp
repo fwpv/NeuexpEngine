@@ -237,14 +237,16 @@ private:
     int runs = 0;
 };
 
-// Стопка: несколько ящиков стоят друг на друге; подпись показывает дрейф и просадку.
+// Стопка: ящики падают на пол, успокаиваются и стоят неподвижно; затем падают снова.
 class StackZone final : public Zone
 {
 public:
-    StackZone(Rect area, std::string title, int levels, float size, float bottomMargin = 55)
+    StackZone(Rect area, std::string title, int levels, float size, float bottomMargin = 55,
+        float dropHeight = 40)
         : Zone(area, std::move(title))
         , count(levels)
         , boxSize(size)
+        , drop(dropHeight)
     {
         world().gravity = {0, 900};
         RigidBody floor{Box{{0, 0}, {240, 20}, 0}, BodyType::Static,
@@ -253,11 +255,13 @@ public:
         world().addBody(floor);
         const float firstY = floorTop(area, bottomMargin) - boxSize / 2;
         for (int level = 0; level < count; ++level) {
+            const float restY = firstY - boxSize * static_cast<float>(level);
             RigidBody crate{Box{{0, 0}, {boxSize, boxSize}, 0}, BodyType::Dynamic,
-                {area.center().x, firstY - boxSize * static_cast<float>(level)}};
+                {area.center().x, restY - drop}};
             crate.friction = 0.8F;
             ids.push_back(world().addBody(crate));
-            expected.push_back(crate.position.y);
+            expected.push_back(restY);
+            dropStart.push_back(crate.position);
         }
     }
 
@@ -265,26 +269,62 @@ public:
     {
         float drift = 0;
         float sink = 0;
+        float rise = 0;
         for (std::size_t index = 0; index < ids.size(); ++index) {
             const RigidBody* body = world().body(ids[index]);
             drift = std::max(drift, std::fabs(body->position.x - area().center().x));
-            sink = std::max(sink, body->position.y - expected[index]);
+            const float offset = body->position.y - expected[index];
+            sink = std::max(sink, offset);
+            rise = std::min(rise, offset);
         }
         const bool stable = drift < 1 && sink < 3;
         return "LEVELS " + std::to_string(count) + "   DRIFT " + formatFloat(drift, 1)
-            + "   SINK " + formatFloat(sink, 1) + (stable ? "   STABLE" : "   MOVING");
+            + "   SINK " + formatFloat(sink, 1)
+            + (rise < -2 ? "   FALLING" : (stable ? "   STABLE" : "   SETTLING"));
     }
 
     std::string counters() const override
     {
-        return "FRICTION 0.8   GRAVITY 900";
+        return "FRICTION 0.8   DROPS " + std::to_string(drops);
     }
 
 private:
+    void beforeStep(float deltaTime) override
+    {
+        lastStep = deltaTime;
+    }
+
+    void afterStep() override
+    {
+        bool allSleeping = true;
+        for (const BodyId id : ids) {
+            allSleeping = allSleeping && world().body(id)->sleeping;
+        }
+        if (!allSleeping) {
+            stillClock = 0;
+            return;
+        }
+        stillClock += lastStep;
+        if (stillClock < RestInterval) {
+            return;
+        }
+        stillClock = 0;
+        ++drops;
+        for (std::size_t index = 0; index < ids.size(); ++index) {
+            placeBody(*world().body(ids[index]), dropStart[index]);
+        }
+    }
+
     int count = 0;
     float boxSize = 0;
+    float drop = 0;
+    static constexpr float RestInterval = 3.5F;
     std::vector<BodyId> ids;
     std::vector<float> expected;
+    std::vector<Vector2> dropStart;
+    float lastStep = 0;
+    float stillClock = 0;
+    int drops = 0;
 };
 
 // Кинематическая платформа везёт динамический ящик: трение передаёт движение.
@@ -1148,8 +1188,8 @@ Color Zone::outlineOf(const RigidBody& body) const
 void Zone::drawContent(Renderer2D& drawing) const
 {
     const Vector2 origin = zoneArea.position;
-    drawing.drawDebugText(zoneTitle, Vector2{zoneArea.center().x, origin.y + TitleOffset}, TitleColor,
-        TitlePixel, TextAlignment::Center);
+    drawing.drawDebugText(zoneTitle, Vector2{origin.x + 12, origin.y + TitleOffset}, TitleColor,
+        TitlePixel);
     for (const RigidBody* body : simulation.bodies()) {
         if (body->object != 0) {
             continue;
@@ -1207,7 +1247,7 @@ std::vector<std::unique_ptr<Zone>> buildStandardPage()
     zones.push_back(std::make_unique<CcdDynamicZone>(cellArea(1, 0)));
     zones.push_back(std::make_unique<CcdKinematicZone>(cellArea(2, 0)));
     zones.push_back(std::make_unique<ExactRestitutionZone>(cellArea(0, 1)));
-    zones.push_back(std::make_unique<StackZone>(cellArea(1, 1), "TALL STACK", 8, 22, 40));
+    zones.push_back(std::make_unique<StackZone>(cellArea(1, 1), "TALL STACK", 8, 22, 40, 25));
     zones.push_back(std::make_unique<SleepZone>(cellArea(2, 1)));
     return zones;
 }

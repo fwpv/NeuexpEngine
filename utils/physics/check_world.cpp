@@ -102,8 +102,13 @@ int main()
     float carried = 0;
     float frictionSlide = 0;
     float slickSlide = 0;
+    bool stackFell = false;
+    bool stackStable = false;
     for (int step = 0; step < 600; ++step) {
         board.update(StepTime);
+        const PhysicsDemo::Zone* stack = findZone(board, "STACK");
+        stackFell = stackFell || contains(stack->state(), "FALLING");
+        stackStable = stackStable || contains(stack->state(), "STABLE");
         const float shift = numberAfter(findZone(board, "KINEMATIC CARRIER")->state(), "CRATE SHIFT");
         if (!std::isnan(shift)) {
             carried = std::max(carried, std::fabs(shift));
@@ -130,9 +135,11 @@ int main()
         "Frictionless box must slide across the whole floor.");
     require(numberAfter(findZone(board, "FRICTIONLESS")->state(), "VX") == 300,
         "Frictionless box must keep its speed.");
-    require(contains(findZone(board, "STACK")->state(), "LEVELS 5")
-            && contains(findZone(board, "STACK")->state(), "STABLE"),
-        "Stack must stay stable with five levels.");
+    require(contains(findZone(board, "STACK")->state(), "LEVELS 5"), "Stack must have five levels.");
+    require(stackFell, "Stack must fall before it rests.");
+    require(stackStable, "Fallen stack must come to rest.");
+    require(numberAfter(findZone(board, "STACK")->counters(), "DROPS") >= 1,
+        "Resting stack must fall again after a pause.");
     require(frictionSlide < 200, "Friction must stop the box before the floor ends.");
     require(carried > 10, "Kinematic carrier must carry the crate.");
     require(numberAfter(findZone(board, "FORCE AT POINT")->state(), "W") > 0,
@@ -179,10 +186,15 @@ int main()
     float reboundGain = -1000;
     int wakeups = 0;
     bool fellAsleep = false;
+    bool tallFell = false;
+    bool tallStable = false;
     for (int step = 0; step < 1800; ++step) {
         board.update(StepTime);
         fellAsleep = fellAsleep
             || contains(findZone(board, "SLEEPING ISLANDS")->state(), "ASLEEP");
+        const PhysicsDemo::Zone* tall = findZone(board, "TALL STACK");
+        tallFell = tallFell || contains(tall->state(), "FALLING");
+        tallStable = tallStable || contains(tall->state(), "STABLE");
         const PhysicsDemo::Zone* staticCcd = findZone(board, "CCD VS STATIC");
         const float gap = numberAfter(staticCcd->state(), "GAP");
         if (!std::isnan(gap)) {
@@ -218,9 +230,12 @@ int main()
     require(numberAfter(findZone(board, "EXACT REBOUND")->counters(), "BOUNCES") > 0,
         "Elastic impact must report rebounds.");
     require(reboundGain <= 20, "Elastic impact must not gain speed.");
-    require(contains(findZone(board, "TALL STACK")->state(), "LEVELS 8")
-            && contains(findZone(board, "TALL STACK")->state(), "STABLE"),
-        "Eight level stack must stay stable.");
+    require(contains(findZone(board, "TALL STACK")->state(), "LEVELS 8"),
+        "Tall stack must have eight levels.");
+    require(tallFell, "Tall stack must fall before it rests.");
+    require(tallStable, "Fallen tall stack must come to rest.");
+    require(numberAfter(findZone(board, "TALL STACK")->counters(), "DROPS") >= 2,
+        "Tall stack must fall again after a pause.");
     require(wakeups > 0, "Sleeping island must wake up on impact.");
     require(fellAsleep, "Sleeping island must fall asleep as a whole.");
 
