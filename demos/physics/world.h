@@ -1,12 +1,9 @@
 #pragma once
 
 #include "core/math2d.h"
-#include "core/resources.h"
-#include "core/texture.h"
 #include "graphics/renderer.h"
 #include "physics/body.h"
 #include "physics/world.h"
-#include "scene/object.h"
 #include "scene/scene.h"
 
 #include <cstddef>
@@ -26,7 +23,7 @@ constexpr float GridTop = 76;
 constexpr float GridGapX = 20;
 constexpr float GridGapY = 12;
 
-// Зона проверки страницы: три столбца и два ряда, как у проверок столкновений.
+// Зона проверки страницы: три столбца и два ряда.
 NeuexpEngine::Rect cellArea(int column, int row);
 
 // Одна проверка поведения физики. У зоны собственные сцена и физический мир,
@@ -73,20 +70,6 @@ private:
     bool highlight = false;
 };
 
-// Счётчики большой площадки.
-struct PlaygroundStatistics
-{
-    int gateBegins = 0;
-    int gateEnds = 0;
-    int gateInside = 0;
-    int pitRemoved = 0;
-    int impacts = 0;
-    float lastImpactImpulse = 0;
-    int contacts = 0;
-};
-
-class PlaygroundZone;
-
 // Фабрика проверок: страницы зон, их обновление, отрисовка и переключение.
 class CheckBoard
 {
@@ -95,8 +78,6 @@ public:
     CheckBoard(const CheckBoard&) = delete;
     CheckBoard& operator=(const CheckBoard&) = delete;
 
-    // Текстура ящиков создаётся до build(); без неё площадка работает без спрайтов.
-    bool loadAssets(NeuexpEngine::Renderer2D& renderer, NeuexpEngine::ResourceError& error);
     // Строит все страницы заново и остаётся на текущей странице.
     void build();
     void restart() { build(); }
@@ -108,25 +89,11 @@ public:
     int pageIndex() const { return currentPage; }
     int pageCount() const;
     const std::string& pageName() const;
-    bool isPlaygroundPage() const;
     const std::vector<std::unique_ptr<Zone>>& zones() const;
 
-    // Управление большой площадкой; на других страницах ничего не делает.
-    void toggleWind();
-    bool isWindActive() const;
-    void setAttract(bool active);
-    void setCaret(NeuexpEngine::Vector2 point);
-    bool impulseAt(NeuexpEngine::Vector2 point);
-    void spawnBall();
-    const PlaygroundStatistics* playgroundStatistics() const;
-
 private:
-    void buildSmallPage(int page);
-
-    NeuexpEngine::Texture crateTexture;
     std::vector<std::vector<std::unique_ptr<Zone>>> pages;
     std::vector<std::string> pageNames;
     int currentPage = 0;
-    PlaygroundZone* playground = nullptr;
 };
 }

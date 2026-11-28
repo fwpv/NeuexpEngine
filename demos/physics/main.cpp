@@ -33,19 +33,15 @@ std::string formatNumber(float value, int precision)
     return stream.str();
 }
 
-// Демонстрация — фабрика проверок: каждая зона показывает одно правило физики
-// и подписывает рядом, что происходит. Последняя страница — общая площадка.
+// Демонстрация — фабрика проверок: три страницы показывают взаимодействия тел,
+// события в областях и достигнутые стандарты индустрии. Каждая зона подписывает,
+// что именно она проверяет и что происходит сейчас.
 class PhysicsApplication final : public NE::Application
 {
 private:
     bool onStart(Platform::Error& error) override
     {
         if (!initializeRenderer(error)) {
-            return false;
-        }
-        NE::ResourceError resourceError;
-        if (!board.loadAssets(getRenderer(), resourceError)) {
-            error = Platform::Error{"Renderer2D::createTexture", resourceError.message, std::nullopt};
             return false;
         }
         board.build();
@@ -55,9 +51,8 @@ private:
         return true;
     }
 
-    bool onInput(const NE::FrameInfo& frame, Platform::Error&) override
+    bool onInput(const NE::FrameInfo&, Platform::Error&) override
     {
-        const NE::InputState& input = Platform::getInput();
         if (Platform::isKeyDown(Platform::Key::Escape)) {
             requestExit();
         }
@@ -70,34 +65,6 @@ private:
         if (Platform::isKeyPressed(Platform::Key::R)) {
             board.restart();
         }
-        if (!board.isPlaygroundPage()) {
-            board.setAttract(false);
-            return true;
-        }
-        if (Platform::isKeyPressed(Platform::Key::F)) {
-            board.toggleWind();
-        }
-        if (Platform::isKeyPressed(Platform::Key::Space)) {
-            board.spawnBall();
-        }
-        NE::CameraView view;
-        NE::CameraError cameraError;
-        // Без корректного вида мышь не переводится в мир; клавиши уже обработаны.
-        if (!camera.createView(NE::Viewport{0, 0, frame.window.width, frame.window.height}, view, cameraError)) {
-            board.setAttract(false);
-            return true;
-        }
-        NE::Vector2 worldPoint;
-        if (input.mouse().inside
-            && view.screenToWorld(NE::Vector2{static_cast<float>(input.mouse().x),
-                                      static_cast<float>(input.mouse().y)},
-                worldPoint)) {
-            board.setCaret(worldPoint);
-            if (input.button(NE::MouseButton::Left).pressed) {
-                board.impulseAt(worldPoint);
-            }
-        }
-        board.setAttract(input.mouse().inside && input.button(NE::MouseButton::Right).down);
         return true;
     }
 
@@ -127,21 +94,17 @@ private:
 
     void drawHud(NE::Renderer2D& drawing, const NE::FrameInfo& frame) const
     {
-        drawing.drawDebugText("PHYSICS CHECKS: EVERY ZONE CHECKS ONE RULE AND LABELS ITS RESULT",
+        drawing.drawDebugText("PHYSICS CHECKS: INTERACTIONS, EVENTS AND INDUSTRY-STANDARD GUARANTEES",
             NE::Vector2{18, 12}, TitleColor, 2);
         const std::string page = "PAGE " + std::to_string(board.pageIndex() + 1) + " OF "
             + std::to_string(board.pageCount()) + ": " + board.pageName()
             + "   STEP " + formatNumber(FixedStep, 4) + " S   UPDATES "
             + std::to_string(frame.updates) + " OF " + std::to_string(MaximumCatchUpSteps)
             + "   FPS " + formatNumber(static_cast<float>(frame.framesPerSecond), 0)
-            + (board.isPlaygroundPage() ? std::string("   WIND ") + (board.isWindActive() ? "ON" : "OFF") : "")
             + (isPaused() ? "   PAUSED" : "");
         drawing.drawDebugText(page, NE::Vector2{18, 40}, TextColor, 1);
-        const std::string keys = "TAB PAGE   R RESTART   P PAUSE   ESC EXIT"
-            + std::string(board.isPlaygroundPage()
-                    ? "   F WIND   SPACE BALL   LMB IMPULSE   RMB ATTRACT"
-                    : "");
-        drawing.drawDebugText(keys, NE::Vector2{18, 58}, HintColor, 1);
+        drawing.drawDebugText("TAB PAGE   R RESTART   P PAUSE   ESC EXIT",
+            NE::Vector2{18, 58}, HintColor, 1);
     }
 
     NE::Camera2 camera;
