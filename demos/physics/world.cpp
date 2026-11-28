@@ -414,7 +414,7 @@ private:
     void beforeStep(float) override
     {
         GameObject& object = *scene().find(id);
-        applyForceAtPoint(object, Vector2{0, Force}, object.transform().position + Vector2{28, 0});
+        object.applyForceAtPoint(Vector2{0, Force}, object.transform().position + Vector2{28, 0});
         if (object.transform().position.y > area().position.y + area().size.height - 40) {
             placeObject(object, start);
         }

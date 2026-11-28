@@ -63,6 +63,17 @@ public:
     const PhysicsBody& body() const { return physicsBody; }
     PhysicsBody& body() { return physicsBody; }
 
+    // Импульсы меняют скорость тела сразу, силы и момент накапливаются до ближайшего
+    // шага физики. Действуют только на динамическое тело; масса и инерция считаются
+    // по мировому коллайдеру, мировая точка приложения даёт угловую скорость
+    // от смещения относительно transform.position.
+    void applyImpulse(Vector2 impulse);
+    void applyImpulseAtPoint(Vector2 impulse, Vector2 worldPoint);
+    void applyAngularImpulse(float impulse);
+    void applyForce(Vector2 force);
+    void applyForceAtPoint(Vector2 force, Vector2 worldPoint);
+    void applyTorque(float torque);
+
     // Вызываются сценой. Обновление по умолчанию ничего не делает; базовый draw()
     // рисует visual и пропускается для спрайта без текстуры. Подкласс расширяет
     // поведение переопределением методов и при необходимости вызывает базовую отрисовку.

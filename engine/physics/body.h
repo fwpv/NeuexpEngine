@@ -72,13 +72,4 @@ BodyMass bodyMassData(const CollisionShape& shape, Vector2 pivot, float density)
 float bodyMass(const GameObject& object);
 float bodyInertia(const GameObject& object);
 
-// Импульсы меняют скорость сразу, силы и момент накапливаются до ближайшего шага
-// мира. На неподвижное и кинематическое тело не действуют. Мировая точка приложения
-// даёт угловую скорость от смещения относительно transform.position.
-void applyImpulse(GameObject& object, Vector2 impulse);
-void applyImpulseAtPoint(GameObject& object, Vector2 impulse, Vector2 worldPoint);
-void applyAngularImpulse(GameObject& object, float impulse);
-void applyForce(GameObject& object, Vector2 force);
-void applyForceAtPoint(GameObject& object, Vector2 force, Vector2 worldPoint);
-void applyTorque(GameObject& object, float torque);
 }

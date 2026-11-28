@@ -213,13 +213,13 @@ void testProperties()
 
     // Статическое и кинематическое тело игнорируют силы и импульсы.
     const ObjectId fixedId = world.addBox({}, {10, 10}, BodyType::Static);
-    applyImpulse(world.body(fixedId), {100, 0});
-    applyForce(world.body(fixedId), {100, 0});
+    world.body(fixedId).applyImpulse({100, 0});
+    world.body(fixedId).applyForce({100, 0});
     require(world.body(fixedId).body().velocity == Vector2{} && world.body(fixedId).body().force == Vector2{},
         "Static body must ignore forces and impulses.");
     const ObjectId kinematicId = world.addBox({}, {10, 10}, BodyType::Kinematic);
-    applyForce(world.body(kinematicId), {100, 0});
-    applyImpulse(world.body(kinematicId), {100, 0});
+    world.body(kinematicId).applyForce({100, 0});
+    world.body(kinematicId).applyImpulse({100, 0});
     require(world.body(kinematicId).body().force == Vector2{}
             && world.body(kinematicId).body().velocity == Vector2{},
         "Kinematic body must ignore forces and impulses.");
@@ -267,7 +267,7 @@ void testForces()
     TestWorld world;
     world.physics().gravity = {};
     const ObjectId id = world.addBox({0, 0}, {10, 10});
-    applyForce(world.body(id), {1000, 0});
+    world.body(id).applyForce({1000, 0});
     world.step();
     const float expected = 1000 * (1.0F / 100) * StepTime;
     require(closeTo(world.body(id).body().velocity.x, expected, 1e-4F), "Force did not change velocity.");
@@ -275,28 +275,28 @@ void testForces()
     require(closeTo(world.body(id).body().velocity.x, expected, 1e-4F), "Force was not cleared after the step.");
 
     const ObjectId offsetId = world.addBox({0, -100}, {100, 20});
-    applyForceAtPoint(world.body(offsetId), {0, 100}, {40, -100});
+    world.body(offsetId).applyForceAtPoint({0, 100}, {40, -100});
     world.step();
     require(world.body(offsetId).body().angularVelocity > 0, "Force at a point must add angular velocity.");
 
     const ObjectId impulseId = world.addBox({0, 100}, {10, 10});
-    applyImpulse(world.body(impulseId), {200, 0});
+    world.body(impulseId).applyImpulse({200, 0});
     require(closeTo(world.body(impulseId).body().velocity.x, 2, 1e-5F), "Impulse did not change velocity.");
-    applyImpulseAtPoint(world.body(impulseId), {200, 0}, {0, 100 - 5});
+    world.body(impulseId).applyImpulseAtPoint({200, 0}, {0, 100 - 5});
     require(world.body(impulseId).body().angularVelocity > 0, "Impulse at a point must add angular velocity.");
 
     const ObjectId torqueId = world.addCircle({0, 200}, 5);
-    applyTorque(world.body(torqueId), 50);
+    world.body(torqueId).applyTorque(50);
     world.step();
     require(world.body(torqueId).body().angularVelocity > 0, "Torque did not change angular velocity.");
 
     // Угловой импульс, равный моменту инерции, даёт один радиан в секунду.
     const ObjectId spinId = world.addCircle({0, 300}, 5);
-    applyAngularImpulse(world.body(spinId), bodyInertia(world.body(spinId)));
+    world.body(spinId).applyAngularImpulse(bodyInertia(world.body(spinId)));
     require(closeTo(world.body(spinId).body().angularVelocity, 1, 1e-5F),
         "Angular impulse did not change angular velocity.");
     const ObjectId fixedId = world.addBox({0, 400}, {10, 10}, BodyType::Static);
-    applyAngularImpulse(world.body(fixedId), 5);
+    world.body(fixedId).applyAngularImpulse(5);
     require(world.body(fixedId).body().angularVelocity == 0, "Angular impulse must not move a static body.");
 }
 
@@ -458,7 +458,7 @@ void testRotation()
     TestWorld world;
     world.physics().gravity = {};
     const ObjectId id = world.addBox({0, 0}, {100, 20});
-    applyImpulseAtPoint(world.body(id), {0, 5000}, {40, 0});
+    world.body(id).applyImpulseAtPoint({0, 5000}, {40, 0});
     const float startAngle = world.body(id).transform().rotation;
     world.steps(60);
     require(std::fabs(world.body(id).transform().rotation - startAngle) > 0.05F,
@@ -853,7 +853,7 @@ void testSleeping()
     const ObjectId pressedId = pushed.addBox({0, -20}, {30, 30});
     pushed.body(pressedId).collider().friction = 0.5F;
     for (int step = 0; step < 120; ++step) {
-        applyForce(pushed.body(pressedId), {20000, 0});
+        pushed.body(pressedId).applyForce({20000, 0});
         pushed.step();
     }
     require(!pushed.body(pressedId).body().sleeping, "Applied force must keep the body awake.");
