@@ -49,20 +49,19 @@ public:
     const Sprite& visual() const { return appearance; }
     Sprite& visual() { return appearance; }
 
-    // Форма и правила участия в столкновениях; проверки выполняет приложение
-    // или ContactTracker.
+    // Форма и правила участия в столкновениях; проверки выполняет физика сцены
+    // или приложение через запросы collision.
     const Collider& collider() const { return collision; }
     Collider& collider() { return collision; }
 
-    // Физика сцены: тело включается явно и копирует настройки; геометрию, слои
-    // и сенсор задаёт коллайдер, позу — transform. Выключение убирает объект
-    // из контактов и интегрирования, не меняя позу и коллайдер.
+    // Физика сцены: форму, слои, сенсор и поверхностные свойства задаёт коллайдер,
+    // позу — transform (её позиция считается центром масс тела), динамику — тело.
+    // Объект без включённого тела остаётся неподвижной геометрией; enablePhysics
+    // копирует настройки тела и будит его, disablePhysics возвращает неподвижное тело.
     void enablePhysics(const PhysicsBody& settings = PhysicsBody{});
     void disablePhysics();
-    bool physicsEnabled() const { return bodyEnabled; }
-    // Состояние тела; предусловие — physicsEnabled().
-    const PhysicsBody& body() const;
-    PhysicsBody& body();
+    const PhysicsBody& body() const { return physicsBody; }
+    PhysicsBody& body() { return physicsBody; }
 
     // Вызываются сценой. Обновление по умолчанию ничего не делает; базовый draw()
     // рисует visual и пропускается для спрайта без текстуры. Подкласс расширяет
@@ -80,7 +79,6 @@ private:
     Sprite appearance;
     Collider collision;
     PhysicsBody physicsBody;
-    bool bodyEnabled = false;
     bool visible = true;
     // Удалён из сцены; память освобождается в конце update() или в clear().
     bool removalPending = false;

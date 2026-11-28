@@ -67,9 +67,12 @@ ObjectId createBody(Scene& scene, const CollisionShape& shape, BodyType type, Ve
     object->collider() = Collider{shape};
     object->transform().position = position;
     object->transform().rotation = angle;
-    PhysicsBody settings;
-    settings.type = type;
-    object->enablePhysics(settings);
+    // Неподвижная геометрия тела не требует: коллайдер сам участвует как статика.
+    if (type != BodyType::Static) {
+        PhysicsBody settings;
+        settings.type = type;
+        object->enablePhysics(settings);
+    }
     return scene.add(std::move(object));
 }
 
@@ -77,7 +80,7 @@ ObjectId addZoneFloor(Scene& scene, const Rect& area, float friction = 0.6F, flo
 {
     const ObjectId id = createBody(scene, Box{{0, 0}, {area.size.width - 120, 20}, 0},
         BodyType::Static, {area.center().x, floorTop(area, bottomMargin) + 10});
-    scene.find(id)->body().friction = friction;
+    scene.find(id)->collider().friction = friction;
     return id;
 }
 
@@ -139,8 +142,8 @@ public:
         start = {zoneCenter(area).x, area.position.y + 80};
         id = createBody(scene(), Circle{{0, 0}, 14}, BodyType::Dynamic, start);
         GameObject& object = *scene().find(id);
-        object.body().restitution = restitution;
-        object.body().friction = 0.2F;
+        object.collider().restitution = restitution;
+        object.collider().friction = 0.2F;
     }
 
     std::string state() const override
@@ -204,7 +207,7 @@ public:
         start = {area.position.x + 55, floorTop(area) - 12};
         id = createBody(scene(), Box{{0, 0}, {40, 24}, 0}, BodyType::Dynamic, start);
         GameObject& object = *scene().find(id);
-        object.body().friction = friction;
+        object.collider().friction = friction;
         object.body().velocity = {StartSpeed, 0};
     }
 
@@ -260,14 +263,14 @@ public:
         world().gravity = {0, 900};
         const ObjectId floorId = createBody(scene(), Box{{0, 0}, {240, 20}, 0}, BodyType::Static,
             {area.center().x, floorTop(area, bottomMargin) + 10});
-        scene().find(floorId)->body().friction = 1;
+        scene().find(floorId)->collider().friction = 1;
         const float firstY = floorTop(area, bottomMargin) - boxSize / 2;
         for (int level = 0; level < count; ++level) {
             const float restY = firstY - boxSize * static_cast<float>(level);
             // До падения ящики разделены зазором: они падают по очереди и укладываются вплотную.
             const ObjectId id = createBody(scene(), Box{{0, 0}, {boxSize, boxSize}, 0},
                 BodyType::Dynamic, {area.center().x, restY - drop - SpawnGap * static_cast<float>(level)});
-            scene().find(id)->body().friction = 0.8F;
+            scene().find(id)->collider().friction = 0.8F;
             ids.push_back(id);
             expected.push_back(restY);
             dropStart.push_back(scene().find(id)->transform().position);
@@ -349,10 +352,10 @@ public:
         platformId = createBody(scene(), Box{{0, 0}, {150, 18}, 0}, BodyType::Kinematic,
             {center.x, center.y + 10});
         scene().find(platformId)->body().velocity = {Speed, 0};
-        scene().find(platformId)->body().friction = 0.9F;
+        scene().find(platformId)->collider().friction = 0.9F;
         crateStart = {center.x, center.y - 14};
         crateId = createBody(scene(), Box{{0, 0}, {30, 30}, 0}, BodyType::Dynamic, crateStart);
-        scene().find(crateId)->body().friction = 0.9F;
+        scene().find(crateId)->collider().friction = 0.9F;
     }
 
     std::string state() const override
@@ -650,7 +653,7 @@ public:
         addZoneFloor(scene(), area);
         start = {zoneCenter(area).x, area.position.y + 80};
         id = createBody(scene(), Circle{{0, 0}, 14}, BodyType::Dynamic, start);
-        scene().find(id)->body().restitution = 0.85F;
+        scene().find(id)->collider().restitution = 0.85F;
     }
 
     std::string state() const override
@@ -705,7 +708,7 @@ public:
         addZoneFloor(scene(), area);
         const ObjectId id = createBody(scene(), Box{{0, 0}, {60, 26}, 0}, BodyType::Dynamic,
             {zoneCenter(area).x, floorTop(area) - 13});
-        scene().find(id)->body().friction = 0.8F;
+        scene().find(id)->collider().friction = 0.8F;
     }
 
     std::string state() const override
@@ -886,7 +889,7 @@ public:
         world().gravity = {};
         center = zoneCenter(area);
         wallId = createBody(scene(), Box{{0, 0}, {8, 240}, 0}, BodyType::Dynamic, center);
-        scene().find(wallId)->body().friction = 0.2F;
+        scene().find(wallId)->collider().friction = 0.2F;
         scene().find(wallId)->body().density = 40;
         start = {area.position.x + 40, center.y};
         ballId = createBody(scene(), Circle{{0, 0}, 10}, BodyType::Dynamic, start);
@@ -1003,8 +1006,8 @@ public:
         addZoneFloor(scene(), area);
         start = {zoneCenter(area).x, area.position.y + 80};
         id = createBody(scene(), Circle{{0, 0}, 14}, BodyType::Dynamic, start);
-        scene().find(id)->body().restitution = 1;
-        scene().find(id)->body().friction = 0.05F;
+        scene().find(id)->collider().restitution = 1;
+        scene().find(id)->collider().friction = 0.05F;
     }
 
     std::string state() const override
@@ -1059,14 +1062,14 @@ public:
         world().gravity = {0, 900};
         const ObjectId floorId = createBody(scene(), Box{{0, 0}, {240, 20}, 0}, BodyType::Static,
             {area.center().x, floorTop(area) + 10});
-        scene().find(floorId)->body().friction = 1;
+        scene().find(floorId)->collider().friction = 1;
         crateId = createBody(scene(), Box{{0, 0}, {CrateWidth, CrateHeight}, 0}, BodyType::Dynamic,
             {area.center().x, floorTop(area) - CrateHeight / 2});
-        scene().find(crateId)->body().friction = 0.8F;
+        scene().find(crateId)->collider().friction = 0.8F;
         const Vector2 ballRest{area.center().x, floorTop(area) - CrateHeight - BallRadius};
         ballId = createBody(scene(), Circle{{0, 0}, BallRadius}, BodyType::Dynamic, ballRest);
-        scene().find(ballId)->body().friction = 0.4F;
-        scene().find(ballId)->body().restitution = 0.3F;
+        scene().find(ballId)->collider().friction = 0.4F;
+        scene().find(ballId)->collider().restitution = 0.3F;
     }
 
     std::string state() const override

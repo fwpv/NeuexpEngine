@@ -100,6 +100,11 @@ GameObject* addShape(Scene& scene, const CollisionShape& shape, Vector2 position
     object->transform().rotation = rotation;
     object->collider() = Collider{shape};
     object->collider().layer = layer;
+    // Формы демо двигаются приложением через трансформацию, поэтому это
+    // кинематические тела: физика сообщает о контактах, но не двигает их.
+    PhysicsBody body;
+    body.type = BodyType::Kinematic;
+    object->enablePhysics(body);
     GameObject* result = object.get();
     scene.add(std::move(object));
     return result;
@@ -146,9 +151,9 @@ public:
         if (contacts().empty()) {
             return "NO CONTACT";
         }
-        const Manifold& manifold = contacts().front().manifold;
-        return "CONTACT  depth " + formatFloat(manifold.depth, 1) + "  normal "
-            + formatFloat(manifold.normal.x, 2) + "," + formatFloat(manifold.normal.y, 2);
+        const PhysicsContact& contact = contacts().front();
+        return "CONTACT  depth " + formatFloat(contact.depth, 1) + "  normal "
+            + formatFloat(contact.normal.x, 2) + "," + formatFloat(contact.normal.y, 2);
     }
 
 private:
@@ -651,9 +656,9 @@ void ContactZone::update(float deltaTime)
 {
     Zone::update(deltaTime);
     scene().update(deltaTime);
-    const std::vector<ContactEvent>& events = tracker.update(scene());
+    // События контактов даёт физика сцены: отдельного трекера нет.
     currentContacts.clear();
-    for (const ContactEvent& event : events) {
+    for (const PhysicsContactEvent& event : scene().physics().contactEvents()) {
         if (event.phase == ContactPhase::Begin) {
             ++begun;
         } else if (event.phase == ContactPhase::End) {
@@ -673,7 +678,7 @@ std::string ContactZone::counters() const
 
 void ContactZone::drawExtra(Renderer2D& drawing) const
 {
-    for (const Contact& contact : currentContacts) {
+    for (const PhysicsContact& contact : currentContacts) {
         const GameObject* first = scene().find(contact.first);
         const GameObject* second = scene().find(contact.second);
         if (!first || !second) {
@@ -683,10 +688,10 @@ void ContactZone::drawExtra(Renderer2D& drawing) const
             + shapeCenter(second->collider().worldShape(second->transform())))
             * 0.5F;
         DrawOptions options;
-        options.color = contact.trigger ? TriggerColor : ContactColor;
+        options.color = contact.sensor ? TriggerColor : ContactColor;
         options.lineWidth = 2;
-        const float depth = std::min(contact.manifold.depth, 30.0F);
-        drawing.drawLine(middle, middle + contact.manifold.normal * depth, options);
+        const float depth = std::min(contact.depth, 30.0F);
+        drawing.drawLine(middle, middle + contact.normal * depth, options);
         drawing.drawCircle(Circle{middle, 3}, options, ShapeFill::Filled);
     }
 }

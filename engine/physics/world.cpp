@@ -1,7 +1,6 @@
 #include "world.h"
 #include "body.h"
 #include "scene/object.h"
-#include "scene/scene.h"
 
 #include <algorithm>
 #include <cassert>
@@ -116,11 +115,11 @@ void PhysicsWorld::clear()
     events.clear();
 }
 
-void PhysicsWorld::step(Scene& scene, float deltaTime)
+void PhysicsWorld::step(const std::vector<GameObject*>& objects, float deltaTime)
 {
     assert(deltaTime > 0 && std::isfinite(deltaTime));
     events.clear();
-    collectBodies(scene);
+    collectBodies(objects);
     integrateVelocities(deltaTime);
     collectContacts();
     wakeBodies();
@@ -133,12 +132,12 @@ void PhysicsWorld::step(Scene& scene, float deltaTime)
     emitEvents();
 }
 
-void PhysicsWorld::collectBodies(Scene& scene)
+void PhysicsWorld::collectBodies(const std::vector<GameObject*>& objects)
 {
     bodies.clear();
-    for (GameObject* object : scene.findAll()) {
-        // Тело участвует, только если его включили явно и у объекта есть форма.
-        if (!object->physicsEnabled() || !object->collider().enabled) {
+    for (GameObject* object : objects) {
+        // Объект участвует, если у него включён коллайдер; без тела он неподвижен.
+        if (!object->collider().enabled) {
             continue;
         }
         Body entry;
@@ -237,8 +236,9 @@ void PhysicsWorld::checkPair(std::size_t firstIndex, std::size_t secondIndex)
     Body& entryB = bodies[secondIndex];
     GameObject& objectA = *entryA.object;
     GameObject& objectB = *entryB.object;
-    // Неподвижные и кинематические тела не отталкиваются друг от друга.
-    if (objectA.body().type != BodyType::Dynamic && objectB.body().type != BodyType::Dynamic) {
+    // Пара из двух неподвижных объектов не проверяется: события и контакты есть
+    // у пар, где участвует динамическое или кинематическое тело.
+    if (objectA.body().type == BodyType::Static && objectB.body().type == BodyType::Static) {
         return;
     }
     if (!layersMatch(objectA.collider().layer, objectA.collider().mask,
@@ -259,8 +259,8 @@ void PhysicsWorld::checkPair(std::size_t firstIndex, std::size_t secondIndex)
     contact.secondBody = firstIsSmaller ? &entryB : &entryA;
     contact.manifold = manifold;
     contact.sensor = objectA.collider().trigger || objectB.collider().trigger;
-    contact.friction = std::sqrt(objectA.body().friction * objectB.body().friction);
-    const float restitution = std::max(objectA.body().restitution, objectB.body().restitution);
+    contact.friction = std::sqrt(objectA.collider().friction * objectB.collider().friction);
+    const float restitution = std::max(objectA.collider().restitution, objectB.collider().restitution);
     contact.count = manifold.count;
     const Vector2 firstPreviousVelocity = firstIsSmaller ? entryA.previousVelocity : entryB.previousVelocity;
     const float firstPreviousAngular = firstIsSmaller

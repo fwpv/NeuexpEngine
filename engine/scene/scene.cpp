@@ -153,15 +153,21 @@ void Scene::update(float deltaTime)
     // поэтому проход ограничен числом объектов на его начало.
     const std::size_t scheduled = objects.size();
     const UpdateGuard guard(updating);
+    std::vector<GameObject*> subjects;
+    subjects.reserve(scheduled);
     for (std::size_t index = 0; index < scheduled; ++index) {
         if (!objects[index]->removalPending) {
             objects[index]->update(deltaTime);
         }
+        if (!objects[index]->removalPending) {
+            subjects.push_back(objects[index].get());
+        }
     }
     // Физика идёт после обновления объектов: их изменения поз и скоростей входят
     // в текущий шаг, а записанные позы тел попадут в отрисовку этого же кадра.
+    // Объекты, добавленные во время обновления, в физике этого кадра не участвуют.
     if (deltaTime > 0) {
-        physicsWorld.step(*this, deltaTime);
+        physicsWorld.step(subjects, deltaTime);
     }
     releaseRemoved();
 }

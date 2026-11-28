@@ -1,4 +1,3 @@
-#include "collision/contacts.h"
 #include "collision/manifold.h"
 #include "collision/query.h"
 #include "core/geometry.h"
@@ -68,11 +67,20 @@ public:
         return addShape(Box{{0, 0}, size, 0}, position, angle, type);
     }
 
+    // Неподвижная геометрия без тела: коллайдер сам участвует как статика.
+    ObjectId addStatic(const CollisionShape& shape, Vector2 position)
+    {
+        auto object = std::make_unique<GameObject>();
+        object->collider() = Collider{shape};
+        object->transform().position = position;
+        return addObject(std::move(object));
+    }
+
     // Неподвижный пол шириной width с верхней гранью на y = top.
     ObjectId addFloor(float top, float width = 600)
     {
-        const ObjectId id = addBox({0, top + 20}, {width, 40}, BodyType::Static);
-        body(id).body().friction = 1;
+        const ObjectId id = addStatic(Box{{0, 0}, {width, 40}, 0}, {0, top + 20});
+        body(id).collider().friction = 1;
         return id;
     }
 
@@ -306,10 +314,10 @@ void testCollisions()
     headOn.physics().gravity = {};
     const ObjectId firstId = headOn.addCircle({-30, 0}, 10);
     headOn.body(firstId).body().velocity = {200, 0};
-    headOn.body(firstId).body().restitution = 1;
+    headOn.body(firstId).collider().restitution = 1;
     const ObjectId secondId = headOn.addCircle({30, 0}, 10);
     headOn.body(secondId).body().velocity = {-200, 0};
-    headOn.body(secondId).body().restitution = 1;
+    headOn.body(secondId).collider().restitution = 1;
     headOn.steps(120);
     const Vector2 left = headOn.body(firstId).transform().position;
     const Vector2 right = headOn.body(secondId).transform().position;
@@ -334,7 +342,7 @@ void testRestitution()
     world.physics().gravity = {0, 1000};
     world.addFloor(0);
     const ObjectId id = world.addCircle({0, -100}, 8);
-    world.body(id).body().restitution = 1;
+    world.body(id).collider().restitution = 1;
     bool landed = false;
     float peak = 0;
     for (int step = 0; step < 600; ++step) {
@@ -371,8 +379,8 @@ void testRestitution()
     elastic.physics().gravity = {0, 900};
     elastic.addFloor(0);
     const ObjectId bouncerId = elastic.addCircle({0, -200}, 20);
-    elastic.body(bouncerId).body().restitution = 1;
-    elastic.body(bouncerId).body().friction = 0.1F;
+    elastic.body(bouncerId).collider().restitution = 1;
+    elastic.body(bouncerId).collider().friction = 0.1F;
     bool elasticLanded = false;
     float elasticPeak = 0;
     float impact = 0;
@@ -404,7 +412,7 @@ void testFriction()
     world.physics().gravity = {0, 1000};
     world.addFloor(0);
     const ObjectId id = world.addBox({0, -20}, {40, 40});
-    world.body(id).body().friction = 1;
+    world.body(id).collider().friction = 1;
     world.body(id).body().velocity = {300, 0};
     world.steps(120);
     require(std::fabs(world.body(id).body().velocity.x) < 5, "Friction did not stop the sliding box.");
@@ -413,7 +421,7 @@ void testFriction()
     slippery.physics().gravity = {0, 1000};
     slippery.addFloor(0);
     const ObjectId sliderId = slippery.addBox({0, -20}, {40, 40});
-    slippery.body(sliderId).body().friction = 0;
+    slippery.body(sliderId).collider().friction = 0;
     slippery.body(sliderId).body().velocity = {300, 0};
     slippery.steps(120);
     require(closeTo(slippery.body(sliderId).body().velocity.x, 300, 1), "Frictionless box lost speed.");
@@ -424,11 +432,11 @@ void testStack()
     TestWorld world;
     world.physics().gravity = {0, 1000};
     const ObjectId floorId = world.addFloor(0, 400);
-    world.body(floorId).body().friction = 1;
+    world.body(floorId).collider().friction = 1;
     std::vector<ObjectId> ids;
     for (int level = 0; level < 4; ++level) {
         const ObjectId id = world.addBox({0, -20 - 40 * static_cast<float>(level)}, {40, 40});
-        world.body(id).body().friction = 0.8F;
+        world.body(id).collider().friction = 0.8F;
         ids.push_back(id);
     }
     world.steps(600);
@@ -520,6 +528,23 @@ void testSensors()
         reported = reported || !masked.events().empty();
     }
     require(!reported, "Mask must exclude the sensor pair.");
+
+    // Кинематическое тело сообщает контакт со статическим сенсором без отталкивания.
+    TestWorld kinematicZone;
+    kinematicZone.physics().gravity = {};
+    const ObjectId sensorId = kinematicZone.addStatic(Circle{{0, 0}, 60}, {0, 0});
+    kinematicZone.body(sensorId).collider().trigger = true;
+    const ObjectId walkerId = kinematicZone.addBox({0, 0}, {20, 20}, BodyType::Kinematic);
+    bool kinematicReported = false;
+    for (int step = 0; step < 3; ++step) {
+        kinematicZone.step();
+        for (const PhysicsContactEvent& event : kinematicZone.events()) {
+            kinematicReported = kinematicReported || event.contact.sensor;
+        }
+    }
+    require(kinematicReported, "Kinematic body must report contacts with a static sensor.");
+    require(kinematicZone.body(walkerId).transform().position == Vector2{},
+        "Kinematic-static contact must not move the kinematic body.");
 }
 
 void testEvents()
@@ -718,10 +743,10 @@ void testFastMovement()
     TestWorld dynamic;
     dynamic.physics().gravity = {};
     const ObjectId crateId = dynamic.addBox({0, 0}, {40, 40});
-    dynamic.body(crateId).body().friction = 0;
+    dynamic.body(crateId).collider().friction = 0;
     const ObjectId bulletBallId = dynamic.addCircle({-300, 0}, 10);
     dynamic.body(bulletBallId).body().velocity = {4000, 0};
-    dynamic.body(bulletBallId).body().friction = 0;
+    dynamic.body(bulletBallId).collider().friction = 0;
     dynamic.steps(60);
     require(dynamic.body(bulletBallId).transform().position.x
             < dynamic.body(crateId).transform().position.x - 20,
@@ -754,11 +779,11 @@ void testTallStack()
     TestWorld world;
     world.physics().gravity = {0, 900};
     const ObjectId floorId = world.addFloor(0, 500);
-    world.body(floorId).body().friction = 1;
+    world.body(floorId).collider().friction = 1;
     std::vector<ObjectId> ids;
     for (int level = 0; level < 8; ++level) {
         const ObjectId id = world.addBox({0, -15 - 30 * static_cast<float>(level)}, {30, 30});
-        world.body(id).body().friction = 0.8F;
+        world.body(id).collider().friction = 0.8F;
         ids.push_back(id);
     }
     world.steps(600);
@@ -780,11 +805,11 @@ void testSleeping()
     TestWorld world;
     world.physics().gravity = {0, 900};
     const ObjectId floorId = world.addFloor(0);
-    world.body(floorId).body().friction = 1;
+    world.body(floorId).collider().friction = 1;
     std::vector<ObjectId> ids;
     for (int level = 0; level < 4; ++level) {
         const ObjectId id = world.addBox({0, -15 - 30 * static_cast<float>(level)}, {30, 30});
-        world.body(id).body().friction = 0.8F;
+        world.body(id).collider().friction = 0.8F;
         ids.push_back(id);
     }
     world.steps(120);
@@ -817,7 +842,7 @@ void testSleeping()
     const ObjectId platformId = carrier.addBox({0, 0}, {120, 20}, BodyType::Kinematic);
     carrier.body(platformId).body().velocity = {40, 0};
     const ObjectId carriedId = carrier.addBox({0, -25}, {30, 30});
-    carrier.body(carriedId).body().friction = 0.9F;
+    carrier.body(carriedId).collider().friction = 0.9F;
     carrier.steps(120);
     require(!carrier.body(carriedId).body().sleeping, "Body on a moving platform must stay awake.");
 
@@ -826,7 +851,7 @@ void testSleeping()
     pushed.physics().gravity = {0, 900};
     pushed.addFloor(0);
     const ObjectId pressedId = pushed.addBox({0, -20}, {30, 30});
-    pushed.body(pressedId).body().friction = 0.5F;
+    pushed.body(pressedId).collider().friction = 0.5F;
     for (int step = 0; step < 120; ++step) {
         applyForce(pushed.body(pressedId), {20000, 0});
         pushed.step();
@@ -837,11 +862,11 @@ void testSleeping()
     TestWorld moved;
     moved.physics().gravity = {0, 900};
     const ObjectId movedFloor = moved.addFloor(0);
-    moved.body(movedFloor).body().friction = 1;
+    moved.body(movedFloor).collider().friction = 1;
     std::vector<ObjectId> sleeping;
     for (int level = 0; level < 2; ++level) {
         const ObjectId id = moved.addBox({0, -15 - 30 * static_cast<float>(level)}, {30, 30});
-        moved.body(id).body().friction = 0.8F;
+        moved.body(id).collider().friction = 0.8F;
         sleeping.push_back(id);
     }
     moved.steps(120);
@@ -889,6 +914,21 @@ void testFixedStepReproducibility()
                 && closeTo(first[index]->transform().rotation, second[index]->transform().rotation, 1e-4F),
             "Fixed step results depend on frame grouping.");
     }
+
+    // Переменный шаг тоже допустим: мир не требует фиксированного dT, объекты
+    // и физика шагают одинаковой длительностью, которую задаёт приложение.
+    TestWorld variable;
+    variable.physics().gravity = {0, 900};
+    variable.addFloor(0);
+    const ObjectId falling = variable.addCircle({0, -100}, 10);
+    const float deltas[] = {1.0F / 60, 1.0F / 50, 1.0F / 75};
+    for (int step = 0; step < 120; ++step) {
+        variable.scene().update(deltas[step % 3]);
+    }
+    const Vector2 position = variable.body(falling).transform().position;
+    require(std::isfinite(position.x) && std::isfinite(position.y)
+            && std::isfinite(variable.body(falling).body().velocity.y),
+        "Variable step must keep finite state.");
 }
 
 void testPose()

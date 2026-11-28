@@ -1,7 +1,7 @@
 #pragma once
 
 #include "collision/collider.h"
-#include "collision/contacts.h"
+#include "physics/world.h"
 #include "core/geometry.h"
 #include "core/math2d.h"
 #include "graphics/renderer.h"
@@ -92,12 +92,11 @@ public:
     std::string counters() const override;
 
 protected:
-    const std::vector<NeuexpEngine::Contact>& contacts() const { return currentContacts; }
+    const std::vector<NeuexpEngine::PhysicsContact>& contacts() const { return currentContacts; }
     void drawExtra(NeuexpEngine::Renderer2D& drawing) const override;
 
 private:
-    NeuexpEngine::ContactTracker tracker;
-    std::vector<NeuexpEngine::Contact> currentContacts;
+    std::vector<NeuexpEngine::PhysicsContact> currentContacts;
     int begun = 0;
     int ended = 0;
 };
