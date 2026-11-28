@@ -881,6 +881,24 @@ void testSleeping()
         wokenByTransform = wokenByTransform || !moved.body(id).body().sleeping;
     }
     require(wokenByTransform, "Kinematic transform movement must wake the sleeping stack.");
+
+    // Сон снимается явно, а выключенное тело становится неподвижной геометрией.
+    TestWorld explicitWorld;
+    explicitWorld.physics().gravity = {0, 900};
+    explicitWorld.addFloor(0);
+    const ObjectId sleeperId = explicitWorld.addCircle({0, -30}, 10);
+    explicitWorld.steps(120);
+    require(explicitWorld.body(sleeperId).body().sleeping, "Body must sleep before the explicit wake.");
+    explicitWorld.body(sleeperId).body().wake();
+    require(!explicitWorld.body(sleeperId).body().sleeping, "wake must clear sleeping.");
+    explicitWorld.body(sleeperId).body().velocity = {50, 0};
+    explicitWorld.body(sleeperId).disablePhysics();
+    const Vector2 stoppedPose = explicitWorld.body(sleeperId).transform().position;
+    explicitWorld.steps(5);
+    require(explicitWorld.body(sleeperId).body().type == BodyType::Static,
+        "disablePhysics must make the body static.");
+    require(explicitWorld.body(sleeperId).transform().position == stoppedPose,
+        "A body disabled by disablePhysics must stay still.");
 }
 
 void testFixedStepReproducibility()

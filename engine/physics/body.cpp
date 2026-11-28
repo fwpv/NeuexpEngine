@@ -1,8 +1,6 @@
 #include "body.h"
 #include "scene/object.h"
 
-#include <cmath>
-
 namespace NeuexpEngine
 {
 namespace

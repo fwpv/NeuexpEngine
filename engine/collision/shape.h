@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/geometry.h"
+#include "core/math2d.h"
 #include "core/transform.h"
 
 #include <cstdint>

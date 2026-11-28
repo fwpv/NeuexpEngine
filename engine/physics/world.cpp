@@ -140,10 +140,29 @@ void PhysicsWorld::collectBodies(const std::vector<GameObject*>& objects)
         if (!object->collider().enabled) {
             continue;
         }
+        const Transform2 pose = object->transform();
+        // Параметры тел и поверхностей проверяются в отладочной сборке: отрицательное
+        // трение или упругость вне [0, 1] накачивают энергию, а не конечные значения
+        // дают NaN в решателе.
+        [[maybe_unused]] const PhysicsBody& body = object->body();
+        [[maybe_unused]] const Collider& collider = object->collider();
+        assert(std::isfinite(pose.position.x) && std::isfinite(pose.position.y));
+        assert(std::isfinite(pose.rotation) && std::isfinite(pose.scale.x) && std::isfinite(pose.scale.y)
+            && std::isfinite(pose.origin.x) && std::isfinite(pose.origin.y));
+        assert(std::isfinite(collider.friction) && collider.friction >= 0 && collider.friction <= 1);
+        assert(std::isfinite(collider.restitution) && collider.restitution >= 0
+            && collider.restitution <= 1);
+        if (body.type != BodyType::Static) {
+            assert(std::isfinite(body.density) && body.density > 0);
+            assert(std::isfinite(body.linearDamping) && body.linearDamping >= 0);
+            assert(std::isfinite(body.angularDamping) && body.angularDamping >= 0);
+            assert(std::isfinite(body.gravityScale));
+            assert(std::isfinite(body.velocity.x) && std::isfinite(body.velocity.y)
+                && std::isfinite(body.angularVelocity));
+        }
         Body entry;
         entry.object = object;
         entry.id = object->id();
-        const Transform2 pose = object->transform();
         const auto previousPose = previousPoses.find(entry.id);
         // Нет прошлой позы — новое тело: считаем его перенесённым, чтобы оно сразу
         // участвовало в пробуждении, как и тело, чью позу изменили между шагами.
