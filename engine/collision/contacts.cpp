@@ -12,7 +12,7 @@ const std::vector<ContactEvent>& ContactTracker::update(const Scene& scene)
     if (&scene != currentScene) {
         currentScene = &scene;
         for (const auto& pair : active) {
-            events.push_back({ContactPhase::End, pair.second});
+            events.push_back(ContactEvent{ContactPhase::End, pair.second});
         }
         active.clear();
     }
@@ -23,11 +23,11 @@ const std::vector<ContactEvent>& ContactTracker::update(const Scene& scene)
         const ContactPhase phase = active.find(pair.first) == active.end()
             ? ContactPhase::Begin
             : ContactPhase::Persist;
-        events.push_back({phase, pair.second});
+        events.push_back(ContactEvent{phase, pair.second});
     }
     for (const auto& pair : active) {
         if (found.find(pair.first) == found.end()) {
-            events.push_back({ContactPhase::End, pair.second});
+            events.push_back(ContactEvent{ContactPhase::End, pair.second});
         }
     }
     active.swap(found);

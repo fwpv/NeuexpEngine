@@ -1,4 +1,5 @@
 #include "manifold.h"
+#include "shape.h"
 
 #include <algorithm>
 #include <array>
@@ -12,21 +13,6 @@ namespace
 // Параллельные грани после поворотов дают малую положительную щель; такие точки
 // остаются контактом покоя, чтобы стопки не проседали на каждом шаге.
 constexpr float ContactTolerance = 0.05F;
-
-Size2 halfSizeOf(Size2 size)
-{
-    return {size.width / 2, size.height / 2};
-}
-
-// Прямоугольник вдоль осей для расчётов представляется повёрнутым прямоугольником.
-Box boxOf(const CollisionShape& shape)
-{
-    if (shape.kind() == CollisionShape::Kind::Box) {
-        return shape.box();
-    }
-    const Rect rectangle = shape.rect();
-    return {rectangle.center(), rectangle.size, 0};
-}
 
 struct BoxGeometry
 {
@@ -42,14 +28,17 @@ BoxGeometry geometryOf(const Box& box)
     geometry.corners = box.corners();
     geometry.axisX = rotated(Vector2{1, 0}, box.rotation);
     geometry.axisY = rotated(Vector2{0, 1}, box.rotation);
-    geometry.half = halfSizeOf(box.size);
+    geometry.half = Size2{box.size.width / 2, box.size.height / 2};
     return geometry;
 }
 
-float radiusAlong(const BoxGeometry& geometry, Vector2 axis)
+// Проекция полуразмера прямоугольника на мировую ось; в double ради точности проверки.
+double radiusAlong(const BoxGeometry& geometry, Vector2 axis)
 {
-    return geometry.half.width * std::fabs(dot(axis, geometry.axisX))
-        + geometry.half.height * std::fabs(dot(axis, geometry.axisY));
+    const double projectionX = std::abs(static_cast<double>(dot(axis, geometry.axisX)));
+    const double projectionY = std::abs(static_cast<double>(dot(axis, geometry.axisY)));
+    return static_cast<double>(geometry.half.width) * projectionX
+        + static_cast<double>(geometry.half.height) * projectionY;
 }
 
 // Наружная нормаль грани corners[first] -> corners[second]; обход вершин даёт её
@@ -60,43 +49,25 @@ Vector2 faceNormal(Vector2 begin, Vector2 end)
     return normalized(Vector2{edge.y, -edge.x});
 }
 
-// Ближайшая грань точки внутри прямоугольника: наружная нормаль, расстояние до неё
-// и номер грани (0 — левая, 1 — правая, 2 — верхняя, 3 — нижняя).
-struct FaceHit
-{
-    Vector2 normal;
-    float distance = 0;
-    std::uint16_t face = 0;
-};
-
-FaceHit nearestFace(Vector2 localPoint, Size2 half)
-{
-    FaceHit result{Vector2{-1, 0}, half.width + localPoint.x, 0};
-    const float right = half.width - localPoint.x;
-    if (right < result.distance) {
-        result = {Vector2{1, 0}, right, 1};
-    }
-    const float top = half.height + localPoint.y;
-    if (top < result.distance) {
-        result = {Vector2{0, -1}, top, 2};
-    }
-    const float bottom = half.height - localPoint.y;
-    if (bottom < result.distance) {
-        result = {Vector2{0, 1}, bottom, 3};
-    }
-    return result;
-}
-
 bool circles(const Circle& first, const Circle& second, ContactManifold& result)
 {
-    const Vector2 offset = second.center - first.center;
-    const float radii = first.radius + second.radius;
-    const float offsetSquared = lengthSquared(offset);
+    // Проверка пересечения повторяет collision/query: решение в double, результат — float.
+    const double offsetX = static_cast<double>(second.center.x) - first.center.x;
+    const double offsetY = static_cast<double>(second.center.y) - first.center.y;
+    const double radii = static_cast<double>(first.radius) + second.radius;
+    const double offsetSquared = offsetX * offsetX + offsetY * offsetY;
     if (offsetSquared > radii * radii) {
         return false;
     }
-    result.normal = offsetSquared == 0 ? Vector2{1, 0} : normalized(offset);
-    result.depth = offsetSquared == 0 ? radii : radii - std::sqrt(offsetSquared);
+    if (offsetSquared == 0) {
+        result.normal = {1, 0};
+        result.depth = static_cast<float>(radii);
+    } else {
+        const double offsetLength = std::sqrt(offsetSquared);
+        result.normal = {static_cast<float>(offsetX / offsetLength),
+            static_cast<float>(offsetY / offsetLength)};
+        result.depth = static_cast<float>(radii - offsetLength);
+    }
     const Vector2 surfaceFirst = first.center + result.normal * first.radius;
     const Vector2 surfaceSecond = second.center - result.normal * second.radius;
     result.points[0] = {(surfaceFirst + surfaceSecond) * 0.5F, result.depth, 0};
@@ -107,18 +78,22 @@ bool circles(const Circle& first, const Circle& second, ContactManifold& result)
 bool circleBox(const Circle& circle, const Box& box, ContactManifold& result)
 {
     const Vector2 localCenter = rotated(circle.center - box.center, -box.rotation);
-    const Size2 half = halfSizeOf(box.size);
+    const Size2 half{box.size.width / 2, box.size.height / 2};
     const Vector2 closest{std::clamp(localCenter.x, -half.width, half.width),
         std::clamp(localCenter.y, -half.height, half.height)};
-    const Vector2 offset = localCenter - closest;
-    const float offsetSquared = lengthSquared(offset);
-    if (offsetSquared > circle.radius * circle.radius) {
+    const double offsetX = static_cast<double>(closest.x) - localCenter.x;
+    const double offsetY = static_cast<double>(closest.y) - localCenter.y;
+    const double offsetSquared = offsetX * offsetX + offsetY * offsetY;
+    const double radius = circle.radius;
+    if (offsetSquared > radius * radius) {
         return false;
     }
     result.count = 1;
     if (offsetSquared > 0) {
-        result.normal = rotated(normalized(-offset), box.rotation);
-        result.depth = circle.radius - std::sqrt(offsetSquared);
+        const double offsetLength = std::sqrt(offsetSquared);
+        result.normal = rotated(Vector2{static_cast<float>(offsetX / offsetLength),
+            static_cast<float>(offsetY / offsetLength)}, box.rotation);
+        result.depth = static_cast<float>(radius - offsetLength);
         // Особенность — грань или угол прямоугольника, к которым ближе центр круга.
         const bool onLeft = closest.x == -half.width;
         const bool onRight = closest.x == half.width;
@@ -146,11 +121,11 @@ bool circleBox(const Circle& circle, const Box& box, ContactManifold& result)
         return true;
     }
     // Центр круга внутри: выталкивает ближайшая грань.
-    const FaceHit face = nearestFace(localCenter, half);
+    const BoxFaceHit face = nearestBoxFace(localCenter, half);
     result.normal = rotated(-face.normal, box.rotation);
-    result.depth = circle.radius + face.distance;
-    const Vector2 facePoint = localCenter + face.normal * face.distance;
-    result.points[0] = {box.center + rotated(facePoint, box.rotation), result.depth, face.face};
+    result.depth = static_cast<float>(radius + face.distance);
+    const Vector2 facePoint = localCenter + face.normal * static_cast<float>(face.distance);
+    result.points[0] = {box.center + rotated(facePoint, box.rotation), result.depth, face.index};
     return true;
 }
 
@@ -184,23 +159,36 @@ bool boxes(const Box& first, const Box& second, ContactManifold& result)
     const BoxGeometry a = geometryOf(first);
     const BoxGeometry b = geometryOf(second);
     const std::array<Vector2, 4> axes = {a.axisX, a.axisY, b.axisX, b.axisY};
-    float bestDepth = 0;
+    // Разделяющие оси — по две на прямоугольник. Глубина по оси — наименьший сдвиг
+    // второй формы: проверка повторяет collision/query, решение в double.
+    double bestDepth = 0;
     std::size_t bestAxis = 0;
+    Vector2 bestNormal{1, 0};
     for (std::size_t index = 0; index < axes.size(); ++index) {
         const Vector2 axis = axes[index];
-        const float centers = dot(axis, second.center - first.center);
-        const float overlap = radiusAlong(a, axis) + radiusAlong(b, axis) - std::fabs(centers);
-        if (overlap < 0) {
+        const double centerFirst = static_cast<double>(dot(axis, first.center));
+        const double centerSecond = static_cast<double>(dot(axis, second.center));
+        const double radiusFirst = radiusAlong(a, axis);
+        const double radiusSecond = radiusAlong(b, axis);
+        const double pushPositive = centerFirst + radiusFirst - (centerSecond - radiusSecond);
+        const double pushNegative = centerSecond + radiusSecond - (centerFirst - radiusFirst);
+        if (pushPositive < 0 || pushNegative < 0) {
             return false;
         }
-        if (index == 0 || overlap < bestDepth) {
-            bestDepth = overlap;
+        double depth = pushPositive;
+        Vector2 normal = axis;
+        if (pushNegative < pushPositive) {
+            depth = pushNegative;
+            normal = -axis;
+        }
+        if (index == 0 || depth < bestDepth) {
+            bestDepth = depth;
             bestAxis = index;
+            bestNormal = normal;
         }
     }
-    const Vector2 axis = axes[bestAxis];
-    result.normal = dot(axis, second.center - first.center) >= 0 ? axis : -axis;
-    result.depth = bestDepth;
+    result.normal = bestNormal;
+    result.depth = static_cast<float>(bestDepth);
 
     // Опорная грань принадлежит телу, ось которого дала наименьшее перекрытие.
     const bool firstIsReference = bestAxis < 2;

@@ -110,15 +110,6 @@ float minimalWidth(const CollisionShape& shape)
 }
 }
 
-void PhysicsWorld::clear()
-{
-    slots.clear();
-    contacts.clear();
-    active.clear();
-    warmContacts.clear();
-    events.clear();
-}
-
 BodyId PhysicsWorld::addBody(const RigidBody& description)
 {
     // Параметры физики должны быть конечными и в допустимых диапазонах: иначе
@@ -319,7 +310,7 @@ void PhysicsWorld::checkPair(const BroadEntry& a, const BroadEntry& b)
     if (bodyA.type != BodyType::Dynamic && bodyB.type != BodyType::Dynamic) {
         return;
     }
-    if ((bodyA.layer & bodyB.mask) == 0 || (bodyB.layer & bodyA.mask) == 0) {
+    if (!layersMatch(bodyA.layer, bodyA.mask, bodyB.layer, bodyB.mask)) {
         return;
     }
     const bool firstIsSmaller = a.id < b.id;
@@ -849,8 +840,7 @@ void PhysicsWorld::integratePositions(float deltaTime)
                 if (secondBody.sensor || slots[second].removalPending) {
                     continue;
                 }
-                if ((firstBody.layer & secondBody.mask) == 0
-                    || (secondBody.layer & firstBody.mask) == 0) {
+                if (!layersMatch(firstBody.layer, firstBody.mask, secondBody.layer, secondBody.mask)) {
                     continue;
                 }
                 const std::pair<std::size_t, std::size_t> key{
@@ -872,7 +862,8 @@ void PhysicsWorld::integratePositions(float deltaTime)
         if (bestFraction > 1) {
             break;
         }
-        resolved.insert({std::min(bestFirst, bestSecond), std::max(bestFirst, bestSecond)});
+        resolved.insert(std::pair<std::size_t, std::size_t>{std::min(bestFirst, bestSecond),
+            std::max(bestFirst, bestSecond)});
         // Небольшая маржа внутрь препятствия: контакт получается устойчивым решателю,
         // а на экране такая глубина незаметна.
         const Vector2 relative = slots[bestFirst].body.velocity - slots[bestSecond].body.velocity;
@@ -962,12 +953,12 @@ void PhysicsWorld::emitEvents()
         const ContactPhase phase = active.find(entry.first) == active.end()
             ? ContactPhase::Begin
             : ContactPhase::Persist;
-        events.push_back({phase, contact});
+        events.push_back(PhysicsContactEvent{phase, contact});
         current.emplace(entry.first, contact);
     }
     for (const auto& entry : active) {
         if (contacts.find(entry.first) == contacts.end()) {
-            events.push_back({ContactPhase::End, entry.second});
+            events.push_back(PhysicsContactEvent{ContactPhase::End, entry.second});
         }
     }
     active.swap(current);

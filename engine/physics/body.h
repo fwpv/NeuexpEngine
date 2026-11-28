@@ -4,7 +4,7 @@
 #include "collision/shape.h"
 #include "core/geometry.h"
 #include "core/math2d.h"
-#include "scene/object.h"
+#include "scene/object_id.h"
 
 namespace NeuexpEngine
 {
@@ -56,6 +56,11 @@ struct RigidBody
     void applyForceAtPoint(Vector2 force, Vector2 worldPoint);
     void applyTorque(float torque);
 
+    // Переносит тело в новое положение и угол и будит его, чтобы мир сразу увидел
+    // изменение. Скорость и угловая скорость сохраняются: для полного сброса движения
+    // обнулите их отдельно.
+    void setPose(Vector2 newPosition, float newAngle = 0);
+
     CollisionShape shape;
     BodyType type = BodyType::Static;
     Vector2 position;
@@ -89,14 +94,5 @@ struct RigidBody
     // заданная скорость. Время неподвижности ведёт мир; изменять его приложению не нужно.
     bool sleeping = false;
     float sleepTime = 0;
-
-    // Будит тело: нужно после ручного переноса или изменения положения спящего тела,
-    // иначе мир не заметит изменения и тело останется на месте.
-    void wake() { sleeping = false; sleepTime = 0; }
-
-    // Переносит тело в новое положение и угол и будит его, чтобы мир сразу увидел
-    // изменение. Скорость и угловая скорость сохраняются: для полного сброса движения
-    // обнулите их отдельно.
-    void setPose(Vector2 newPosition, float newAngle = 0);
 };
 }

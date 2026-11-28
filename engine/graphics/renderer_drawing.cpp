@@ -135,6 +135,10 @@ void Renderer2D::drawPolygon(const Quad& polygon, Color color, ShapeFill fill)
 
 namespace
 {
+// Встроенный шрифт 5x7: высота глифа и межстрочный интервал в пикселях шрифта.
+constexpr float GlyphHeight = 7;
+constexpr float LineHeight = 8;
+
 // Ширина строки без завершающего межбуквенного интервала — как у measureDebugText.
 float debugLineWidth(std::string_view line, float pixel)
 {
@@ -205,7 +209,7 @@ void Renderer2D::drawDebugText(std::string_view message, Vector2 position, const
     if (!prepareDraw(options)) {
         return;
     }
-    const float lineHeight = 8 * pixel;
+    const float lineHeight = LineHeight * pixel;
     std::size_t lineIndex = 0;
     for (std::size_t begin = 0; begin <= message.size();) {
         const std::size_t found = message.find('\n', begin);
@@ -262,21 +266,19 @@ namespace NeuexpEngine
 Size2 Renderer2D::measureDebugText(std::string_view message, float pixel)
 {
     Size2 result;
-    float x = 0;
     float y = 0;
-    for (std::size_t offset = 0; offset < message.size();) {
-        std::uint32_t code;
-        Detail::nextUtf8(message, offset, code);
-        if (code == '\n') {
-            x = 0;
-            y += 8 * pixel;
-            result.height = std::max(result.height, y);
-            continue;
+    for (std::size_t begin = 0; begin <= message.size();) {
+        const std::size_t found = message.find('\n', begin);
+        const std::string_view line = message.substr(begin,
+            found == std::string_view::npos ? message.size() - begin : found - begin);
+        result.width = std::max(result.width, debugLineWidth(line, pixel));
+        // Пустая строка добавляет только межстрочный интервал, глифов у неё нет.
+        result.height = std::max(result.height, y + (line.empty() ? 0 : GlyphHeight * pixel));
+        y += LineHeight * pixel;
+        if (found == std::string_view::npos) {
+            break;
         }
-        const auto glyph = Detail::unicodeDebugGlyph(code);
-        result.width = std::max(result.width, x + static_cast<float>(glyph.width) * pixel);
-        result.height = std::max(result.height, y + static_cast<float>(glyph.height) * pixel);
-        x += static_cast<float>(glyph.width + 1) * pixel;
+        begin = found + 1;
     }
     return result;
 }

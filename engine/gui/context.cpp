@@ -8,11 +8,13 @@ namespace NeuexpEngine::Gui
 {
 namespace
 {
+// Правая и нижняя границы исключены: указатель на границе не принадлежит области.
 bool containsPointer(const Rect& area, Vector2 point)
 {
     return point.x >= area.position.x && point.y >= area.position.y
         && point.x < area.position.x + area.size.width && point.y < area.position.y + area.size.height;
 }
+// Пересечение обрезается до нулевого размера: пустая область остаётся допустимой.
 Rect intersect(const Rect& a, const Rect& b)
 {
     const float x = std::max(a.position.x, b.position.x);

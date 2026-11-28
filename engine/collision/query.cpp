@@ -1,4 +1,6 @@
 #include "query.h"
+#include "manifold.h"
+#include "shape.h"
 #include "core/math2d.h"
 
 #include <algorithm>
@@ -6,7 +8,6 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
-#include <utility>
 
 namespace NeuexpEngine
 {
@@ -14,176 +15,11 @@ namespace
 {
 // Счёт в double: во float квадраты расстояний теряют точность на сотнях единиц мира.
 
-Size2 halfSizeOf(const Box& box)
-{
-    return {box.size.width / 2, box.size.height / 2};
-}
-
-// Вызов требует прямоугольного вида формы: круг сюда не передаётся.
-Box boxOf(const CollisionShape& shape)
-{
-    if (shape.kind() == CollisionShape::Kind::Box) {
-        return shape.box();
-    }
-    const Rect rectangle = shape.rect();
-    return {rectangle.center(), rectangle.size, 0};
-}
-
 // Нулевое смещение не задаёт направления, поэтому для него принимается (1, 0).
 Vector2 radialNormal(Vector2 offset)
 {
     const Vector2 normal = normalized(offset);
     return normal == Vector2{} ? Vector2{1, 0} : normal;
-}
-
-// Ближайшая грань в осях прямоугольника: наружная нормаль и расстояние до неё.
-struct FaceHit
-{
-    Vector2 normal;
-    double distance = 0;
-};
-
-FaceHit nearestFace(Vector2 localPoint, Size2 halfSize)
-{
-    const double leftGap = static_cast<double>(localPoint.x) + halfSize.width;
-    const double rightGap = static_cast<double>(halfSize.width) - localPoint.x;
-    const double upperGap = static_cast<double>(localPoint.y) + halfSize.height;
-    const double lowerGap = static_cast<double>(halfSize.height) - localPoint.y;
-    FaceHit result = {Vector2{-1, 0}, leftGap};
-    if (rightGap < result.distance) {
-        result = {Vector2{1, 0}, rightGap};
-    }
-    if (upperGap < result.distance) {
-        result = {Vector2{0, -1}, upperGap};
-    }
-    if (lowerGap < result.distance) {
-        result = {Vector2{0, 1}, lowerGap};
-    }
-    return result;
-}
-
-bool collideCircles(const Circle& first, const Circle& second, Manifold& result)
-{
-    const double offsetX = static_cast<double>(second.center.x) - first.center.x;
-    const double offsetY = static_cast<double>(second.center.y) - first.center.y;
-    const double radii = static_cast<double>(first.radius) + second.radius;
-    const double offsetSquared = offsetX * offsetX + offsetY * offsetY;
-    if (offsetSquared > radii * radii) {
-        return false;
-    }
-    if (offsetSquared == 0) {
-        result = {Vector2{1, 0}, static_cast<float>(radii)};
-        return true;
-    }
-    const double offsetLength = std::sqrt(offsetSquared);
-    result = {Vector2{static_cast<float>(offsetX / offsetLength),
-                  static_cast<float>(offsetY / offsetLength)},
-        static_cast<float>(radii - offsetLength)};
-    return true;
-}
-
-// Пересечение круга с прямоугольником в осях этого прямоугольника.
-bool collideCircleRectangle(Vector2 circleCenter, float radius, Size2 halfSize, Manifold& result)
-{
-    const Vector2 closest{
-        std::clamp(circleCenter.x, -halfSize.width, halfSize.width),
-        std::clamp(circleCenter.y, -halfSize.height, halfSize.height)};
-    const double offsetX = static_cast<double>(closest.x) - circleCenter.x;
-    const double offsetY = static_cast<double>(closest.y) - circleCenter.y;
-    const double offsetSquared = offsetX * offsetX + offsetY * offsetY;
-    const double radiusValue = radius;
-    if (offsetSquared > radiusValue * radiusValue) {
-        return false;
-    }
-    if (offsetSquared > 0) {
-        const double offsetLength = std::sqrt(offsetSquared);
-        result = {Vector2{static_cast<float>(offsetX / offsetLength),
-                      static_cast<float>(offsetY / offsetLength)},
-            static_cast<float>(radiusValue - offsetLength)};
-        return true;
-    }
-    // Центр внутри: нормаль против наружной нормали ближайшей грани.
-    const FaceHit face = nearestFace(circleCenter, halfSize);
-    result = {-face.normal, static_cast<float>(radiusValue + face.distance)};
-    return true;
-}
-
-bool collideCircleBox(const Circle& circle, const Box& box, Manifold& result)
-{
-    const Vector2 localCenter = rotated(circle.center - box.center, -box.rotation);
-    Manifold local;
-    if (!collideCircleRectangle(localCenter, circle.radius, halfSizeOf(box), local)) {
-        return false;
-    }
-    result = {rotated(local.normal, box.rotation), local.depth};
-    return true;
-}
-
-double boxRadius(const Box& box, Vector2 axisX, Vector2 axisY, Vector2 axis)
-{
-    const double projectionX = std::abs(static_cast<double>(dot(axis, axisX)));
-    const double projectionY = std::abs(static_cast<double>(dot(axis, axisY)));
-    const double halfWidth = static_cast<double>(box.size.width) / 2;
-    const double halfHeight = static_cast<double>(box.size.height) / 2;
-    return halfWidth * projectionX + halfHeight * projectionY;
-}
-
-// Разделяющие оси — по две на прямоугольник. Глубина по оси — наименьший сдвиг второй
-// формы, а не сумма проекций: вложенность выталкивается за ближайшую грань.
-bool collideBoxes(const Box& first, const Box& second, Manifold& result)
-{
-    const Vector2 firstAxisX = rotated(Vector2{1, 0}, first.rotation);
-    const Vector2 firstAxisY = rotated(Vector2{0, 1}, first.rotation);
-    const Vector2 secondAxisX = rotated(Vector2{1, 0}, second.rotation);
-    const Vector2 secondAxisY = rotated(Vector2{0, 1}, second.rotation);
-    const std::array<Vector2, 4> axes = {firstAxisX, firstAxisY, secondAxisX, secondAxisY};
-    double bestDepth = 0;
-    Vector2 bestNormal{1, 0};
-    for (std::size_t index = 0; index < axes.size(); ++index) {
-        const Vector2 axis = axes[index];
-        const double centerFirst = static_cast<double>(dot(axis, first.center));
-        const double centerSecond = static_cast<double>(dot(axis, second.center));
-        const double radiusFirst = boxRadius(first, firstAxisX, firstAxisY, axis);
-        const double radiusSecond = boxRadius(second, secondAxisX, secondAxisY, axis);
-        const double pushPositive = centerFirst + radiusFirst - (centerSecond - radiusSecond);
-        const double pushNegative = centerSecond + radiusSecond - (centerFirst - radiusFirst);
-        if (pushPositive < 0 || pushNegative < 0) {
-            return false;
-        }
-        double depth = pushPositive;
-        Vector2 normal = axis;
-        if (pushNegative < pushPositive) {
-            depth = pushNegative;
-            normal = -axis;
-        }
-        if (index == 0 || depth < bestDepth) {
-            bestDepth = depth;
-            bestNormal = normal;
-        }
-    }
-    result = {bestNormal, static_cast<float>(bestDepth)};
-    return true;
-}
-
-bool detect(const CollisionShape& first, const CollisionShape& second, Manifold& result)
-{
-    const bool firstIsCircle = first.kind() == CollisionShape::Kind::Circle;
-    const bool secondIsCircle = second.kind() == CollisionShape::Kind::Circle;
-    if (firstIsCircle && secondIsCircle) {
-        return collideCircles(first.circle(), second.circle(), result);
-    }
-    if (firstIsCircle) {
-        return collideCircleBox(first.circle(), boxOf(second), result);
-    }
-    if (secondIsCircle) {
-        Manifold reversed;
-        if (!collideCircleBox(second.circle(), boxOf(first), reversed)) {
-            return false;
-        }
-        result = {-reversed.normal, reversed.depth};
-        return true;
-    }
-    return collideBoxes(boxOf(first), boxOf(second), result);
 }
 
 // Расстояние от точки до границы прямоугольника; внутри прямоугольника равно нулю.
@@ -294,7 +130,7 @@ bool castCircle(const Circle& circle, Vector2 begin, Vector2 end, SegmentHit& re
 
 bool castBox(const Box& box, Vector2 begin, Vector2 end, SegmentHit& result)
 {
-    const Size2 halfSize = halfSizeOf(box);
+    const Size2 halfSize{box.size.width / 2, box.size.height / 2};
     const Vector2 localBegin = rotated(begin - box.center, -box.rotation);
     const Vector2 localEnd = rotated(end - box.center, -box.rotation);
     const std::array<double, 2> lows = {-static_cast<double>(halfSize.width),
@@ -340,7 +176,7 @@ bool castBox(const Box& box, Vector2 begin, Vector2 end, SegmentHit& result)
     if (enter < 0) {
         // Начало внутри (и совпадающие концы): попадание в начале с нормалью ближайшей
         // грани; точку вне прямоугольника отсекают проверки границ по осям.
-        result = {begin, rotated(nearestFace(localBegin, halfSize).normal, box.rotation), 0};
+        result = {begin, rotated(nearestBoxFace(localBegin, halfSize).normal, box.rotation), 0};
         return true;
     }
     const Vector2 localPoint{
@@ -357,11 +193,13 @@ bool castBox(const Box& box, Vector2 begin, Vector2 end, SegmentHit& result)
 
 bool collide(const CollisionShape& first, const CollisionShape& second, Manifold& result)
 {
-    Manifold found;
-    if (!detect(first, second, found)) {
+    // Пересечение и контакт — один расчёт: нормаль и глубина берутся из контактного
+    // многообразия, чтобы проверки и физика не расходились в решениях.
+    ContactManifold manifold;
+    if (!detectContact(first, second, manifold)) {
         return false;
     }
-    result = found;
+    result = {manifold.normal, manifold.depth};
     return true;
 }
 

@@ -4,18 +4,14 @@
 #include "graphics/sprite.h"
 #include "core/transform.h"
 #include "collision/collider.h"
+#include "object_id.h"
 
-#include <cstdint>
 #include <string>
 #include <utility>
 
 namespace NeuexpEngine
 {
 class Renderer2D;
-
-// Уникален внутри сцены и не переиспользуется, в том числе после clear().
-// Ноль означает, что объект не принадлежит сцене.
-using ObjectId = std::uint64_t;
 
 // Игровой объект: трансформация, визуальное представление и необязательное поведение.
 // Сцена владеет объектом, поэтому копирование и перемещение не поддерживаются:

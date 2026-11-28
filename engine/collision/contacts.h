@@ -1,6 +1,7 @@
 #pragma once
 
 #include "collider.h"
+#include "contact_phase.h"
 #include "query.h"
 #include "scene/scene.h"
 
@@ -10,17 +11,6 @@
 
 namespace NeuexpEngine
 {
-// Фаза контакта пары объектов.
-enum class ContactPhase
-{
-    // Пара появилась в этом вызове.
-    Begin,
-    // Пара была в прошлом вызове и остаётся; данные контакта относятся к этому вызову.
-    Persist,
-    // Пара исчезла: формы разошлись, коллайдер выключен, объект удалён или сцена сменилась.
-    End
-};
-
 // Контакт двух объектов сцены. first всегда меньше second, а manifold.normal направлена
 // от first ко second.
 struct Contact

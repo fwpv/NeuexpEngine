@@ -1,8 +1,9 @@
 #include "collision/contacts.h"
+#include "collision/manifold.h"
+#include "collision/query.h"
 #include "core/geometry.h"
 #include "core/math2d.h"
 #include "physics/body.h"
-#include "physics/manifold.h"
 #include "physics/world.h"
 #include "scene/scene.h"
 
@@ -87,6 +88,23 @@ void testManifold()
             && manifold.count == 1,
         "Circle-box contact failed.");
     require(closeTo(manifold.points[0].position.x, 5, 1e-4F), "Circle-box contact point must lie on the face.");
+
+    // Пересечение сцены и контакт физики считаются одним проходом: решения совпадают.
+    Manifold overlap;
+    require(detectContact(firstCircle, secondCircle, manifold) && collide(firstCircle, secondCircle, overlap),
+        "Overlap must find the same circle pair.");
+    require(overlap.normal == manifold.normal && closeTo(overlap.depth, manifold.depth, 1e-5F),
+        "Circle overlap and contact must return the same manifold.");
+    require(detectContact(firstBox, CollisionShape{Box{{8, 0}, {10, 10}, 0}}, manifold)
+            && collide(firstBox, CollisionShape{Box{{8, 0}, {10, 10}, 0}}, overlap),
+        "Overlap must find the same box pair.");
+    require(overlap.normal == manifold.normal && closeTo(overlap.depth, manifold.depth, 1e-5F),
+        "Box overlap and contact must return the same manifold.");
+    require(detectContact(firstBox, CollisionShape{Circle{{7, 0}, 3}}, manifold)
+            && collide(firstBox, CollisionShape{Circle{{7, 0}, 3}}, overlap),
+        "Overlap must find the reversed circle-box pair.");
+    require(overlap.normal == manifold.normal && closeTo(overlap.depth, manifold.depth, 1e-5F),
+        "Reversed circle-box overlap and contact must return the same manifold.");
 }
 
 void testProperties()
@@ -205,6 +223,15 @@ void testForces()
     torque.applyTorque(50);
     world.step(StepTime);
     require(torque.angularVelocity > 0, "Torque did not change angular velocity.");
+
+    // Угловой импульс, равный моменту инерции, даёт один радиан в секунду.
+    const BodyId spinId = world.addBody(circleBody({0, 300}, 5));
+    RigidBody& spin = *world.body(spinId);
+    spin.applyAngularImpulse(spin.inertia());
+    require(closeTo(spin.angularVelocity, 1, 1e-5F), "Angular impulse did not change angular velocity.");
+    const BodyId fixedId = world.addBody(boxBody({0, 400}, {10, 10}, BodyType::Static));
+    world.body(fixedId)->applyAngularImpulse(5);
+    require(world.body(fixedId)->angularVelocity == 0, "Angular impulse must not move a static body.");
 }
 
 void testCollisions()

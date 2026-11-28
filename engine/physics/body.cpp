@@ -1,4 +1,5 @@
 #include "body.h"
+#include "core/transform.h"
 
 #include <cassert>
 #include <cmath>
@@ -41,24 +42,14 @@ void RigidBody::setPose(Vector2 newPosition, float newAngle)
         && std::isfinite(newAngle));
     position = newPosition;
     angle = newAngle;
-    wake();
+    sleeping = false;
+    sleepTime = 0;
 }
 
 CollisionShape RigidBody::worldShape() const
 {
-    if (shape.kind() == CollisionShape::Kind::Circle) {
-        const Circle& circle = shape.circle();
-        return Circle{position + rotated(circle.center, angle), circle.radius};
-    }
-    if (shape.kind() == CollisionShape::Kind::Rect) {
-        const Rect& rectangle = shape.rect();
-        if (angle == 0) {
-            return Rect{position + rectangle.position, rectangle.size};
-        }
-        return Box{position + rotated(rectangle.center(), angle), rectangle.size, angle};
-    }
-    const Box& box = shape.box();
-    return Box{position + rotated(box.center, angle), box.size, angle + box.rotation};
+    // Масштаб и origin объекта сцены к телу не применяются: размер задаёт форма.
+    return transformedShape(shape, Transform2{position, angle, Vector2{1, 1}, Vector2{}});
 }
 
 Rect RigidBody::worldBounds() const

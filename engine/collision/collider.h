@@ -38,4 +38,7 @@ struct Collider
 
 // Пара участвует в проверке: оба коллайдера включены и слои входят в маски друг друга.
 bool canCollide(const Collider& first, const Collider& second);
+// Совместимость слоёв пары: слой каждого входит в маску другого.
+bool layersMatch(CollisionLayer firstLayer, CollisionLayer firstMask, CollisionLayer secondLayer,
+    CollisionLayer secondMask);
 }
