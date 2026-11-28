@@ -90,6 +90,14 @@ int main()
     require(board.pageIndex() == 0, "Board must start on the first page.");
     require(board.zones().size() == 6, "Every page has six zones.");
 
+    // showPage открывает страницу по индексу и не переставляет страницы.
+    board.showPage(2);
+    require(board.pageIndex() == 2 && board.pageName() == "INDUSTRY STANDARD",
+        "showPage must open the requested page.");
+    board.showPage(0);
+    require(board.pageIndex() == 0 && board.pageName() == "COLLISIONS AND INTERACTIONS",
+        "showPage must return to the first page.");
+
     // Страница 1: столкновения и взаимодействия тел.
     float carried = 0;
     float frictionSlide = 0;

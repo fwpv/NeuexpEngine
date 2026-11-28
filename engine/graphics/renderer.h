@@ -153,12 +153,18 @@ public:
     // Невидимый спрайт пропускается. Преобразование options применяется после transform
     // спрайта; цвета перемножаются. Слой, порядок и отсечение работают как у остальных команд.
     void drawSprite(const Sprite& sprite, const DrawOptions& options = {});
-    // Встроенный UTF-8 шрифт 5x7: латиница, русский алфавит, цифры и - + / . : %.
+    // Встроенный UTF-8 шрифт 5x7: латиница, русский алфавит, цифры и - + / . : % < > =.
     // Строчные буквы рисуются прописными, неизвестные символы дают пробел; поддержан LF.
     // pixel — размер пикселя глифа в локальных координатах, конечный и положительный.
     static Size2 measureDebugText(std::string_view message, float pixel = 2);
-    void drawDebugText(std::string_view message, Vector2 position, const DrawOptions& options = {}, float pixel = 2);
-    void drawDebugText(std::string_view message, Vector2 position, Color color, float pixel = 2);
+    // alignment привязывает строки к position.x: Left — левый край, Center — центр,
+    // Right — правый край; по вертикали position.y остаётся верхом первой строки.
+    // wrapWidth больше нуля переносит строку по словам, ноль отключает перенос;
+    // слова длиннее ширины остаются целыми. Перенос убирает пробелы на границе строк.
+    void drawDebugText(std::string_view message, Vector2 position, const DrawOptions& options = {},
+        float pixel = 2, TextAlignment alignment = TextAlignment::Left, float wrapWidth = 0);
+    void drawDebugText(std::string_view message, Vector2 position, Color color, float pixel = 2,
+        TextAlignment alignment = TextAlignment::Left, float wrapWidth = 0);
 
 private:
     bool queueRectangle(const Rect& rectangle, ShapeFill fill, const DrawOptions& options);

@@ -834,6 +834,43 @@ void testFixedStepReproducibility()
 }
 }
 
+void testPose()
+{
+    PhysicsWorld world;
+    RigidBody body = circleBody({50, 80}, 10);
+    body.velocity = {5, -3};
+    body.angularVelocity = 0.5F;
+    const BodyId id = world.addBody(body);
+    RigidBody* placed = world.body(id);
+    // Спящее тело при переносе просыпается, иначе мир не заметит нового положения.
+    placed->sleeping = true;
+    placed->setPose({200, 120}, 0.75F);
+    require(!placed->sleeping, "setPose must wake the body.");
+    require(placed->position == Vector2{200, 120} && closeTo(placed->angle, 0.75F, 1e-6F),
+        "setPose must place the body.");
+    require(placed->velocity == Vector2{5, -3} && closeTo(placed->angularVelocity, 0.5F, 1e-6F),
+        "setPose must keep the motion.");
+    require(closeTo(placed->worldShape().circle().center.x, 200, 1e-4F),
+        "worldShape must follow the new pose.");
+    // После переноса тело шагает из нового положения.
+    placed->velocity = {};
+    placed->angularVelocity = 0;
+    world.gravity = {};
+    world.step(StepTime);
+    require(closeTo(placed->position.x, 200, 1e-4F) && closeTo(placed->position.y, 120, 1e-4F),
+        "Placed body must be integrated from its new pose.");
+    // Перенос без угла возвращает угол в ноль.
+    placed->setPose({10, 15});
+    require(closeTo(placed->angle, 0, 1e-6F), "Default setPose angle must be zero.");
+    // Перенос неподвижного тела тоже меняет форму в мире.
+    RigidBody wall = boxBody({0, 0}, {40, 20}, BodyType::Static);
+    const BodyId wallId = world.addBody(wall);
+    world.body(wallId)->setPose({300, 300}, 1.0F);
+    require(closeTo(world.body(wallId)->worldBounds().center().x, 300, 1e-4F)
+            && closeTo(world.body(wallId)->worldBounds().center().y, 300, 1e-4F),
+        "Static body must follow setPose.");
+}
+
 int main(int argumentCount, char** arguments)
 {
     try {
@@ -875,6 +912,8 @@ int main(int argumentCount, char** arguments)
             testSleeping();
         } else if (group == "fixedstep") {
             testFixedStepReproducibility();
+        } else if (group == "pose") {
+            testPose();
         } else {
             throw std::runtime_error("Unknown physics test group.");
         }

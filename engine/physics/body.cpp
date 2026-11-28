@@ -1,5 +1,6 @@
 #include "body.h"
 
+#include <cassert>
 #include <cmath>
 
 namespace NeuexpEngine
@@ -32,6 +33,15 @@ RigidBody::RigidBody(const CollisionShape& shape, BodyType type, Vector2 positio
     , position(position)
     , angle(angle)
 {
+}
+
+void RigidBody::setPose(Vector2 newPosition, float newAngle)
+{
+    assert(std::isfinite(newPosition.x) && std::isfinite(newPosition.y)
+        && std::isfinite(newAngle));
+    position = newPosition;
+    angle = newAngle;
+    wake();
 }
 
 CollisionShape RigidBody::worldShape() const

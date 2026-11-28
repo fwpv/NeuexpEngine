@@ -3,7 +3,7 @@ target_link_libraries(renderer_test PRIVATE neuexpengine project_warnings)
 if(WIN32)
     target_compile_definitions(renderer_test PRIVATE NOMINMAX)
 endif()
-foreach(mode primitives transforms views errors state sorting gradient ellipses debug_text frame_errors)
+foreach(mode primitives transforms views errors state sorting gradient ellipses debug_text debug_text_layout frame_errors)
     add_test(NAME renderer_${mode} COMMAND renderer_test ${mode})
     set_tests_properties(renderer_${mode} PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
@@ -44,7 +44,7 @@ endforeach()
 add_executable(physics_test physics_test.cpp)
 target_link_libraries(physics_test PRIVATE neuexpengine project_warnings)
 foreach(mode manifold properties integration forces collisions restitution friction stack tallstack
-    rotation sensors events deferred sync layers fast sleep fixedstep)
+    rotation sensors events deferred sync layers fast sleep fixedstep pose)
     add_test(NAME physics_${mode} COMMAND physics_test ${mode})
 endforeach()
 

@@ -3,6 +3,7 @@
 #include "core/geometry.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <sstream>
 #include <string>
@@ -73,14 +74,12 @@ BodyId addZoneFloor(PhysicsWorld& world, const Rect& area, float friction = 0.6F
     return world.addBody(floor);
 }
 
-// Перенос тела приложением: мир не видит смену позиции, поэтому тело будится.
+// Перенос тела приложением: положение меняется, а скорость сбрасывается.
 void placeBody(RigidBody& body, Vector2 position, float angle = 0)
 {
-    body.position = position;
-    body.angle = angle;
+    body.setPose(position, angle);
     body.velocity = {};
     body.angularVelocity = 0;
-    body.wake();
 }
 
 void drawShape(Renderer2D& drawing, const CollisionShape& shape, Color fill, Color outline)
@@ -1140,8 +1139,8 @@ void Zone::draw(Renderer2D& drawing) const
     drawing.drawRectangle(zoneArea, frame, ShapeFill::Outline);
 
     const Vector2 origin = zoneArea.position;
-    drawing.drawDebugText(zoneTitle, Vector2{origin.x + 12, origin.y + TitleOffset}, TitleColor,
-        TitlePixel);
+    drawing.drawDebugText(zoneTitle, Vector2{zoneArea.center().x, origin.y + TitleOffset}, TitleColor,
+        TitlePixel, TextAlignment::Center);
     for (const RigidBody* body : simulation.bodies()) {
         if (body->object != 0) {
             continue;
@@ -1224,6 +1223,12 @@ void CheckBoard::draw(Renderer2D& drawing) const
 void CheckBoard::nextPage()
 {
     currentPage = (currentPage + 1) % pageCount();
+}
+
+void CheckBoard::showPage(int page)
+{
+    assert(page >= 0 && page < pageCount());
+    currentPage = page;
 }
 
 int CheckBoard::pageCount() const

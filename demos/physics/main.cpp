@@ -59,6 +59,13 @@ private:
         if (Platform::isKeyPressed(Platform::Key::Tab)) {
             board.nextPage();
         }
+        for (int page = 0; page < board.pageCount(); ++page) {
+            const Platform::Key key = static_cast<Platform::Key>(
+                static_cast<int>(Platform::Key::Digit1) + page);
+            if (Platform::isKeyPressed(key)) {
+                board.showPage(page);
+            }
+        }
         if (Platform::isKeyPressed(Platform::Key::P)) {
             setPaused(!isPaused());
         }
@@ -103,7 +110,7 @@ private:
             + "   FPS " + formatNumber(static_cast<float>(frame.framesPerSecond), 0)
             + (isPaused() ? "   PAUSED" : "");
         drawing.drawDebugText(page, NE::Vector2{18, 40}, TextColor, 1);
-        drawing.drawDebugText("TAB PAGE   R RESTART   P PAUSE   ESC EXIT",
+        drawing.drawDebugText("1 2 3 PAGE   TAB NEXT   R RESTART   P PAUSE   ESC EXIT",
             NE::Vector2{18, 58}, HintColor, 1);
     }
 

@@ -594,6 +594,43 @@ void debugText()
     renderer.shutdown();
 }
 
+void debugTextLayout()
+{
+    Renderer2D renderer;
+    RenderError error;
+    check(renderer.initialize(error), error);
+    renderer.beginFrame(ImageSize, ImageSize, Black);
+    renderer.setUiView(screen());
+    // "I" занимает 10 пикселей при pixel = 2: центр и правый край привязки.
+    renderer.drawDebugText("I", { 100, 20 }, White, 2, TextAlignment::Center);
+    renderer.drawDebugText("I", { 200, 20 }, White, 2, TextAlignment::Right);
+    // Два слова не влезают в 16 единиц: перенос по словам на две строки.
+    renderer.drawDebugText("I I", { 20, 60 }, White, 2, TextAlignment::Left, 16);
+    // Сравнения, которых раньше не было во встроенном шрифте.
+    renderer.drawDebugText("< > =", { 20, 100 }, White, 2);
+    check(renderer.endFrame(error), error);
+    pixel(95, 20, White);
+    pixel(104, 20, White);
+    pixel(94, 20, Black);
+    pixel(105, 20, Black);
+    pixel(190, 20, White);
+    pixel(199, 20, White);
+    pixel(200, 20, Black);
+    pixel(20, 60, White);
+    pixel(29, 60, White);
+    pixel(30, 60, Black);
+    pixel(20, 76, White); // Второе слово после переноса.
+    pixel(20, 84, Black);
+    pixel(26, 100, White); // Верхний излом "<": третья колонка.
+    pixel(22, 104, White); // Средний излом "<": первая колонка.
+    pixel(46, 100, White); // Верхний излом ">": третья колонка после пробела.
+    pixel(50, 104, White); // Средний излом ">".
+    pixel(70, 104, White); // Верхняя черта "=".
+    pixel(70, 108, White); // Нижняя черта "=".
+    pixel(70, 100, Black); // Просвет над "=".
+    renderer.shutdown();
+}
+
 void frameErrors()
 {
     Renderer2D renderer;
@@ -639,6 +676,12 @@ void frameErrors()
         renderer.drawDebugText("A", Vector2{}, White, pixelSize);
         require(!renderer.endFrame(error) && error == RenderError::InvalidGeometry, "Invalid debug-text size was accepted.");
     }
+    for (float wrapWidth : {-1.0F, std::numeric_limits<float>::quiet_NaN()}) {
+        renderer.beginFrame(ImageSize, ImageSize, Black);
+        renderer.setUiView(screen());
+        renderer.drawDebugText("A", Vector2{}, White, 2, TextAlignment::Left, wrapWidth);
+        require(!renderer.endFrame(error) && error == RenderError::InvalidGeometry, "Invalid debug-text wrap was accepted.");
+    }
     renderer.beginFrame(ImageSize, ImageSize, Black);
     renderer.setUiView(screen());
     renderer.drawEllipse(Vector2{}, Vector2{1, 1}, White, ShapeFill::Filled, 2);
@@ -682,6 +725,9 @@ int runTest(const std::string& mode)
     }
     else if (mode == "debug_text") {
         debugText();
+    }
+    else if (mode == "debug_text_layout") {
+        debugTextLayout();
     }
     else if (mode == "frame_errors") {
         frameErrors();

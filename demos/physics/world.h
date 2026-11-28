@@ -86,6 +86,8 @@ public:
     void draw(NeuexpEngine::Renderer2D& drawing) const;
 
     void nextPage();
+    // Открывает страницу по индексу; индекс вне диапазона отклоняется assert-ом.
+    void showPage(int page);
     int pageIndex() const { return currentPage; }
     int pageCount() const;
     const std::string& pageName() const;
