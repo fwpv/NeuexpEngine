@@ -60,27 +60,29 @@ Vector2 faceNormal(Vector2 begin, Vector2 end)
     return normalized(Vector2{edge.y, -edge.x});
 }
 
-// Ближайшая грань точки внутри прямоугольника: наружная нормаль и расстояние до неё.
+// Ближайшая грань точки внутри прямоугольника: наружная нормаль, расстояние до неё
+// и номер грани (0 — левая, 1 — правая, 2 — верхняя, 3 — нижняя).
 struct FaceHit
 {
     Vector2 normal;
     float distance = 0;
+    std::uint16_t face = 0;
 };
 
 FaceHit nearestFace(Vector2 localPoint, Size2 half)
 {
-    FaceHit result{Vector2{-1, 0}, half.width + localPoint.x};
+    FaceHit result{Vector2{-1, 0}, half.width + localPoint.x, 0};
     const float right = half.width - localPoint.x;
     if (right < result.distance) {
-        result = {Vector2{1, 0}, right};
+        result = {Vector2{1, 0}, right, 1};
     }
     const float top = half.height + localPoint.y;
     if (top < result.distance) {
-        result = {Vector2{0, -1}, top};
+        result = {Vector2{0, -1}, top, 2};
     }
     const float bottom = half.height - localPoint.y;
     if (bottom < result.distance) {
-        result = {Vector2{0, 1}, bottom};
+        result = {Vector2{0, 1}, bottom, 3};
     }
     return result;
 }
@@ -97,7 +99,7 @@ bool circles(const Circle& first, const Circle& second, ContactManifold& result)
     result.depth = offsetSquared == 0 ? radii : radii - std::sqrt(offsetSquared);
     const Vector2 surfaceFirst = first.center + result.normal * first.radius;
     const Vector2 surfaceSecond = second.center - result.normal * second.radius;
-    result.points[0] = {(surfaceFirst + surfaceSecond) * 0.5F, result.depth};
+    result.points[0] = {(surfaceFirst + surfaceSecond) * 0.5F, result.depth, 0};
     result.count = 1;
     return true;
 }
@@ -117,7 +119,30 @@ bool circleBox(const Circle& circle, const Box& box, ContactManifold& result)
     if (offsetSquared > 0) {
         result.normal = rotated(normalized(-offset), box.rotation);
         result.depth = circle.radius - std::sqrt(offsetSquared);
-        result.points[0] = {box.center + rotated(closest, box.rotation), result.depth};
+        // Особенность — грань или угол прямоугольника, к которым ближе центр круга.
+        const bool onLeft = closest.x == -half.width;
+        const bool onRight = closest.x == half.width;
+        const bool onTop = closest.y == -half.height;
+        const bool onBottom = closest.y == half.height;
+        std::uint16_t feature = 0;
+        if (onLeft && onTop) {
+            feature = 4;
+        } else if (onRight && onTop) {
+            feature = 5;
+        } else if (onRight && onBottom) {
+            feature = 6;
+        } else if (onLeft && onBottom) {
+            feature = 7;
+        } else if (onLeft) {
+            feature = 0;
+        } else if (onRight) {
+            feature = 1;
+        } else if (onTop) {
+            feature = 2;
+        } else if (onBottom) {
+            feature = 3;
+        }
+        result.points[0] = {box.center + rotated(closest, box.rotation), result.depth, feature};
         return true;
     }
     // Центр круга внутри: выталкивает ближайшая грань.
@@ -125,7 +150,7 @@ bool circleBox(const Circle& circle, const Box& box, ContactManifold& result)
     result.normal = rotated(-face.normal, box.rotation);
     result.depth = circle.radius + face.distance;
     const Vector2 facePoint = localCenter + face.normal * face.distance;
-    result.points[0] = {box.center + rotated(facePoint, box.rotation), result.depth};
+    result.points[0] = {box.center + rotated(facePoint, box.rotation), result.depth, face.face};
     return true;
 }
 
@@ -227,6 +252,12 @@ bool boxes(const Box& first, const Box& second, ContactManifold& result)
         }
     }
 
+    // Особенность точки: номер опорной и падающей граней и вид точки (вершина падающей
+    // грани или точка отсечения). Идентификатор не меняется между шагами, пока пара
+    // граней та же.
+    const std::uint16_t base = static_cast<std::uint16_t>(
+        (static_cast<std::uint16_t>(referenceFace) << 12)
+        | (static_cast<std::uint16_t>(incidentFace) << 8));
     result.count = 0;
     for (int index = 0; index < faceCount; ++index) {
         const std::size_t position = static_cast<std::size_t>(index);
@@ -234,8 +265,15 @@ bool boxes(const Box& first, const Box& second, ContactManifold& result)
         if (separation > ContactTolerance) {
             continue;
         }
+        std::uint16_t feature = 2;
+        if (facePoints[position] == incidentFacePoints[0]) {
+            feature = 0;
+        } else if (facePoints[position] == incidentFacePoints[1]) {
+            feature = 1;
+        }
         result.points[static_cast<std::size_t>(result.count)] = {
-            facePoints[position], std::max(0.0F, -separation)};
+            facePoints[position], std::max(0.0F, -separation),
+            static_cast<std::uint16_t>(base | feature)};
         ++result.count;
     }
     if (result.count == 0) {
@@ -243,14 +281,18 @@ bool boxes(const Box& first, const Box& second, ContactManifold& result)
         // когда отсечённые точки не попали на опорную грань.
         float bestSeparation = std::numeric_limits<float>::max();
         Vector2 bestPoint = incidentFacePoints[0];
-        for (Vector2 corner : incident.corners) {
+        std::uint16_t bestCorner = 0;
+        for (std::size_t cornerIndex = 0; cornerIndex < incident.corners.size(); ++cornerIndex) {
+            const Vector2 corner = incident.corners[cornerIndex];
             const float separation = dot(referenceNormal, corner - referenceBegin);
             if (separation < bestSeparation) {
                 bestSeparation = separation;
                 bestPoint = corner;
+                bestCorner = static_cast<std::uint16_t>(cornerIndex);
             }
         }
-        result.points[0] = {bestPoint, std::max(0.0F, -bestSeparation)};
+        result.points[0] = {bestPoint, std::max(0.0F, -bestSeparation),
+            static_cast<std::uint16_t>(base | 3U | (bestCorner << 2))};
         result.count = 1;
     }
     return true;
