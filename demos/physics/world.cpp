@@ -256,8 +256,9 @@ public:
         const float firstY = floorTop(area, bottomMargin) - boxSize / 2;
         for (int level = 0; level < count; ++level) {
             const float restY = firstY - boxSize * static_cast<float>(level);
+            // До падения ящики разделены зазором: они падают по очереди и укладываются вплотную.
             RigidBody crate{Box{{0, 0}, {boxSize, boxSize}, 0}, BodyType::Dynamic,
-                {area.center().x, restY - drop}};
+                {area.center().x, restY - drop - SpawnGap * static_cast<float>(level)}};
             crate.friction = 0.8F;
             ids.push_back(world().addBody(crate));
             expected.push_back(restY);
@@ -319,6 +320,7 @@ private:
     float boxSize = 0;
     float drop = 0;
     static constexpr float RestInterval = 3.5F;
+    static constexpr float SpawnGap = 3;
     std::vector<BodyId> ids;
     std::vector<float> expected;
     std::vector<Vector2> dropStart;
@@ -1247,7 +1249,7 @@ std::vector<std::unique_ptr<Zone>> buildStandardPage()
     zones.push_back(std::make_unique<CcdDynamicZone>(cellArea(1, 0)));
     zones.push_back(std::make_unique<CcdKinematicZone>(cellArea(2, 0)));
     zones.push_back(std::make_unique<ExactRestitutionZone>(cellArea(0, 1)));
-    zones.push_back(std::make_unique<StackZone>(cellArea(1, 1), "TALL STACK", 8, 22, 40, 25));
+    zones.push_back(std::make_unique<StackZone>(cellArea(1, 1), "TALL STACK", 8, 20, 40, 25));
     zones.push_back(std::make_unique<SleepZone>(cellArea(2, 1)));
     return zones;
 }
