@@ -35,10 +35,10 @@ private:
         return true;
     }
 
-    bool onInput(const NeuexpEngine::FrameInfo&, Platform::Error&) override
+    bool onInput(const NeuexpEngine::FrameInfo& frame, Platform::Error&) override
     {
         // Одноразовые действия читаются из снимка ввода: флаг pressed действует один кадр
-        // и не зависит от того, успел ли в этом кадре начаться фиксированный шаг симуляции.
+        // и не зависит от того, сколько шагов симуляции успело начаться в этом кадре.
         // Обработка находится здесь, потому что обновление на паузе не вызывается.
         const auto& input = Platform::getInput();
         if (input.key(NeuexpEngine::Key::Escape).pressed) {
@@ -50,6 +50,13 @@ private:
         if (input.key(NeuexpEngine::Key::P).pressed) {
             setPaused(!isPaused());
         }
+        // Прыжок запоминается до первого шага: при коротком кадре шагов может не быть,
+        // и нажатие не должно пропасть.
+        if (!isPaused() && !frame.window.minimized
+            && (input.key(NeuexpEngine::Key::Space).pressed || input.key(NeuexpEngine::Key::ArrowUp).pressed
+                || input.key(NeuexpEngine::Key::W).pressed)) {
+            jumpRequested = true;
+        }
         return true;
     }
 
@@ -59,8 +66,9 @@ private:
         Nehopio::Controls controls;
         controls.left = input.key(NeuexpEngine::Key::ArrowLeft).down || input.key(NeuexpEngine::Key::A).down;
         controls.right = input.key(NeuexpEngine::Key::ArrowRight).down || input.key(NeuexpEngine::Key::D).down;
-        controls.jump = input.key(NeuexpEngine::Key::Space).pressed || input.key(NeuexpEngine::Key::ArrowUp).pressed
-            || input.key(NeuexpEngine::Key::W).pressed;
+        // Нажатие прыжка достаётся первому шагу после нажатия и больше не повторяется.
+        controls.jump = jumpRequested;
+        jumpRequested = false;
         controls.jumpHeld = input.key(NeuexpEngine::Key::Space).down || input.key(NeuexpEngine::Key::ArrowUp).down
             || input.key(NeuexpEngine::Key::W).down;
         NeuexpEngine::ResourceError failure;
@@ -108,6 +116,7 @@ private:
     Nehopio::Assets assets;
     Nehopio::Game game;
     Nehopio::Audio audio;
+    bool jumpRequested = false;
 };
 }
 
@@ -122,6 +131,10 @@ int NeuexpEngine::applicationMain()
     options.window.title = WindowTitle;
     options.maxDeltaTime = 0.1F;
     options.targetFramesPerSecond = 120;
+    // Игровой шаг задаёт приложение: тот же накопитель и предел догоняющих шагов,
+    // что и у физического мира.
+    options.fixedStepTime = 1.0F / 120.0F;
+    options.maxCatchUpSteps = 12;
     Platform::Error error;
     if (!application.run(options, error)) {
         Platform::reportError(error);
