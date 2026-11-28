@@ -288,6 +288,55 @@ void testPause()
         "Real time stopped during pause.");
 }
 
+void testFixedStep()
+{
+    ApplicationTest::reset();
+    ProbeApplication application;
+    application.inputAction = [](auto& current, const auto&) {
+        if (runtime.polls == 2) {
+            current.setPaused(true);
+            advance(milliseconds(500));
+        }
+        if (runtime.polls == 3) {
+            current.setPaused(false);
+            advance(milliseconds(500));
+        }
+        if (runtime.polls == 8) {
+            current.requestExit();
+        }
+    };
+    auto config = options();
+    config.targetFramesPerSecond = 0;
+    config.fixedStepTime = 0.02F;
+    config.maxCatchUpSteps = 3;
+    Platform::Error failure;
+    require(application.run(config, failure), "Fixed step scenario failed.");
+    require(!application.updates.empty(), "Fixed step produced no updates.");
+    // Каждое обновление идёт постоянным шагом и наращивает игровое время на его длину.
+    for (std::size_t index = 0; index < application.updates.size(); ++index) {
+        const FrameInfo& frame = application.updates[index].info;
+        requireNear(frame.deltaTime, config.fixedStepTime);
+        require(frame.updates >= 1 && frame.updates <= config.maxCatchUpSteps,
+            "Frame updates exceeded the catch-up limit.");
+        if (index > 0) {
+            requireNear(frame.elapsedTime - application.updates[index - 1].info.elapsedTime,
+                config.fixedStepTime);
+        }
+    }
+    const auto countAt = [&application](int polls) {
+        return static_cast<int>(std::count_if(application.updates.begin(), application.updates.end(),
+            [polls](const CapturedFrame& frame) { return frame.number == polls; }));
+    };
+    // Пауза не обновляет симуляцию, а продолжение после задержки выполняет не больше
+    // предела догоняющих шагов; следующий кадр остаток не догоняет.
+    require(countAt(2) == 0 && countAt(3) == 0, "Paused frame ran a fixed step.");
+    require(countAt(4) == config.maxCatchUpSteps, "Long delay was not limited by the catch-up cap.");
+    require(countAt(5) == 1 && countAt(6) == 1, "Dropped catch-up time was simulated later.");
+    requireNear(application.updates.back().info.elapsedTime,
+        static_cast<double>(config.fixedStepTime) * static_cast<double>(application.updates.size()));
+    require(application.updates.back().info.updates == 1, "Frame did not report its update count.");
+}
+
 void testFailures()
 {
     Platform::Error error;
@@ -362,6 +411,19 @@ void testFailures()
         config.maxDeltaTime = maximum;
         require(!invalid.run(config, error) && runtime.calls.empty(), "Invalid dT touched the platform.");
     }
+    for (float step : {-1.0F, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+        ApplicationTest::reset();
+        ProbeApplication invalid;
+        auto config = options();
+        config.fixedStepTime = step;
+        require(!invalid.run(config, error) && runtime.calls.empty(), "Invalid fixed step touched the platform.");
+    }
+    ApplicationTest::reset();
+    ProbeApplication invalidLimit;
+    auto invalidConfig = options();
+    invalidConfig.maxCatchUpSteps = 0;
+    require(!invalidLimit.run(invalidConfig, error) && runtime.calls.empty(),
+        "Zero catch-up limit touched the platform.");
 }
 
 void testVSync()
@@ -536,6 +598,8 @@ int main(int argumentCount, char** arguments)
             testLimiter();
         } else if (group == "statistics") {
             testStatistics();
+        } else if (group == "fixed_step") {
+            testFixedStep();
         } else {
             throw std::runtime_error("Unknown application test group.");
         }

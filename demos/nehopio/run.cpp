@@ -12,7 +12,6 @@ namespace Nehopio
 {
 namespace
 {
-constexpr float FixedStep = 1.0F / 120.0F;
 constexpr float EnemySpeed = 55;
 constexpr float FlyerPatrolRadius = 40;
 // Подлёт раздавленного врага: начальная скорость вверх, ускорение падения и
@@ -80,8 +79,6 @@ void Run::restart()
     soundList.clear();
     collected = 0;
     scoreValue = 0;
-    accumulator = 0;
-    jumpQueued = false;
     deathBlink = false;
     state = Phase::Playing;
 }
@@ -101,8 +98,6 @@ void Run::respawn()
     if (lifeCount > 1) {
         playerValue.grow();
     }
-    accumulator = 0;
-    jumpQueued = false;
     state = Phase::Playing;
 }
 
@@ -144,28 +139,10 @@ void Run::fallIntoPit()
 void Run::update(float deltaTime, const Controls& controls)
 {
     soundList.clear();
-    if (controls.jump) {
-        jumpQueued = true;
-    }
     if (state != Phase::Playing) {
         return;
     }
-    accumulator += std::min(deltaTime, 0.1F);
-    bool firstStep = true;
-    while (accumulator >= FixedStep) {
-        Controls current = controls;
-        current.jump = jumpQueued && firstStep;
-        step(FixedStep, current);
-        if (current.jump) {
-            jumpQueued = false;
-        }
-        firstStep = false;
-        accumulator -= FixedStep;
-        if (state != Phase::Playing) {
-            accumulator = 0;
-            break;
-        }
-    }
+    step(deltaTime, controls);
     // Мигание после последней жизни закончилось: уровень начинается заново.
     if (deathBlink && !playerValue.invulnerable()) {
         reset();

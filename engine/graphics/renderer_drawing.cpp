@@ -133,47 +133,131 @@ void Renderer2D::drawPolygon(const Quad& polygon, Color color, ShapeFill fill)
     drawPolygon(polygon, colored(color), fill);
 }
 
-void Renderer2D::drawDebugText(std::string_view message, Vector2 position, const DrawOptions& options, float pixel)
+namespace
+{
+// Встроенный шрифт 5x7: высота глифа и межстрочный интервал в пикселях шрифта.
+constexpr float GlyphHeight = 7;
+constexpr float LineHeight = 8;
+
+// Ширина строки без завершающего межбуквенного интервала — как у measureDebugText.
+float debugLineWidth(std::string_view line, float pixel)
+{
+    float x = 0;
+    float width = 0;
+    for (std::size_t offset = 0; offset < line.size();) {
+        std::uint32_t code;
+        Detail::nextUtf8(line, offset, code);
+        const auto glyph = Detail::unicodeDebugGlyph(code);
+        width = std::max(width, x + static_cast<float>(glyph.width) * pixel);
+        x += static_cast<float>(glyph.width + 1) * pixel;
+    }
+    return width;
+}
+
+// Перенос по словам: пробелы на границе переноса не сохраняются, слова не делятся.
+std::vector<std::string_view> wrapDebugLine(std::string_view line, float pixel, float wrapWidth)
+{
+    std::vector<std::string_view> lines;
+    if (wrapWidth <= 0 || line.empty()) {
+        lines.push_back(line);
+        return lines;
+    }
+    std::size_t lineBegin = 0;
+    std::size_t lineEnd = 0;
+    std::size_t begin = 0;
+    bool hasWord = false;
+    for (std::size_t offset = 0; offset <= line.size();) {
+        if (offset == line.size() || line[offset] == ' ') {
+            const std::string_view word = line.substr(begin, offset - begin);
+            const std::size_t wordBegin = begin;
+            begin = offset + 1;
+            if (!word.empty()) {
+                if (!hasWord) {
+                    lineBegin = wordBegin;
+                    lineEnd = offset;
+                    hasWord = true;
+                } else if (debugLineWidth(line.substr(lineBegin, offset - lineBegin), pixel) <= wrapWidth) {
+                    lineEnd = offset;
+                } else {
+                    lines.push_back(line.substr(lineBegin, lineEnd - lineBegin));
+                    lineBegin = wordBegin;
+                    lineEnd = offset;
+                }
+            }
+        }
+        ++offset;
+    }
+    lines.push_back(hasWord ? line.substr(lineBegin, lineEnd - lineBegin) : std::string_view{});
+    return lines;
+}
+}
+
+void Renderer2D::drawDebugText(std::string_view message, Vector2 position, const DrawOptions& options,
+    float pixel, TextAlignment alignment, float wrapWidth)
 {
     if (!ready()) {
         return;
     }
-    if (pixel <= 0) {
+    if (!(pixel > 0) || !std::isfinite(pixel)) {
+        firstError = RenderError::InvalidGeometry;
+        return;
+    }
+    if (!(wrapWidth >= 0) || !std::isfinite(wrapWidth)) {
         firstError = RenderError::InvalidGeometry;
         return;
     }
     if (!prepareDraw(options)) {
         return;
     }
-    const float start = position.x;
-    for (std::size_t offset = 0; offset < message.size();) {
-        std::uint32_t code;
-        Detail::nextUtf8(message, offset, code);
-        if (code == '\n') {
-            position.x = start;
-            position.y += 8 * pixel;
-            continue;
-        }
-        const auto glyph = Detail::unicodeDebugGlyph(code);
-        for (int row = 0; row < glyph.height; ++row) {
-            for (int column = 0; column < glyph.width; ++column) {
-                const auto bit = static_cast<unsigned int>((glyph.height - 1 - row) * glyph.width + glyph.width - 1 - column);
-                if ((glyph.bits & (std::uint64_t{1} << bit)) != 0) {
-                    drawRectangle(Rect{position.x + static_cast<float>(column) * pixel,
-                        position.y + static_cast<float>(row) * pixel, pixel, pixel}, options);
-                    if (firstError != RenderError::None) {
-                        return;
+    const float lineHeight = LineHeight * pixel;
+    std::size_t lineIndex = 0;
+    for (std::size_t begin = 0; begin <= message.size();) {
+        const std::size_t found = message.find('\n', begin);
+        const std::string_view source = message.substr(begin,
+            found == std::string_view::npos ? message.size() - begin : found - begin);
+        for (std::string_view line : wrapDebugLine(source, pixel, wrapWidth)) {
+            const float width = debugLineWidth(line, pixel);
+            float offset = 0;
+            if (alignment == TextAlignment::Center) {
+                offset = -width / 2;
+            } else if (alignment == TextAlignment::Right) {
+                offset = -width;
+            }
+            const float startX = position.x + std::round(offset);
+            const float startY = position.y + static_cast<float>(lineIndex) * lineHeight;
+            float cursor = startX;
+            for (std::size_t offsetInLine = 0; offsetInLine < line.size();) {
+                std::uint32_t code;
+                Detail::nextUtf8(line, offsetInLine, code);
+                const auto glyph = Detail::unicodeDebugGlyph(code);
+                for (int row = 0; row < glyph.height; ++row) {
+                    for (int column = 0; column < glyph.width; ++column) {
+                        const auto bit = static_cast<unsigned int>((glyph.height - 1 - row) * glyph.width
+                            + glyph.width - 1 - column);
+                        if ((glyph.bits & (std::uint64_t{1} << bit)) != 0) {
+                            drawRectangle(Rect{cursor + static_cast<float>(column) * pixel,
+                                startY + static_cast<float>(row) * pixel, pixel, pixel}, options);
+                            if (firstError != RenderError::None) {
+                                return;
+                            }
+                        }
                     }
                 }
+                cursor += static_cast<float>(glyph.width + 1) * pixel;
             }
+            ++lineIndex;
         }
-        position.x += static_cast<float>(glyph.width + 1) * pixel;
+        if (found == std::string_view::npos) {
+            break;
+        }
+        begin = found + 1;
     }
 }
 
-void Renderer2D::drawDebugText(std::string_view message, Vector2 position, Color color, float pixel)
+void Renderer2D::drawDebugText(std::string_view message, Vector2 position, Color color, float pixel,
+    TextAlignment alignment, float wrapWidth)
 {
-    drawDebugText(message, position, colored(color), pixel);
+    drawDebugText(message, position, colored(color), pixel, alignment, wrapWidth);
 }
 }
 
@@ -182,21 +266,19 @@ namespace NeuexpEngine
 Size2 Renderer2D::measureDebugText(std::string_view message, float pixel)
 {
     Size2 result;
-    float x = 0;
     float y = 0;
-    for (std::size_t offset = 0; offset < message.size();) {
-        std::uint32_t code;
-        Detail::nextUtf8(message, offset, code);
-        if (code == '\n') {
-            x = 0;
-            y += 8 * pixel;
-            result.height = std::max(result.height, y);
-            continue;
+    for (std::size_t begin = 0; begin <= message.size();) {
+        const std::size_t found = message.find('\n', begin);
+        const std::string_view line = message.substr(begin,
+            found == std::string_view::npos ? message.size() - begin : found - begin);
+        result.width = std::max(result.width, debugLineWidth(line, pixel));
+        // Пустая строка добавляет только межстрочный интервал, глифов у неё нет.
+        result.height = std::max(result.height, y + (line.empty() ? 0 : GlyphHeight * pixel));
+        y += LineHeight * pixel;
+        if (found == std::string_view::npos) {
+            break;
         }
-        const auto glyph = Detail::unicodeDebugGlyph(code);
-        result.width = std::max(result.width, x + static_cast<float>(glyph.width) * pixel);
-        result.height = std::max(result.height, y + static_cast<float>(glyph.height) * pixel);
-        x += static_cast<float>(glyph.width + 1) * pixel;
+        begin = found + 1;
     }
     return result;
 }

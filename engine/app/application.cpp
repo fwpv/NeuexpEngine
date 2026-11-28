@@ -33,7 +33,9 @@ bool Application::run(const ApplicationOptions& options, Platform::Error& error)
         return false;
     }
     if (!std::isfinite(options.maxDeltaTime) || options.maxDeltaTime <= 0 ||
-        !std::isfinite(options.targetFramesPerSecond) || options.targetFramesPerSecond < 0) {
+        !std::isfinite(options.targetFramesPerSecond) || options.targetFramesPerSecond < 0 ||
+        !std::isfinite(options.fixedStepTime) || options.fixedStepTime < 0 ||
+        options.maxCatchUpSteps < 1) {
         error = Platform::Error{"Application::run", "Invalid frame timing options.", std::nullopt};
         return false;
     }
@@ -87,7 +89,10 @@ bool Application::run(const ApplicationOptions& options, Platform::Error& error)
 bool Application::runFrames(const ApplicationOptions& options, Platform::Error& error)
 {
     const auto start = Clock::now();
+    const bool fixedStep = options.fixedStepTime > 0;
     FrameClock frameClock(options.maxDeltaTime, start);
+    // Время кадра, не поместившееся в целое число шагов постоянной длительности.
+    double fixedAccumulator = 0;
     auto fpsStart = start;
     double presentedFrames = 0;
     FrameInfo frame;
@@ -114,15 +119,34 @@ bool Application::runFrames(const ApplicationOptions& options, Platform::Error& 
         timings.events = secondsBetween(frameStart, stageEnd);
 
         frame.paused = paused || frame.window.minimized;
-        // Первый кадр после продолжения имеет dT=0.
+        // Первый кадр после продолжения имеет dT=0; после паузы и сворачивания накопитель
+        // постоянного шага тоже сбрасывается, поэтому симуляция не прыгает вперёд.
         if (frame.paused || wasPaused) {
             frameClock.reset(frameStart);
             frame.deltaTime = 0;
+            fixedAccumulator = 0;
         } else {
             frame.deltaTime = frameClock.tick(frameStart);
         }
         wasPaused = frame.paused;
-        frame.elapsedTime += static_cast<double>(frame.deltaTime);
+        // Переменный dT даёт одно обновление за кадр, постоянный шаг — столько, сколько
+        // шагов накопилось, но не больше предела догоняющих шагов.
+        int updateCount = 0;
+        if (!frame.paused) {
+            updateCount = 1;
+            if (fixedStep) {
+                fixedAccumulator += frame.deltaTime;
+                updateCount = static_cast<int>(fixedAccumulator / options.fixedStepTime);
+                if (updateCount > options.maxCatchUpSteps) {
+                    updateCount = options.maxCatchUpSteps;
+                    fixedAccumulator = 0;
+                } else {
+                    fixedAccumulator -= static_cast<double>(updateCount) * options.fixedStepTime;
+                }
+                frame.deltaTime = options.fixedStepTime;
+            }
+        }
+        frame.updates = updateCount;
 
         if (frame.window.minimized || wasMinimized) {
             fpsStart = frameStart;
@@ -133,8 +157,15 @@ bool Application::runFrames(const ApplicationOptions& options, Platform::Error& 
         wasMinimized = frame.window.minimized;
 
         const auto updateStart = stageEnd;
-        if (!frame.paused && !onUpdate(frame, error)) {
-            return false;
+        for (int index = 0; index < updateCount; ++index) {
+            // Каждый шаг видит игровое время, включающее только выполненные шаги.
+            frame.elapsedTime += static_cast<double>(frame.deltaTime);
+            if (!onUpdate(frame, error)) {
+                return false;
+            }
+            if (exitRequested) {
+                break;
+            }
         }
         stageEnd = Clock::now();
         timings.update = secondsBetween(updateStart, stageEnd);

@@ -1,6 +1,10 @@
 #pragma once
 
 #include "core/geometry.h"
+#include "core/math2d.h"
+#include "core/transform.h"
+
+#include <cstdint>
 
 namespace NeuexpEngine
 {
@@ -39,4 +43,22 @@ private:
 Rect bounds(const CollisionShape& shape);
 // Граница включена.
 bool contains(const CollisionShape& shape, Vector2 point);
+
+// Форма как прямоугольник: прямоугольник вдоль осей получает нулевой поворот.
+Box boxOf(const CollisionShape& shape);
+// Ближайшая грань прямоугольника для точки в его осях: наружная нормаль, расстояние
+// до грани и номер (0 — левая, 1 — правая, 2 — верхняя, 3 — нижняя).
+struct BoxFaceHit
+{
+    Vector2 normal = {-1, 0};
+    double distance = 0;
+    std::uint16_t index = 0;
+};
+
+BoxFaceHit nearestBoxFace(Vector2 localPoint, Size2 halfSize);
+
+// Форма в мировых координатах: сначала origin, затем масштаб, поворот и перенос.
+// Круг и повёрнутый прямоугольник требуют равномерного масштаба: иначе форма
+// в мире становится эллипсом или параллелограммом, которые проверки не поддерживают.
+CollisionShape transformedShape(const CollisionShape& shape, const Transform2& transform);
 }

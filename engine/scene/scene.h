@@ -2,6 +2,7 @@
 
 #include "core/camera.h"
 #include "object.h"
+#include "physics/world.h"
 
 #include <cstddef>
 #include <memory>
@@ -40,11 +41,16 @@ public:
     std::vector<GameObject*> findByGroup(std::string_view group);
     std::vector<const GameObject*> findByGroup(std::string_view group) const;
     // Все живые объекты в порядке добавления; ожидающие освобождения не входят.
+    std::vector<GameObject*> findAll();
     std::vector<const GameObject*> findAll() const;
     // Число живых объектов; ожидающие освобождения не учитываются.
     std::size_t count() const;
 
-    // Обновляет живые объекты в порядке добавления, затем освобождает удалённые.
+    // Обновляет живые объекты в порядке добавления, затем шагает физику сцены
+    // и освобождает удалённые. Физика читает трансформации объектов после их
+    // обновления и записывает обратно позы тел, поэтому к отрисовке геометрия актуальна.
+    // Объекты и физика всегда получают один и тот же dT: фиксированный шаг даёт
+    // воспроизводимость, переменный допустим, но воспроизводимым не является.
     void update(float deltaTime);
     // Рисует видимые объекты в порядке добавления; вид мира задаёт приложение.
     void draw(Renderer2D& renderer) const;
@@ -60,12 +66,18 @@ public:
     // получают бо́льшие значения.
     void clear();
 
+    // Физический мир сцены: тела — объекты с включённым PhysicsBody. События
+    // контактов и гравитацию приложение читает отсюда.
+    PhysicsWorld& physics() { return physicsWorld; }
+    const PhysicsWorld& physics() const { return physicsWorld; }
+
 private:
     void releaseRemoved();
 
     std::vector<std::unique_ptr<GameObject>> objects;
     ObjectId nextObjectId = 1;
     Camera2 viewCamera;
+    PhysicsWorld physicsWorld;
     bool updating = false;
 };
 }

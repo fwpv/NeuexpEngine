@@ -4,18 +4,15 @@
 #include "graphics/sprite.h"
 #include "core/transform.h"
 #include "collision/collider.h"
+#include "object_id.h"
+#include "physics/body.h"
 
-#include <cstdint>
 #include <string>
 #include <utility>
 
 namespace NeuexpEngine
 {
 class Renderer2D;
-
-// Уникален внутри сцены и не переиспользуется, в том числе после clear().
-// Ноль означает, что объект не принадлежит сцене.
-using ObjectId = std::uint64_t;
 
 // Игровой объект: трансформация, визуальное представление и необязательное поведение.
 // Сцена владеет объектом, поэтому копирование и перемещение не поддерживаются:
@@ -52,10 +49,34 @@ public:
     const Sprite& visual() const { return appearance; }
     Sprite& visual() { return appearance; }
 
-    // Форма и правила участия в столкновениях; проверки выполняет приложение
-    // или ContactTracker.
+    // Форма и правила участия в столкновениях; проверки выполняет физика сцены
+    // или приложение через запросы collision.
     const Collider& collider() const { return collision; }
     Collider& collider() { return collision; }
+
+    // Физика сцены: форму, слои, сенсор и поверхностные свойства задаёт коллайдер,
+    // позу — transform (её позиция считается центром масс тела), динамику — тело.
+    // Объект без включённого тела остаётся неподвижной геометрией; enablePhysics
+    // копирует настройки тела и будит его, disablePhysics возвращает неподвижное тело.
+    void enablePhysics(const PhysicsBody& settings = PhysicsBody{});
+    void disablePhysics();
+    const PhysicsBody& body() const { return physicsBody; }
+    PhysicsBody& body() { return physicsBody; }
+
+    // Переносит объект: поза записывается в transform, тело просыпается, чтобы мир
+    // увидел изменение. Скорости сохраняются; для полного сброса движения обнулите их.
+    void setPose(Vector2 position, float angle = 0);
+
+    // Импульсы меняют скорость тела сразу, силы и момент накапливаются до ближайшего
+    // шага физики. Действуют только на динамическое тело; масса и инерция считаются
+    // по мировому коллайдеру, мировая точка приложения даёт угловую скорость
+    // от смещения относительно transform.position.
+    void applyImpulse(Vector2 impulse);
+    void applyImpulseAtPoint(Vector2 impulse, Vector2 worldPoint);
+    void applyAngularImpulse(float impulse);
+    void applyForce(Vector2 force);
+    void applyForceAtPoint(Vector2 force, Vector2 worldPoint);
+    void applyTorque(float torque);
 
     // Вызываются сценой. Обновление по умолчанию ничего не делает; базовый draw()
     // рисует visual и пропускается для спрайта без текстуры. Подкласс расширяет
@@ -72,6 +93,7 @@ private:
     Transform2 placement;
     Sprite appearance;
     Collider collision;
+    PhysicsBody physicsBody;
     bool visible = true;
     // Удалён из сцены; память освобождается в конце update() или в clear().
     bool removalPending = false;

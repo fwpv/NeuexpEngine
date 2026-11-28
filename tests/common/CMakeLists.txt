@@ -3,7 +3,7 @@ target_link_libraries(renderer_test PRIVATE neuexpengine project_warnings)
 if(WIN32)
     target_compile_definitions(renderer_test PRIVATE NOMINMAX)
 endif()
-foreach(mode primitives transforms views errors state sorting gradient ellipses debug_text frame_errors)
+foreach(mode primitives transforms views errors state sorting gradient ellipses debug_text debug_text_layout frame_errors)
     add_test(NAME renderer_${mode} COMMAND renderer_test ${mode})
     set_tests_properties(renderer_${mode} PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
@@ -35,10 +35,17 @@ endif()
 add_test(NAME platform_dpi COMMAND platform_dpi_test)
 set_tests_properties(platform_dpi PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "display" RUN_SERIAL TRUE)
 
-foreach(group math geometry transform polygon collision collision_query collider contacts)
+foreach(group math geometry transform polygon collision collision_query collider)
     add_executable(${group}_test ${group}_test.cpp)
     target_link_libraries(${group}_test PRIVATE neuexpengine project_warnings)
     add_test(NAME ${group} COMMAND ${group}_test)
+endforeach()
+
+add_executable(physics_test physics_test.cpp)
+target_link_libraries(physics_test PRIVATE neuexpengine project_warnings)
+foreach(mode manifold properties integration forces collisions restitution friction stack tallstack
+    rotation sensors events deferred sync layers fast sleep fixedstep pose)
+    add_test(NAME physics_${mode} COMMAND physics_test ${mode})
 endforeach()
 
 add_executable(sprite_test sprite_test.cpp)
@@ -175,7 +182,7 @@ target_include_directories(application_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}
     "${PROJECT_SOURCE_DIR}/engine/app")
 target_link_libraries(application_test PRIVATE neuexpengine project_warnings)
 
-foreach(group lifecycle pause failures vsync limiter statistics)
+foreach(group lifecycle pause failures vsync limiter statistics fixed_step)
     add_test(NAME application_${group} COMMAND application_test ${group})
     set_tests_properties(application_${group} PROPERTIES TIMEOUT 15)
 endforeach()

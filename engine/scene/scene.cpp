@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <utility>
 
 namespace
 {
@@ -117,6 +118,17 @@ std::vector<const GameObject*> Scene::findByGroup(std::string_view group) const
     return result;
 }
 
+std::vector<GameObject*> Scene::findAll()
+{
+    std::vector<GameObject*> result;
+    for (const auto& object : objects) {
+        if (!object->removalPending) {
+            result.push_back(object.get());
+        }
+    }
+    return result;
+}
+
 std::vector<const GameObject*> Scene::findAll() const
 {
     std::vector<const GameObject*> result;
@@ -142,10 +154,21 @@ void Scene::update(float deltaTime)
     // поэтому проход ограничен числом объектов на его начало.
     const std::size_t scheduled = objects.size();
     const UpdateGuard guard(updating);
+    std::vector<GameObject*> subjects;
+    subjects.reserve(scheduled);
     for (std::size_t index = 0; index < scheduled; ++index) {
         if (!objects[index]->removalPending) {
             objects[index]->update(deltaTime);
         }
+        if (!objects[index]->removalPending) {
+            subjects.push_back(objects[index].get());
+        }
+    }
+    // Физика идёт после обновления объектов: их изменения поз и скоростей входят
+    // в текущий шаг, а записанные позы тел попадут в отрисовку этого же кадра.
+    // Объекты, добавленные во время обновления, в физике этого кадра не участвуют.
+    if (deltaTime > 0) {
+        physicsWorld.step(subjects, deltaTime);
     }
     releaseRemoved();
 }
@@ -170,9 +193,11 @@ void Scene::clear()
         for (const auto& object : objects) {
             object->removalPending = true;
         }
+        physicsWorld.clear();
         return;
     }
     objects.clear();
+    physicsWorld.clear();
 }
 
 void Scene::releaseRemoved()

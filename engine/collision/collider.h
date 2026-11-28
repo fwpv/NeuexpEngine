@@ -31,6 +31,11 @@ struct Collider
     // Слои, с которыми разрешены пары: объект участвует, если его слой входит в маску
     // другого коллайдера, а слой другого — в его маску.
     CollisionLayer mask = AllCollisionLayers;
+    // Поверхностные свойства: у пары трение сочетается средним геометрическим,
+    // упругость — большей из двух. Материал принадлежит поверхности коллайдера,
+    // поэтому статическая геометрия тоже может иметь своё трение и упругость.
+    float friction = 0.5F;
+    float restitution = 0;
     bool enabled = false;
     // Триггер сообщает о контакте, но не участвует в разрешении движения объектов.
     bool trigger = false;
@@ -38,4 +43,7 @@ struct Collider
 
 // Пара участвует в проверке: оба коллайдера включены и слои входят в маски друг друга.
 bool canCollide(const Collider& first, const Collider& second);
+// Совместимость слоёв пары: слой каждого входит в маску другого.
+bool layersMatch(CollisionLayer firstLayer, CollisionLayer firstMask, CollisionLayer secondLayer,
+    CollisionLayer secondMask);
 }
